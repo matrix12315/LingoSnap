@@ -1,0 +1,21 @@
+# Build artifacts
+target/
+windows/target/
+windows/tmp/
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# Local dist packages (uploaded as release assets)
+windows/dist/
+
+# Editor / OS
+.vs/
+.vscode/
+Thumbs.db
+desktop.ini
+
+# Secrets — never commit
+.env
+.env.*

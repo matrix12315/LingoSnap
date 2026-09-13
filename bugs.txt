@@ -1,0 +1,6 @@
+1. after drag other programs' scrolling bar, the bar will go back the original position
+2. windows snipping toll is interrupted after select screenshoot area, which fails the screenshoot
+3. the input section in the popup should separate target and context
+4. the selected text will be extracted many unreadable characters like OBJ... and are displayed in input section
+5. the UI design is too ugly
+6. the option "toggle hover" in tray icon should have flag to demonstrate the on/off status
