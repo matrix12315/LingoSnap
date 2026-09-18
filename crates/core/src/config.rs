@@ -46,11 +46,42 @@ pub enum UiLanguage {
     SimplifiedChinese,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+/// Default result-popup / optioner opacity: fully opaque.
+pub const DEFAULT_POPUP_OPACITY: f32 = 1.0;
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiSettings {
     #[serde(default)]
     pub manager_language: UiLanguage,
+    /// Result popup / profile-optioner opacity in `[0.0, 1.0]`.
+    /// `0.0` is fully transparent; `1.0` is fully opaque.
+    #[serde(default = "default_popup_opacity")]
+    pub popup_opacity: f32,
+}
+
+impl Default for UiSettings {
+    fn default() -> Self {
+        Self {
+            manager_language: UiLanguage::default(),
+            popup_opacity: default_popup_opacity(),
+        }
+    }
+}
+
+impl UiSettings {
+    /// Opacity clamped to `[0.0, 1.0]`; non-finite values fall back to opaque.
+    pub fn normalized_popup_opacity(&self) -> f32 {
+        if self.popup_opacity.is_finite() {
+            self.popup_opacity.clamp(0.0, 1.0)
+        } else {
+            default_popup_opacity()
+        }
+    }
+}
+
+fn default_popup_opacity() -> f32 {
+    DEFAULT_POPUP_OPACITY
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -182,6 +213,11 @@ impl AppConfig {
         }
         if self.hotkeys.cycle_profiles.trim().is_empty() {
             return Err(ConfigError::Validation(ValidationError::InvalidHotkey));
+        }
+        if !self.ui.popup_opacity.is_finite() || !(0.0..=1.0).contains(&self.ui.popup_opacity) {
+            return Err(ConfigError::Validation(
+                ValidationError::InvalidPopupOpacity,
+            ));
         }
         Ok(())
     }
@@ -362,6 +398,7 @@ pub enum ValidationError {
     },
     InvalidProvider,
     InvalidHotkey,
+    InvalidPopupOpacity,
 }
 
 impl fmt::Display for ValidationError {
@@ -381,6 +418,9 @@ impl fmt::Display for ValidationError {
                 formatter.write_str("provider endpoint, model, and credential target are required")
             }
             Self::InvalidHotkey => formatter.write_str("cycle-profiles hotkey is required"),
+            Self::InvalidPopupOpacity => {
+                formatter.write_str("ui.popup_opacity must be a finite number from 0.0 to 1.0")
+            }
         }
     }
 }
@@ -608,6 +648,39 @@ mod tests {
         let legacy = toml::to_string_pretty(&document).expect("serialize legacy config");
         let loaded = AppConfig::from_toml(&legacy).expect("legacy config remains valid");
         assert_eq!(loaded.ui.manager_language, UiLanguage::English);
+        assert_eq!(loaded.ui.popup_opacity, DEFAULT_POPUP_OPACITY);
+    }
+
+    #[test]
+    fn popup_opacity_defaults_round_trips_and_rejects_out_of_range() {
+        let mut config = AppConfig::default();
+        assert_eq!(config.ui.popup_opacity, DEFAULT_POPUP_OPACITY);
+        assert_eq!(config.ui.normalized_popup_opacity(), 1.0);
+
+        config.ui.popup_opacity = 0.35;
+        let serialized = config.to_toml().expect("serialize opacity config");
+        let loaded = AppConfig::from_toml(&serialized).expect("opacity config loads");
+        assert!(
+            serialized.contains("popup_opacity"),
+            "serialized config should include popup_opacity: {serialized}"
+        );
+        assert!((loaded.ui.popup_opacity - 0.35).abs() < f32::EPSILON);
+        assert!((loaded.ui.normalized_popup_opacity() - 0.35).abs() < f32::EPSILON);
+
+        config.ui.popup_opacity = 1.5;
+        assert!(config.validate().is_err());
+        config.ui.popup_opacity = -0.1;
+        assert!(config.validate().is_err());
+        config.ui.popup_opacity = f32::NAN;
+        assert!(config.validate().is_err());
+
+        let mut clamped = AppConfig::default();
+        clamped.ui.popup_opacity = 2.0;
+        assert_eq!(clamped.ui.normalized_popup_opacity(), 1.0);
+        clamped.ui.popup_opacity = -0.5;
+        assert_eq!(clamped.ui.normalized_popup_opacity(), 0.0);
+        clamped.ui.popup_opacity = f32::NAN;
+        assert_eq!(clamped.ui.normalized_popup_opacity(), DEFAULT_POPUP_OPACITY);
     }
 
     #[test]

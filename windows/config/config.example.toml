@@ -88,3 +88,6 @@ cycle_profiles = "Ctrl+Alt+P"
 [ui]
 # Manager interface language: "en" or "zh-CN". This does not change prompts or translations.
 manager_language = "en"
+# Result popup / profile-optioner transparency. 0.0 = fully transparent,
+# 1.0 = fully opaque (default). Values outside 0.0–1.0 are rejected on load.
+popup_opacity = 1.0

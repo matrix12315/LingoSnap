@@ -7,8 +7,8 @@ mod windows_impl {
     use super::super::{config_reload, foreground, hotkey, popup, runtime_trace, tray};
     use selection_core::{
         cache::{CacheKey, ResultCache},
-        default_config_path, Coordinator, JobInput, JobPriority, RequestGate, RequestRejection,
-        TextContext, TriggerKind,
+        default_config_path, save_atomic, Coordinator, JobInput, JobPriority, RequestGate,
+        RequestRejection, TextContext, TriggerKind,
     };
     use selection_platform_interface::{canonical_utc_now, CancellationToken, CompletedEntry};
     use std::process::{Child, Command};
@@ -421,6 +421,7 @@ mod windows_impl {
             }
         };
         let hotkeys = hotkey::Registrations::register(hwnd, &runtime.config.hotkeys.cycle_profiles);
+        popup::set_popup_opacity(runtime.config.ui.normalized_popup_opacity());
         let config_watcher =
             default_config_path().and_then(|path| config_reload::ConfigWatcher::start(path, hwnd));
         let mouse_hook = match mouse::MouseHook::install(hwnd) {
@@ -674,13 +675,14 @@ mod windows_impl {
         match message {
             tray::TRAY_CALLBACK => {
                 if state.is_null() {
-                    tray::handle_callback(hwnd, lparam, false, false);
+                    tray::handle_callback(hwnd, lparam, false, false, 1.0);
                 } else {
                     tray::handle_callback(
                         hwnd,
                         lparam,
                         (*state).hover_enabled,
                         (*state).rest_enabled,
+                        (*state).runtime.config.ui.normalized_popup_opacity(),
                     );
                 }
                 return LRESULT(0);
@@ -817,7 +819,13 @@ mod windows_impl {
                         }
                     }
                     tray::EXIT_COMMAND => PostQuitMessage(0),
-                    _ => {}
+                    command => {
+                        if !state.is_null() {
+                            if let Some(opacity) = tray::opacity_command_value(command) {
+                                set_popup_opacity_persisted(&mut *state, opacity);
+                            }
+                        }
+                    }
                 }
                 return LRESULT(0);
             }
@@ -1751,8 +1759,10 @@ mod windows_impl {
             // deliberately outside the resident runtime contract. Record the
             // new value so repeated notifications are stable without
             // cancelling work, clearing cache, rereading credentials, or
-            // rebuilding the provider.
+            // rebuilding the provider. Popup/optioner opacity still applies
+            // immediately because it is a presentation effect.
             state.runtime.config.ui = config.ui;
+            apply_popup_opacity(state);
             runtime_trace::record("config_ui_only_applied");
             return;
         }
@@ -1765,6 +1775,7 @@ mod windows_impl {
             .reregister(hwnd, &config.hotkeys.cycle_profiles);
         apply_provider_runtime(state, &config);
         state.runtime.config = config;
+        apply_popup_opacity(state);
         if state
             .active_prompt_id
             .as_deref()
@@ -1822,6 +1833,30 @@ mod windows_impl {
             && left.defaults == right.defaults
             && left.provider == right.provider
             && left.hotkeys == right.hotkeys
+    }
+
+    fn apply_popup_opacity(state: &mut ShellState) {
+        let opacity = state.runtime.config.ui.normalized_popup_opacity();
+        popup::set_popup_opacity(opacity);
+        for entry in state.popups.iter_mut() {
+            entry.popup.set_opacity(opacity);
+        }
+    }
+
+    /// Apply a tray-selected opacity immediately and persist it to config.toml.
+    /// Provider/runtime fields are written unchanged so a later reload keeps
+    /// the same runtime configuration.
+    fn set_popup_opacity_persisted(state: &mut ShellState, opacity: f32) {
+        state.runtime.config.ui.popup_opacity = popup::normalize_opacity(opacity);
+        apply_popup_opacity(state);
+        runtime_trace::record("tray_popup_opacity_applied");
+        if let Some(path) = default_config_path() {
+            if save_atomic(&path, &state.runtime.config).is_ok() {
+                runtime_trace::record("tray_popup_opacity_saved");
+            } else {
+                runtime_trace::record("tray_popup_opacity_save_failed");
+            }
+        }
     }
 
     fn apply_provider_runtime(state: &mut ShellState, config: &selection_core::AppConfig) {
@@ -2890,6 +2925,18 @@ mod windows_impl {
 
             chinese.provider.model.push_str("-changed");
             assert!(!resident_runtime_config_eq(&english, &chinese));
+        }
+
+        #[test]
+        fn tray_opacity_commands_are_distinct_from_other_tray_commands() {
+            for (command, value) in tray::OPACITY_PRESETS {
+                assert!(tray::opacity_command_value(*command).is_some());
+                assert!((0.0..=1.0).contains(value));
+                assert_ne!(*command, tray::OPEN_MANAGER_COMMAND);
+                assert_ne!(*command, tray::TOGGLE_HOVER_COMMAND);
+                assert_ne!(*command, tray::TOGGLE_REST_COMMAND);
+                assert_ne!(*command, tray::EXIT_COMMAND);
+            }
         }
 
         #[test]

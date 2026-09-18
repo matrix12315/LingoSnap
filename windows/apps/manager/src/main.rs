@@ -14,7 +14,7 @@ mod windows_app {
             ensure_resident_running, notify_config_changed, notify_credentials_changed,
             RefreshOutcome, ResidentStartOutcome,
         },
-        credentials,
+        credentials, popup,
     };
     use selection_storage::{
         default_history_path, HistoryDatabase, HistoryEntry, HistoryOrder, HistoryQuery,
@@ -96,6 +96,7 @@ mod windows_app {
     const ID_PROMPT_SELECTION_DEFAULT: usize = 173;
     const ID_PROMPT_HOVER_DEFAULT: usize = 174;
     const ID_HISTORY_SEARCH: usize = 175;
+    const ID_SETTINGS_POPUP_OPACITY: usize = 176;
 
     const DEFAULT_DPI: u32 = 96;
     const NAV_WIDTH: i32 = 176;
@@ -158,6 +159,7 @@ mod windows_app {
         DeleteSavedKey,
         SelectionDefaultProfile,
         HoverDefaultProfile,
+        PopupOpacity,
         SaveSettings,
         CredentialPrivacy,
         Profile,
@@ -217,6 +219,7 @@ mod windows_app {
         TextKey::DeleteSavedKey,
         TextKey::SelectionDefaultProfile,
         TextKey::HoverDefaultProfile,
+        TextKey::PopupOpacity,
         TextKey::SaveSettings,
         TextKey::CredentialPrivacy,
         TextKey::Profile,
@@ -280,6 +283,7 @@ mod windows_app {
             (UiLanguage::English, DeleteSavedKey) => "Delete saved key",
             (UiLanguage::English, SelectionDefaultProfile) => "Selection default profile",
             (UiLanguage::English, HoverDefaultProfile) => "Hover default profile",
+            (UiLanguage::English, PopupOpacity) => "Popup opacity (0–1)",
             (UiLanguage::English, SaveSettings) => "Save settings",
             (UiLanguage::English, CredentialPrivacy) => {
                 "Keys are held by Windows Credential Manager; they never enter config.toml."
@@ -342,6 +346,7 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, DeleteSavedKey) => "删除已存密钥",
             (UiLanguage::SimplifiedChinese, SelectionDefaultProfile) => "划词默认配置",
             (UiLanguage::SimplifiedChinese, HoverDefaultProfile) => "悬停默认配置",
+            (UiLanguage::SimplifiedChinese, PopupOpacity) => "弹窗透明度 (0–1)",
             (UiLanguage::SimplifiedChinese, SaveSettings) => "保存设置",
             (UiLanguage::SimplifiedChinese, CredentialPrivacy) => {
                 "密钥保存在 Windows 凭据管理器中，绝不会写入 config.toml。"
@@ -759,6 +764,7 @@ mod windows_app {
         credential_status: HWND,
         settings_selection_default: HWND,
         settings_hover_default: HWND,
+        settings_popup_opacity: HWND,
         prompt_selection_default: HWND,
         prompt_hover_default: HWND,
         profile_number: HWND,
@@ -803,6 +809,7 @@ mod windows_app {
                 credential_status: null,
                 settings_selection_default: null,
                 settings_hover_default: null,
+                settings_popup_opacity: null,
                 prompt_selection_default: null,
                 prompt_hover_default: null,
                 profile_number: null,
@@ -948,6 +955,7 @@ mod windows_app {
                 scale_for_dpi(680, window_dpi),
                 SWP_NOACTIVATE | SWP_NOZORDER,
             );
+            popup::apply_window_opacity(hwnd, (*state_ptr).config.ui.normalized_popup_opacity());
             let _ = ShowWindow(
                 hwnd,
                 windows::Win32::UI::WindowsAndMessaging::SW_SHOWDEFAULT,
@@ -1355,6 +1363,29 @@ mod windows_app {
             520,
             220,
             Some(View::Settings),
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Popup opacity (0–1)",
+            486,
+            64,
+            122,
+            22,
+            Some(View::Settings),
+        )?;
+        h.settings_popup_opacity = add_edit_with_id(
+            hwnd,
+            &mut h,
+            "",
+            610,
+            58,
+            130,
+            26,
+            Some(View::Settings),
+            false,
+            false,
+            ID_SETTINGS_POPUP_OPACITY,
         )?;
         add_button(
             hwnd,
@@ -2538,7 +2569,7 @@ mod windows_app {
             ID_CLOSE => unsafe {
                 DestroyWindow(hwnd).ok();
             },
-            ID_SAVE_SETTINGS => save_settings(state),
+            ID_SAVE_SETTINGS => save_settings(hwnd, state),
             ID_SAVE_KEY => save_key(state),
             ID_DELETE_KEY => delete_key(state),
             ID_SAVE_PROMPT => save_prompt(state),
@@ -3196,6 +3227,10 @@ mod windows_app {
             state.handles.credential_target,
             &state.config.provider.credential_target,
         );
+        set_text(
+            state.handles.settings_popup_opacity,
+            &format_opacity_display(state.config.ui.normalized_popup_opacity()),
+        );
         populate_profile_selectors(state);
     }
 
@@ -3219,13 +3254,63 @@ mod windows_app {
         )
     }
 
-    fn save_settings(state: &mut ManagerState) {
+    fn format_opacity_display(opacity: f32) -> String {
+        // Compact display that round-trips through the 0.0–1.0 parser.
+        format!("{:.2}", popup::normalize_opacity(opacity))
+    }
+
+    fn parse_popup_opacity(value: &str) -> Result<f32, String> {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return Ok(1.0);
+        }
+        if let Some(percent) = trimmed.strip_suffix('%') {
+            let parsed = percent.trim().parse::<f32>().map_err(|_| {
+                "popup opacity must be a number from 0.0 to 1.0, or a percent like 85%".to_owned()
+            })?;
+            if !parsed.is_finite() || !(0.0..=100.0).contains(&parsed) {
+                return Err(
+                    "popup opacity must be a number from 0.0 to 1.0, or a percent like 85%"
+                        .to_owned(),
+                );
+            }
+            return Ok(parsed / 100.0);
+        }
+        let parsed = trimmed.parse::<f32>().map_err(|_| {
+            "popup opacity must be a number from 0.0 to 1.0, or a percent like 85%".to_owned()
+        })?;
+        if !parsed.is_finite() || !(0.0..=1.0).contains(&parsed) {
+            return Err(
+                "popup opacity must be a number from 0.0 to 1.0, or a percent like 85%".to_owned(),
+            );
+        }
+        Ok(parsed)
+    }
+
+    fn save_settings(hwnd: HWND, state: &mut ManagerState) {
         discard_draft(state);
         let mut next = state.config.clone();
         next.provider.endpoint = read_text(state.handles.endpoint).trim().to_owned();
         next.provider.model = read_text(state.handles.model).trim().to_owned();
         next.provider.credential_target =
             read_text(state.handles.credential_target).trim().to_owned();
+        match parse_popup_opacity(&read_text(state.handles.settings_popup_opacity)) {
+            Ok(opacity) => next.ui.popup_opacity = opacity,
+            Err(detail) => {
+                set_text(
+                    state.handles.settings_popup_opacity,
+                    &format_opacity_display(state.config.ui.normalized_popup_opacity()),
+                );
+                set_status(
+                    state,
+                    &status_text(
+                        state.language(),
+                        StatusEvent::CannotSaveSettings { detail: &detail },
+                    ),
+                );
+                return;
+            }
+        }
         // The Settings controls display profile names, but the configuration
         // stores stable profile IDs. Keep the last valid ID if a native combo
         // has no selection (for example while it is being rebuilt).
@@ -3265,6 +3350,7 @@ mod windows_app {
             return;
         }
         state.config = next;
+        popup::apply_window_opacity(hwnd, state.config.ui.normalized_popup_opacity());
         let refresh = notify_config_changed();
         populate_profile_selectors(state);
         set_status(state, &config_refresh_status(state.language(), refresh));
@@ -3656,10 +3742,11 @@ mod windows_app {
     mod tests {
         use super::{
             apply_prompt, config_refresh_status, config_with_manager_language,
-            credential_refresh_status, format_history_row, history_count_text,
-            history_source_for_index, parse_optional_f32, parse_optional_u32, profile_id_for_index,
-            profile_option_label, resident_start_status, status_text, ui_text, valid_history_index,
-            visibility_style, ManagerLayout, StatusEvent, StatusOperation, View, ALL_TEXT_KEYS,
+            credential_refresh_status, format_history_row, format_opacity_display,
+            history_count_text, history_source_for_index, parse_optional_f32, parse_optional_u32,
+            parse_popup_opacity, profile_id_for_index, profile_option_label, resident_start_status,
+            status_text, ui_text, valid_history_index, visibility_style, ManagerLayout,
+            StatusEvent, StatusOperation, View, ALL_TEXT_KEYS,
         };
         use selection_core::{AppConfig, ExtractionSource, PromptConfig, UiLanguage};
         use selection_platform_windows::app::{RefreshOutcome, ResidentStartOutcome};
@@ -3878,6 +3965,20 @@ mod windows_app {
             let changed = config_with_manager_language(&config, UiLanguage::SimplifiedChinese);
             assert_eq!(changed, expected);
             assert_eq!(config.ui.manager_language, UiLanguage::English);
+        }
+
+        #[test]
+        fn popup_opacity_parser_accepts_unit_interval_and_percent() {
+            assert_eq!(parse_popup_opacity("").unwrap(), 1.0);
+            assert_eq!(parse_popup_opacity("0").unwrap(), 0.0);
+            assert_eq!(parse_popup_opacity("1").unwrap(), 1.0);
+            assert!((parse_popup_opacity("0.85").unwrap() - 0.85).abs() < f32::EPSILON);
+            assert!((parse_popup_opacity("85%").unwrap() - 0.85).abs() < f32::EPSILON);
+            assert!(parse_popup_opacity("1.2").is_err());
+            assert!(parse_popup_opacity("-0.1").is_err());
+            assert!(parse_popup_opacity("abc").is_err());
+            assert!(parse_popup_opacity("120%").is_err());
+            assert_eq!(format_opacity_display(0.85), "0.85");
         }
 
         #[test]

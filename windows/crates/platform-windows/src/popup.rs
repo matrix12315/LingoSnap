@@ -1,5 +1,7 @@
 //! Small native, non-activating result popup.
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Point {
     pub x: i32,
@@ -63,10 +65,34 @@ pub fn cascade_origin(parent: Rect, child_size: (i32, i32), gap: i32, work_area:
     clamped_origin(desired, child_size, work_area)
 }
 
+/// Clamp a user/config opacity into `[0.0, 1.0]`; non-finite becomes opaque.
+pub fn normalize_opacity(value: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(0.0, 1.0)
+    } else {
+        1.0
+    }
+}
+
+/// Opacity used when a new popup/optioner window is created.
+static POPUP_OPACITY: AtomicU32 = AtomicU32::new(f32::to_bits(1.0));
+
+/// Record the process-wide popup/optioner opacity (0.0–1.0).
+pub fn set_popup_opacity(opacity: f32) {
+    POPUP_OPACITY.store(normalize_opacity(opacity).to_bits(), Ordering::Release);
+}
+
+/// Read the process-wide popup/optioner opacity (0.0–1.0).
+pub fn current_popup_opacity() -> f32 {
+    f32::from_bits(POPUP_OPACITY.load(Ordering::Acquire))
+}
+
 #[cfg(windows)]
 mod windows_impl {
     use super::super::runtime_trace;
-    use super::{cascade_origin, clamped_origin, Point, Rect};
+    use super::{
+        cascade_origin, clamped_origin, current_popup_opacity, normalize_opacity, Point, Rect,
+    };
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{
         FreeLibrary, GlobalFree, COLORREF, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT,
@@ -95,18 +121,19 @@ mod windows_impl {
         AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
         GetAncestor, GetClassNameW, GetClientRect, GetParent, GetWindow, GetWindowLongPtrW,
         GetWindowRect, GetWindowTextW, IsWindow, IsWindowVisible, MoveWindow, PostMessageW,
-        RegisterClassW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
-        SetWindowTextW, ShowWindow, TrackPopupMenu, WindowFromPoint, BS_PUSHBUTTON, CS_DROPSHADOW,
-        CS_HREDRAW, CS_VREDRAW, ES_AUTOVSCROLL, ES_MULTILINE, ES_NOHIDESEL, ES_READONLY, GA_ROOT,
-        GWLP_USERDATA, GWL_EXSTYLE, GW_OWNER, HMENU, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT,
-        HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HWND_TOPMOST, MA_NOACTIVATE,
-        MF_STRING, MINMAXINFO, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE,
-        SW_SHOWNOACTIVATE, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_TOPALIGN, WINDOW_STYLE, WM_APP,
-        WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE,
-        WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDOWN,
-        WM_MOUSEACTIVATE, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT,
-        WM_SETREDRAW, WM_SIZE, WM_TIMER, WNDCLASSW, WS_CHILD, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-        WS_EX_TOPMOST, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+        RegisterClassW, SendMessageW, SetForegroundWindow, SetLayeredWindowAttributes,
+        SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, TrackPopupMenu,
+        WindowFromPoint, BS_PUSHBUTTON, CS_DROPSHADOW, CS_HREDRAW, CS_VREDRAW, ES_AUTOVSCROLL,
+        ES_MULTILINE, ES_NOHIDESEL, ES_READONLY, GA_ROOT, GWLP_USERDATA, GWL_EXSTYLE, GW_OWNER,
+        HMENU, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT,
+        HTTOPRIGHT, HWND_TOPMOST, LWA_ALPHA, MA_NOACTIVATE, MF_STRING, MINMAXINFO, SWP_NOACTIVATE,
+        SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, TPM_LEFTALIGN,
+        TPM_RETURNCMD, TPM_TOPALIGN, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE,
+        WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE,
+        WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_NCCREATE, WM_NCDESTROY,
+        WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETREDRAW, WM_SIZE, WM_TIMER, WNDCLASSW,
+        WS_CHILD, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+        WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
     };
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslatePopup");
@@ -190,6 +217,29 @@ mod windows_impl {
     pub(super) const OWNER_DRAW_BUTTON_STYLE: u32 = BS_PUSHBUTTON as u32 | 0x0000000b;
 
     pub const MAX_OUTPUT_CHARS: usize = 64 * 1024;
+
+    /// Apply whole-window opacity to a native popup/optioner surface.
+    /// `1.0` leaves the window non-layered (fully opaque).
+    pub fn apply_window_opacity(hwnd: HWND, opacity: f32) {
+        let opacity = normalize_opacity(opacity);
+        unsafe {
+            let style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+            if opacity >= 1.0 {
+                if style & WS_EX_LAYERED.0 != 0 {
+                    let _ =
+                        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, (style & !WS_EX_LAYERED.0) as isize);
+                }
+                return;
+            }
+            let alpha = (opacity * 255.0).round() as u8;
+            let layered = style | WS_EX_LAYERED.0;
+            if style != layered {
+                let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, layered as isize);
+            }
+            let _ = SetLayeredWindowAttributes(hwnd, COLORREF(0), alpha, LWA_ALPHA);
+        }
+    }
+
     const MAX_INPUT_CHARS: usize = 4 * 1024;
     const MAX_OUTPUT_UTF16_UNITS: usize = MAX_OUTPUT_CHARS * 2;
     const TRUNCATION_MARKER: &str = "\n\n[Output truncated]";
@@ -420,6 +470,7 @@ mod windows_impl {
                 data.dpi = dpi;
             }
             apply_layout(hwnd, anchor, dpi);
+            apply_window_opacity(hwnd, current_popup_opacity());
             let size = resolve_window_size(hwnd, dpi);
             let origin = origin_for(anchor, size).unwrap_or(anchor);
             if present && !present_popup(hwnd, origin, size) {
@@ -491,6 +542,15 @@ mod windows_impl {
             }
             record_topology(self.hwnd);
             runtime_trace::record("popup_reanchor_success");
+            true
+        }
+
+        /// Apply whole-window opacity (0.0–1.0) to this popup/optioner surface.
+        pub fn set_opacity(&mut self, opacity: f32) -> bool {
+            if !unsafe { IsWindow(Some(self.hwnd)) }.as_bool() {
+                return false;
+            }
+            apply_window_opacity(self.hwnd, opacity);
             true
         }
 
@@ -881,7 +941,11 @@ mod windows_impl {
                 right: info.rcWork.right,
                 bottom: info.rcWork.bottom,
             };
-            popup_rect_is_presentable(actual, work_area)
+            if !popup_rect_is_presentable(actual, work_area) {
+                return false;
+            }
+            apply_window_opacity(hwnd, current_popup_opacity());
+            true
         }
     }
 
@@ -3653,6 +3717,19 @@ mod tests {
             let _ = DestroyWindow(parent);
             let _ = FreeLibrary(module);
         }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn opacity_normalizes_to_unit_interval_and_maps_to_byte_alpha() {
+        assert_eq!(super::normalize_opacity(0.75), 0.75);
+        assert_eq!(super::normalize_opacity(-0.2), 0.0);
+        assert_eq!(super::normalize_opacity(1.4), 1.0);
+        assert_eq!(super::normalize_opacity(f32::NAN), 1.0);
+        assert_eq!((0.5_f32 * 255.0).round() as u8, 128);
+        super::set_popup_opacity(0.4);
+        assert!((super::current_popup_opacity() - 0.4).abs() < f32::EPSILON);
+        super::set_popup_opacity(1.0);
     }
 
     #[cfg(windows)]
