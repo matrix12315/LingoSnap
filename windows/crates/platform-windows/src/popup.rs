@@ -132,8 +132,8 @@ mod windows_impl {
         WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE,
         WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MOUSEACTIVATE, WM_NCCREATE, WM_NCDESTROY,
         WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETREDRAW, WM_SIZE, WM_TIMER, WNDCLASSW,
-        WS_CHILD, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
-        WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+        WS_CHILD, WS_CLIPCHILDREN, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
     };
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslatePopup");
@@ -176,44 +176,36 @@ mod windows_impl {
     pub(super) const RICH_EDIT_CLASS: PCWSTR = w!("RICHEDIT50W");
     const REQUIRED_POPUP_EX_STYLE: u32 = WS_EX_TOPMOST.0 | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0;
 
-    // One palette is shared by the parent, text controls, and owner-drawn
-    // buttons so the popup reads as a single surface during every state.
+    // Shared dark-glass tokens — keep in sync with `ui_theme`.
     // COLORREF is 0x00BBGGRR.
-    // Exact RGB tokens from the egui mockup (COLORREF is 0x00BBGGRR).
-    // Outer: rgb(17,29,49) · border rgb(48,72,106)
-    pub(super) const POPUP_BG: COLORREF = COLORREF(0x00311d11);
-    const POPUP_BORDER: COLORREF = COLORREF(0x006a4830);
-    // Input card: rgb(25,40,65) · border rgb(37,57,85)
-    const POPUP_SECTION_BG: COLORREF = COLORREF(0x00412819);
-    const POPUP_CARD_BORDER: COLORREF = COLORREF(0x00553925);
-    // Result card: rgb(24,39,63) · border rgb(38,59,88)
-    const POPUP_HEADER_BG: COLORREF = COLORREF(0x003f2718);
-    const POPUP_RESULT_BORDER: COLORREF = COLORREF(0x00583b26);
-    // Field well: rgb(26,43,69) · stroke rgb(65,91,128)
-    const POPUP_FIELD_BG: COLORREF = COLORREF(0x00452b1a);
-    const POPUP_FIELD_BORDER: COLORREF = COLORREF(0x00805b41);
-    // Text
-    pub(super) const POPUP_TEXT: COLORREF = COLORREF(0x00fcf7f5); // rgb(245,247,252)
-    const POPUP_TITLE: COLORREF = COLORREF(0x00fff5f0); // rgb(240,245,255)
-    const POPUP_MUTED: COLORREF = COLORREF(0x00cda991); // rgb(145,169,205)
-    const POPUP_LABEL: COLORREF = COLORREF(0x00e5bb9e); // rgb(158,187,229)
+    pub(super) const POPUP_BG: COLORREF = crate::ui_theme::CANVAS;
+    const POPUP_BORDER: COLORREF = crate::ui_theme::BORDER;
+    const POPUP_SECTION_BG: COLORREF = crate::ui_theme::CARD;
+    const POPUP_CARD_BORDER: COLORREF = crate::ui_theme::BORDER;
+    const POPUP_HEADER_BG: COLORREF = crate::ui_theme::HEADER;
+    const POPUP_RESULT_BORDER: COLORREF = crate::ui_theme::BORDER;
+    const POPUP_FIELD_BG: COLORREF = crate::ui_theme::FIELD;
+    const POPUP_FIELD_BORDER: COLORREF = crate::ui_theme::FIELD_BORDER;
+    pub(super) const POPUP_TEXT: COLORREF = crate::ui_theme::TEXT;
+    const POPUP_TITLE: COLORREF = crate::ui_theme::TEXT;
+    const POPUP_MUTED: COLORREF = crate::ui_theme::MUTED;
+    const POPUP_LABEL: COLORREF = crate::ui_theme::MUTED;
     #[allow(dead_code)]
-    const POPUP_ICON: COLORREF = COLORREF(0x00ffe1cd); // rgb(205,225,255)
-    const POPUP_RESULT_ICON: COLORREF = COLORREF(0x00ffa969); // rgb(105,169,255)
+    const POPUP_ICON: COLORREF = crate::ui_theme::MUTED;
+    const POPUP_RESULT_ICON: COLORREF = crate::ui_theme::ACCENT;
     #[allow(dead_code)]
-    const POPUP_RESULT_TEXT: COLORREF = COLORREF(0x00fdf9f8); // rgb(248,249,253)
+    const POPUP_RESULT_TEXT: COLORREF = crate::ui_theme::TEXT;
     #[allow(dead_code)]
-    const POPUP_CLOSE: COLORREF = COLORREF(0x00f0d2be); // rgb(190,210,240)
-                                                        // Logo chip
-    pub(super) const POPUP_ACCENT: COLORREF = COLORREF(0x00f4a65b); // rgb(91,166,244)
-    const POPUP_LOGO_INK: COLORREF = COLORREF(0x003c2314); // rgb(20,35,60)
-                                                           // Buttons
-    pub(super) const POPUP_ACCENT_DIM: COLORREF = COLORREF(0x00f4914b); // rgb(75,145,244)
-    pub(super) const POPUP_BUTTON_BG: COLORREF = COLORREF(0x00452b1b); // rgb(27,43,69)
-    const POPUP_BUTTON_STROKE: COLORREF = COLORREF(0x0077523a); // rgb(58,82,119)
-    const POPUP_BUTTON_HOVER: COLORREF = COLORREF(0x005a3c24); // hover fill
-    const POPUP_BUTTON_DISABLED: COLORREF = COLORREF(0x003a2819);
-    const POPUP_BUTTON_TEXT: COLORREF = COLORREF(0x00fff2eb); // rgb(235,242,255)
+    const POPUP_CLOSE: COLORREF = crate::ui_theme::MUTED;
+    pub(super) const POPUP_ACCENT: COLORREF = crate::ui_theme::ACCENT;
+    const POPUP_LOGO_INK: COLORREF = crate::ui_theme::ACCENT_INK;
+    pub(super) const POPUP_ACCENT_DIM: COLORREF = crate::ui_theme::ACCENT_DIM;
+    pub(super) const POPUP_BUTTON_BG: COLORREF = crate::ui_theme::BUTTON;
+    const POPUP_BUTTON_STROKE: COLORREF = crate::ui_theme::BUTTON_STROKE;
+    const POPUP_BUTTON_HOVER: COLORREF = crate::ui_theme::HOVER;
+    const POPUP_BUTTON_DISABLED: COLORREF = crate::ui_theme::BUTTON_DISABLED;
+    const POPUP_BUTTON_TEXT: COLORREF = crate::ui_theme::TEXT;
+    const POPUP_PRIMARY_INK: COLORREF = crate::ui_theme::ACCENT_INK;
     pub(super) const OWNER_DRAW_BUTTON_STYLE: u32 = BS_PUSHBUTTON as u32 | 0x0000000b;
 
     pub const MAX_OUTPUT_CHARS: usize = 64 * 1024;
@@ -429,7 +421,7 @@ mod windows_impl {
                     WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
                     CLASS_NAME,
                     w!("Selection Translate"),
-                    WS_POPUP,
+                    WS_POPUP | WS_CLIPCHILDREN,
                     anchor.x,
                     anchor.y,
                     WIDTH,
@@ -1243,6 +1235,10 @@ mod windows_impl {
         pub(super) input_card_bottom: i32,
         pub(super) output_card_top: i32,
         pub(super) output_card_bottom: i32,
+        /// Child control left edge — inside card padding so text cannot spill.
+        pub(super) field_left: i32,
+        /// Child control width — matches painted field wells exactly.
+        pub(super) field_width: i32,
     }
 
     pub(super) fn compute_layout(
@@ -1253,35 +1249,56 @@ mod windows_impl {
     ) -> PopupLayout {
         let margin = scale(MARGIN, dpi);
         let header = scale(HEADER_HEIGHT, dpi);
-        let label_height = scale(LABEL_HEIGHT, dpi);
+        let label_height = scale(LABEL_HEIGHT, dpi).max(scale(14, dpi));
         let section_gap = scale(SECTION_GAP, dpi);
         let content_gap = scale(CONTENT_GAP, dpi);
-        let card_pad = scale(CARD_PAD, dpi);
+        let card_pad = scale(CARD_PAD, dpi).max(scale(10, dpi));
         let button_height = scale(BUTTON_HEIGHT, dpi);
         let button_gap = scale(BUTTON_GAP, dpi);
         let button_bottom_gap = scale(BUTTON_BOTTOM_GAP, dpi);
-        let preferred_target = scale(TARGET_HEIGHT, dpi).max(1);
-        let preferred_context = scale(CONTEXT_HEIGHT, dpi).max(1);
+        let field_gap = scale(5, dpi);
         let content_width = (client_width - margin * 2).max(1);
+        let field_left = margin + card_pad;
+        let field_width = (content_width - card_pad * 2).max(1);
         let button_count = button_count.max(1);
         let button_width =
             ((content_width - button_gap * (button_count - 1)) / button_count).max(1);
 
         let button_top = (client_height - button_height - button_bottom_gap).max(header + margin);
-        let output_card_bottom = (button_top - content_gap).max(header + margin);
 
-        // Input card holds Target + Context; result card holds Result.
-        let target_label_top = header + scale(8, dpi);
-        let target_top = target_label_top + label_height + scale(4, dpi);
+        // Remaining height for cards between header and buttons.
+        let chrome = header
+            + card_pad * 2
+            + label_height * 3
+            + field_gap * 3
+            + section_gap
+            + content_gap
+            + button_height
+            + button_bottom_gap
+            + card_pad;
+        let free = (client_height - chrome).max(scale(24, dpi));
+        let preferred_target = scale(TARGET_HEIGHT, dpi)
+            .min((free * 2 / 5).max(scale(22, dpi)))
+            .max(scale(22, dpi));
+        let preferred_context = scale(CONTEXT_HEIGHT, dpi)
+            .min((free - preferred_target).max(scale(28, dpi)))
+            .max(scale(28, dpi));
+
+        let input_card_top = header + scale(6, dpi);
+        let target_label_top = input_card_top + card_pad;
+        let target_top = target_label_top + label_height + field_gap;
         let context_label_top = target_top + preferred_target + section_gap;
-        let context_top = context_label_top + label_height + scale(4, dpi);
+        let context_top = context_label_top + label_height + field_gap;
         let input_card_bottom = context_top + preferred_context + card_pad;
-        let input_card_top = header + scale(4, dpi);
 
         let output_card_top = input_card_bottom + content_gap;
         let output_label_top = output_card_top + card_pad;
-        let output_top = output_label_top + label_height + scale(4, dpi);
-        let output_height = (output_card_bottom - output_top - card_pad).max(scale(48, dpi));
+        let output_top = output_label_top + label_height + field_gap;
+        // Result pane fills space above the button row; never overflow the card.
+        let room_for_output = (button_top - content_gap - card_pad - output_top).max(1);
+        let output_height = room_for_output;
+        let output_card_bottom =
+            (button_top - content_gap).max(output_top + output_height + card_pad);
 
         PopupLayout {
             content_width,
@@ -1306,6 +1323,8 @@ mod windows_impl {
             input_card_bottom,
             output_card_top,
             output_card_bottom,
+            field_left,
+            field_width,
         }
     }
 
@@ -1363,24 +1382,28 @@ mod windows_impl {
         let layout = compute_layout(client.right, client.bottom, dpi, data.buttons.len() as i32);
         move_child(
             data.input,
-            layout.margin,
+            layout.field_left,
             layout.target_top,
-            layout.content_width,
+            layout.field_width,
             layout.target_height,
         );
         move_child(
             data.context_input,
-            layout.margin,
+            layout.field_left,
             layout.context_top,
-            layout.content_width,
+            layout.field_width,
             layout.context_height,
         );
+        // Keep the result control inside its painted card.
+        let output_height = layout
+            .output_height
+            .min((layout.output_card_bottom - layout.output_top - scale(8, dpi)).max(1));
         move_child(
             data.output,
-            layout.margin,
+            layout.field_left,
             layout.output_top,
-            layout.content_width,
-            layout.output_height,
+            layout.field_width,
+            output_height,
         );
         for (index, button) in data.buttons.iter().enumerate() {
             let x = layout.margin + index as i32 * (layout.button_width + layout.button_gap);
@@ -1976,14 +1999,19 @@ mod windows_impl {
             }
             if !data.output.0.is_null() {
                 unsafe {
-                    // RichEdit does not consistently honor CTLCOLOR for its own
-                    // document background, so set it once before the popup is
-                    // presented. The fallback EDIT safely ignores this message.
+                    // Document bg must match the painted field well, or text
+                    // appears to float outside the card on the window canvas.
                     let _ = SendMessageW(
                         data.output,
                         EM_SETBKGNDCOLOR,
                         Some(WPARAM(0)),
-                        Some(LPARAM(POPUP_BG.0 as isize)),
+                        Some(LPARAM(POPUP_FIELD_BG.0 as isize)),
+                    );
+                    let _ = SendMessageW(
+                        data.output,
+                        EM_SETMARGINS,
+                        Some(WPARAM(0x0003)),
+                        Some(LPARAM(((8i32) << 16 | 8i32) as isize)),
                     );
                 }
             }
@@ -1994,15 +2022,13 @@ mod windows_impl {
                             control,
                             EM_SETBKGNDCOLOR,
                             Some(WPARAM(0)),
-                            Some(LPARAM(POPUP_SECTION_BG.0 as isize)),
+                            Some(LPARAM(POPUP_FIELD_BG.0 as isize)),
                         );
-                        // 2px side margins keep the pane tight around the text
-                        // without changing the 12pt font.
                         let _ = SendMessageW(
                             control,
                             EM_SETMARGINS,
                             Some(WPARAM(0x0003)),
-                            Some(LPARAM(((2i32) << 16 | 2i32) as isize)),
+                            Some(LPARAM(((8i32) << 16 | 8i32) as isize)),
                         );
                     }
                 }
@@ -2074,9 +2100,9 @@ mod windows_impl {
         HBRUSH(raw as *mut core::ffi::c_void)
     }
 
-    fn popup_section_brush() -> HBRUSH {
+    fn popup_field_brush() -> HBRUSH {
         static BRUSH: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-        let raw = *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(POPUP_SECTION_BG).0 as usize });
+        let raw = *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(POPUP_FIELD_BG).0 as usize });
         HBRUSH(raw as *mut core::ffi::c_void)
     }
 
@@ -2152,7 +2178,14 @@ mod windows_impl {
             // Transparent bk keeps glyph edges clean; opaque fill was showing
             // as a misaligned slab around CJK text.
             let old_bk = SetBkMode(item.hDC, TRANSPARENT);
-            SetTextColor(item.hDC, POPUP_BUTTON_TEXT);
+            SetTextColor(
+                item.hDC,
+                if is_primary {
+                    POPUP_PRIMARY_INK
+                } else {
+                    POPUP_BUTTON_TEXT
+                },
+            );
             // Inset the text rect so DrawText centers the face, not the
             // full owner-rect including the 1px frame.
             let mut text_rect = rect;
@@ -2258,7 +2291,6 @@ mod windows_impl {
             let _ = DeleteObject(border.into());
         }
         let layout = compute_layout(client.right, client.bottom, dpi, 5);
-        let radius = popup_corner_radius(dpi).max(12);
         let left = layout.margin;
         let right = client.right - layout.margin;
         let label_font = data_mut(hwnd)
@@ -2317,7 +2349,7 @@ mod windows_impl {
         paint_section_label(
             hdc,
             label_font,
-            "Translate your selection with context",
+            "Translate with context",
             RECT {
                 left: left + scale(48, dpi),
                 top: scale(36, dpi),
@@ -2336,7 +2368,7 @@ mod windows_impl {
                 right,
                 bottom: layout.input_card_bottom,
             },
-            radius,
+            scale(crate::ui_theme::CARD_RADIUS, dpi).max(10),
             POPUP_SECTION_BG,
             Some(POPUP_CARD_BORDER),
         );
@@ -2348,42 +2380,56 @@ mod windows_impl {
                 right,
                 bottom: layout.output_card_bottom,
             },
-            radius,
+            scale(crate::ui_theme::CARD_RADIUS, dpi).max(10),
             POPUP_HEADER_BG,
             Some(POPUP_RESULT_BORDER),
         );
-        let inset = scale(4, dpi);
+        let inset = scale(0, dpi);
+        let field_radius = scale(crate::ui_theme::FIELD_RADIUS, dpi).max(6);
         paint_round_rect(
             hdc,
             RECT {
-                left: left + inset,
-                top: layout.target_top - inset,
-                right: right - inset,
-                bottom: layout.target_top + layout.target_height + inset,
+                left: layout.field_left,
+                top: layout.target_top,
+                right: layout.field_left + layout.field_width,
+                bottom: layout.target_top + layout.target_height,
             },
-            scale(9, dpi),
+            field_radius,
             POPUP_FIELD_BG,
             Some(POPUP_FIELD_BORDER),
         );
         paint_round_rect(
             hdc,
             RECT {
-                left: left + inset,
-                top: layout.context_top - inset,
-                right: right - inset,
-                bottom: layout.context_top + layout.context_height + inset,
+                left: layout.field_left,
+                top: layout.context_top,
+                right: layout.field_left + layout.field_width,
+                bottom: layout.context_top + layout.context_height,
             },
-            scale(9, dpi),
+            field_radius,
             POPUP_FIELD_BG,
             Some(POPUP_FIELD_BORDER),
         );
+        paint_round_rect(
+            hdc,
+            RECT {
+                left: layout.field_left,
+                top: layout.output_top,
+                right: layout.field_left + layout.field_width,
+                bottom: layout.output_top + layout.output_height,
+            },
+            field_radius,
+            POPUP_FIELD_BG,
+            Some(POPUP_FIELD_BORDER),
+        );
+        let _ = inset;
 
         paint_section_label(
             hdc,
             label_font,
-            "◎  Target",
+            "Target",
             RECT {
-                left: left + scale(12, dpi),
+                left: layout.field_left,
                 top: layout.target_label_top,
                 right,
                 bottom: layout.target_label_top + layout.label_height,
@@ -2393,9 +2439,9 @@ mod windows_impl {
         paint_section_label(
             hdc,
             label_font,
-            "▤  Context",
+            "Context",
             RECT {
-                left: left + scale(12, dpi),
+                left: layout.field_left,
                 top: layout.context_label_top,
                 right,
                 bottom: layout.context_label_top + layout.label_height,
@@ -2405,9 +2451,9 @@ mod windows_impl {
         paint_section_label(
             hdc,
             label_font,
-            "✦  Result",
+            "Result",
             RECT {
-                left: left + scale(12, dpi),
+                left: layout.field_left,
                 top: layout.output_label_top,
                 right,
                 bottom: layout.output_label_top + layout.label_height,
@@ -2616,9 +2662,10 @@ mod windows_impl {
                 let child = HWND(lparam.0 as *mut core::ffi::c_void);
                 let muted = data_mut(hwnd)
                     .is_some_and(|data| data.input == child || data.context_input == child);
-                SetBkColor(hdc, POPUP_SECTION_BG);
+                // Field brush matches painted wells so glyphs never sit on canvas color.
+                SetBkColor(hdc, POPUP_FIELD_BG);
                 SetTextColor(hdc, if muted { POPUP_MUTED } else { POPUP_TEXT });
-                return LRESULT(popup_section_brush().0 as isize);
+                return LRESULT(popup_field_brush().0 as isize);
             }
             // The popup is initially passive. A Ctrl-click on its background
             // is the explicit user activation path for keyboard navigation.
@@ -3177,12 +3224,12 @@ mod tests {
         assert!((790..=800).contains(&wide_used));
         assert!((430..=440).contains(&base_used));
 
-        // Target/context stay compact; result grows with height.
-        assert_eq!(tall.target_height, base.target_height);
-        assert_eq!(tall.context_height, base.context_height);
-        assert_eq!(tall.output_top, base.output_top);
+        // Target/context stay compact on short clients; tall clients keep defaults.
+        assert!(tall.target_height >= base.target_height);
+        assert!(tall.context_height >= base.context_height);
         assert!(tall.output_height > base.output_height);
         assert!(tall.button_top > base.button_top);
+        assert!(tall.output_top >= base.output_top);
 
         // Shorter client shrinks panes instead of overflowing buttons.
         let short = compute_layout(440, 180, 96, 5);
@@ -3190,6 +3237,25 @@ mod tests {
         assert!(short.target_height <= base.target_height);
         assert!(short.output_height >= 1);
         assert!(short.button_top + short.button_height <= 180);
+
+        // Controls stay inside their painted cards (overflow regression).
+        for layout in [&base, &wide, &tall, &short] {
+            assert!(
+                layout.target_top + layout.target_height <= layout.input_card_bottom,
+                "target field must sit inside the input card"
+            );
+            assert!(
+                layout.context_top + layout.context_height <= layout.input_card_bottom,
+                "context field must sit inside the input card"
+            );
+            assert!(
+                layout.output_top + layout.output_height <= layout.output_card_bottom,
+                "result field must sit inside the result card"
+            );
+            assert!(layout.field_left >= layout.margin);
+            assert!(layout.field_width <= layout.content_width);
+            assert!(layout.field_left + layout.field_width <= layout.margin + layout.content_width);
+        }
     }
 
     #[cfg(windows)]

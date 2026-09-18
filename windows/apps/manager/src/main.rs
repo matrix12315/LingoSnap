@@ -14,7 +14,7 @@ mod windows_app {
             ensure_resident_running, notify_config_changed, notify_credentials_changed,
             RefreshOutcome, ResidentStartOutcome,
         },
-        credentials, popup,
+        credentials, popup, ui_theme,
     };
     use selection_storage::{
         default_history_path, HistoryDatabase, HistoryEntry, HistoryOrder, HistoryQuery,
@@ -103,15 +103,17 @@ mod windows_app {
     const PAGE_HEADER_HEIGHT: i32 = 56;
     const MIN_CONTENT_WIDTH: i32 = 780;
     const MIN_CLIENT_HEIGHT: i32 = 610;
-    const MANAGER_BG: COLORREF = COLORREF(0x002A_170F);
-    const NAV_BG: COLORREF = COLORREF(0x001C_0F0A);
-    const SURFACE_BG: COLORREF = COLORREF(0x0036_2218);
-    const SURFACE_HOVER: COLORREF = COLORREF(0x0045_2D21);
-    const BORDER: COLORREF = COLORREF(0x0055_4133);
-    const TEXT: COLORREF = COLORREF(0x00F0_E8E2);
-    const MUTED: COLORREF = COLORREF(0x00B8_A394);
-    const ACCENT: COLORREF = COLORREF(0x00FA_A560);
-    const DANGER: COLORREF = COLORREF(0x0071_71F8);
+    // Shared dark-glass tokens — must match resident popup (`ui_theme`).
+    const MANAGER_BG: COLORREF = ui_theme::CANVAS;
+    const NAV_BG: COLORREF = ui_theme::NAV;
+    const SURFACE_BG: COLORREF = ui_theme::CARD;
+    const SURFACE_HOVER: COLORREF = ui_theme::HOVER;
+    const BORDER: COLORREF = ui_theme::BORDER;
+    const TEXT: COLORREF = ui_theme::TEXT;
+    const MUTED: COLORREF = ui_theme::MUTED;
+    const ACCENT: COLORREF = ui_theme::ACCENT;
+    const ACCENT_INK: COLORREF = ui_theme::ACCENT_INK;
+    const DANGER: COLORREF = ui_theme::DANGER;
 
     const LB_ADDSTRING: u32 = 0x0180;
     const LB_RESETCONTENT: u32 = 0x0184;
@@ -269,7 +271,9 @@ mod windows_app {
             (UiLanguage::English, Prompts) => "Prompts",
             (UiLanguage::English, History) => "History",
             (UiLanguage::English, Close) => "Close",
-            (UiLanguage::English, SettingsSubtitle) => "Provider, credentials and default profiles",
+            (UiLanguage::English, SettingsSubtitle) => {
+                "Provider, credentials, defaults, and popup opacity"
+            }
             (UiLanguage::English, PromptsSubtitle) => "Create and tune reusable LLM instructions",
             (UiLanguage::English, HistorySubtitle) => {
                 "Search recent translations without keeping the database open"
@@ -2476,7 +2480,13 @@ mod windows_app {
         } else {
             SURFACE_BG
         };
-        let text_color = if destructive { DANGER } else { TEXT };
+        let text_color = if destructive {
+            DANGER
+        } else if selected_nav || primary {
+            ACCENT_INK
+        } else {
+            TEXT
+        };
         let border_color = if focused || selected_nav {
             ACCENT
         } else {

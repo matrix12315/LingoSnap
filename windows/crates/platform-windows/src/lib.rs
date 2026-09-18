@@ -14,6 +14,7 @@ pub mod ocr;
 pub mod popup;
 pub mod runtime_trace;
 pub mod tray;
+pub mod ui_theme;
 pub mod uia;
 
 /// Marker retained for callers that only need to identify the platform crate.
