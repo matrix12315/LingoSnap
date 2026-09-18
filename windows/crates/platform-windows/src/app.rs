@@ -422,6 +422,9 @@ mod windows_impl {
         };
         let hotkeys = hotkey::Registrations::register(hwnd, &runtime.config.hotkeys.cycle_profiles);
         popup::set_popup_opacity(runtime.config.ui.normalized_popup_opacity());
+        if let Some((w, h)) = runtime.config.ui.remembered_popup_size() {
+            popup::set_remembered_popup_size(w, h);
+        }
         let config_watcher =
             default_config_path().and_then(|path| config_reload::ConfigWatcher::start(path, hwnd));
         let mouse_hook = match mouse::MouseHook::install(hwnd) {
@@ -690,6 +693,16 @@ mod windows_impl {
             popup::POPUP_DISMISSED => {
                 if !state.is_null() {
                     remove_popup(&mut *state, lparam.0 as popup::PopupId, false);
+                }
+                return LRESULT(0);
+            }
+            popup::POPUP_RESIZED => {
+                if !state.is_null() {
+                    let logical_w = (wparam.0 & 0xffff) as u32;
+                    let logical_h = ((wparam.0 >> 16) & 0xffff) as u32;
+                    if logical_w >= 200 && logical_h >= 200 {
+                        remember_popup_size(&mut *state, logical_w, logical_h);
+                    }
                 }
                 return LRESULT(0);
             }
@@ -1838,14 +1851,29 @@ mod windows_impl {
     fn apply_popup_opacity(state: &mut ShellState) {
         let opacity = state.runtime.config.ui.normalized_popup_opacity();
         popup::set_popup_opacity(opacity);
+        if let Some((w, h)) = state.runtime.config.ui.remembered_popup_size() {
+            popup::set_remembered_popup_size(w, h);
+        }
         for entry in state.popups.iter_mut() {
             entry.popup.set_opacity(opacity);
         }
     }
 
-    /// Apply a tray-selected opacity immediately and persist it to config.toml.
-    /// Provider/runtime fields are written unchanged so a later reload keeps
-    /// the same runtime configuration.
+    /// Persist a user-adjusted popup size (96 DPI logical px) for future popups.
+    fn remember_popup_size(state: &mut ShellState, logical_w: u32, logical_h: u32) {
+        popup::set_remembered_popup_size(logical_w, logical_h);
+        state.runtime.config.ui.popup_width = Some(logical_w);
+        state.runtime.config.ui.popup_height = Some(logical_h);
+        runtime_trace::record("popup_size_remembered");
+        if let Some(path) = default_config_path() {
+            if save_atomic(&path, &state.runtime.config).is_ok() {
+                runtime_trace::record("popup_size_saved");
+            } else {
+                runtime_trace::record("popup_size_save_failed");
+            }
+        }
+    }
+
     fn set_popup_opacity_persisted(state: &mut ShellState, opacity: f32) {
         state.runtime.config.ui.popup_opacity = popup::normalize_opacity(opacity);
         apply_popup_opacity(state);

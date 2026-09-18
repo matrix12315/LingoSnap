@@ -27,9 +27,9 @@ mod windows_app {
     };
     use windows::Win32::Graphics::Gdi::{
         BeginPaint, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DeleteObject, DrawFocusRect,
-        DrawTextW, EndPaint, FillRect, FillRgn, FrameRgn, InvalidateRect, SelectObject, SetBkColor,
-        SetTextColor, UpdateWindow, DRAW_TEXT_FORMAT, FONT_CHARSET, FONT_CLIP_PRECISION,
-        FONT_OUTPUT_PRECISION, FONT_QUALITY, HBRUSH, HFONT, HGDIOBJ,
+        DrawTextW, EndPaint, FillRect, FillRgn, FrameRect, FrameRgn, InvalidateRect, SelectObject,
+        SetBkColor, SetTextColor, UpdateWindow, DRAW_TEXT_FORMAT, FONT_CHARSET,
+        FONT_CLIP_PRECISION, FONT_OUTPUT_PRECISION, FONT_QUALITY, HBRUSH, HFONT, HGDIOBJ,
     };
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
@@ -114,6 +114,9 @@ mod windows_app {
     const ACCENT: COLORREF = ui_theme::ACCENT;
     const ACCENT_INK: COLORREF = ui_theme::ACCENT_INK;
     const DANGER: COLORREF = ui_theme::DANGER;
+    const GOLD: COLORREF = ui_theme::GOLD;
+    const CARD_BRUSH: COLORREF = ui_theme::CARD;
+    const LINE: COLORREF = ui_theme::BORDER;
 
     const LB_ADDSTRING: u32 = 0x0180;
     const LB_RESETCONTENT: u32 = 0x0184;
@@ -162,6 +165,10 @@ mod windows_app {
         SelectionDefaultProfile,
         HoverDefaultProfile,
         PopupOpacity,
+        ProviderSection,
+        CredentialsSection,
+        DefaultsSection,
+        AppearanceSection,
         SaveSettings,
         CredentialPrivacy,
         Profile,
@@ -222,6 +229,10 @@ mod windows_app {
         TextKey::SelectionDefaultProfile,
         TextKey::HoverDefaultProfile,
         TextKey::PopupOpacity,
+        TextKey::ProviderSection,
+        TextKey::CredentialsSection,
+        TextKey::DefaultsSection,
+        TextKey::AppearanceSection,
         TextKey::SaveSettings,
         TextKey::CredentialPrivacy,
         TextKey::Profile,
@@ -288,6 +299,10 @@ mod windows_app {
             (UiLanguage::English, SelectionDefaultProfile) => "Selection default profile",
             (UiLanguage::English, HoverDefaultProfile) => "Hover default profile",
             (UiLanguage::English, PopupOpacity) => "Popup opacity (0–1)",
+            (UiLanguage::English, ProviderSection) => "PROVIDER",
+            (UiLanguage::English, CredentialsSection) => "CREDENTIALS",
+            (UiLanguage::English, DefaultsSection) => "DEFAULTS",
+            (UiLanguage::English, AppearanceSection) => "APPEARANCE",
             (UiLanguage::English, SaveSettings) => "Save settings",
             (UiLanguage::English, CredentialPrivacy) => {
                 "Keys are held by Windows Credential Manager; they never enter config.toml."
@@ -351,6 +366,10 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, SelectionDefaultProfile) => "划词默认配置",
             (UiLanguage::SimplifiedChinese, HoverDefaultProfile) => "悬停默认配置",
             (UiLanguage::SimplifiedChinese, PopupOpacity) => "弹窗透明度 (0–1)",
+            (UiLanguage::SimplifiedChinese, ProviderSection) => "服务商",
+            (UiLanguage::SimplifiedChinese, CredentialsSection) => "凭据",
+            (UiLanguage::SimplifiedChinese, DefaultsSection) => "默认配置",
+            (UiLanguage::SimplifiedChinese, AppearanceSection) => "外观",
             (UiLanguage::SimplifiedChinese, SaveSettings) => "保存设置",
             (UiLanguage::SimplifiedChinese, CredentialPrivacy) => {
                 "密钥保存在 Windows 凭据管理器中，绝不会写入 config.toml。"
@@ -1216,10 +1235,20 @@ mod windows_app {
         add_label(
             hwnd,
             &mut h,
+            "PROVIDER",
+            28,
+            78,
+            200,
+            16,
+            Some(View::Settings),
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
             "Provider endpoint",
             28,
-            76,
-            180,
+            108,
+            140,
             22,
             Some(View::Settings),
         )?;
@@ -1227,9 +1256,9 @@ mod windows_app {
             hwnd,
             &mut h,
             "",
-            220,
-            72,
-            520,
+            180,
+            104,
+            560,
             26,
             Some(View::Settings),
             false,
@@ -1241,8 +1270,8 @@ mod windows_app {
             &mut h,
             "Model",
             28,
-            116,
-            180,
+            142,
+            140,
             22,
             Some(View::Settings),
         )?;
@@ -1250,9 +1279,9 @@ mod windows_app {
             hwnd,
             &mut h,
             "",
-            220,
-            112,
-            520,
+            180,
+            138,
+            560,
             26,
             Some(View::Settings),
             false,
@@ -1264,8 +1293,8 @@ mod windows_app {
             &mut h,
             "Credential target",
             28,
-            156,
-            180,
+            176,
+            140,
             22,
             Some(View::Settings),
         )?;
@@ -1273,9 +1302,9 @@ mod windows_app {
             hwnd,
             &mut h,
             "",
-            220,
-            152,
-            520,
+            180,
+            172,
+            560,
             26,
             Some(View::Settings),
             false,
@@ -1285,10 +1314,20 @@ mod windows_app {
         add_label(
             hwnd,
             &mut h,
+            "CREDENTIALS",
+            28,
+            220,
+            200,
+            16,
+            Some(View::Settings),
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
             "API key",
             28,
-            196,
-            180,
+            248,
+            140,
             22,
             Some(View::Settings),
         )?;
@@ -1296,8 +1335,8 @@ mod windows_app {
             hwnd,
             &mut h,
             "",
-            220,
-            192,
+            180,
+            244,
             380,
             26,
             Some(View::Settings),
@@ -1310,9 +1349,9 @@ mod windows_app {
             &mut h,
             ID_SAVE_KEY,
             "Save key",
-            610,
-            191,
-            130,
+            580,
+            243,
+            120,
             28,
             Some(View::Settings),
         )?;
@@ -1320,21 +1359,31 @@ mod windows_app {
             hwnd,
             &mut h,
             ID_DELETE_KEY,
-            "Delete saved key",
-            220,
-            228,
-            160,
+            "Delete key",
+            180,
+            278,
+            120,
             28,
             Some(View::Settings),
         )?;
-        h.credential_status = add_label(hwnd, &mut h, "", 392, 232, 348, 22, Some(View::Settings))?;
+        h.credential_status = add_label(hwnd, &mut h, "", 320, 282, 420, 22, Some(View::Settings))?;
+        add_label(
+            hwnd,
+            &mut h,
+            "DEFAULTS",
+            28,
+            326,
+            200,
+            16,
+            Some(View::Settings),
+        )?;
         add_label(
             hwnd,
             &mut h,
             "Selection default profile",
             28,
-            286,
-            180,
+            354,
+            140,
             22,
             Some(View::Settings),
         )?;
@@ -1342,9 +1391,9 @@ mod windows_app {
             hwnd,
             &mut h,
             ID_SETTINGS_SELECTION_DEFAULT,
-            220,
-            282,
-            520,
+            180,
+            350,
+            560,
             220,
             Some(View::Settings),
         )?;
@@ -1353,8 +1402,8 @@ mod windows_app {
             &mut h,
             "Hover default profile",
             28,
-            326,
-            180,
+            388,
+            140,
             22,
             Some(View::Settings),
         )?;
@@ -1362,19 +1411,29 @@ mod windows_app {
             hwnd,
             &mut h,
             ID_SETTINGS_HOVER_DEFAULT,
-            220,
-            322,
-            520,
+            180,
+            384,
+            560,
             220,
             Some(View::Settings),
         )?;
         add_label(
             hwnd,
             &mut h,
+            "APPEARANCE",
+            28,
+            428,
+            200,
+            16,
+            Some(View::Settings),
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
             "Popup opacity (0–1)",
-            486,
-            64,
-            122,
+            28,
+            456,
+            140,
             22,
             Some(View::Settings),
         )?;
@@ -1382,9 +1441,9 @@ mod windows_app {
             hwnd,
             &mut h,
             "",
-            610,
-            58,
-            130,
+            180,
+            452,
+            120,
             26,
             Some(View::Settings),
             false,
@@ -1396,8 +1455,8 @@ mod windows_app {
             &mut h,
             ID_SAVE_SETTINGS,
             "Save settings",
-            220,
-            366,
+            180,
+            496,
             160,
             32,
             Some(View::Settings),
@@ -1407,7 +1466,7 @@ mod windows_app {
             &mut h,
             "Keys are held by Windows Credential Manager; they never enter config.toml.",
             28,
-            420,
+            542,
             712,
             36,
             Some(View::Settings),
@@ -2334,7 +2393,7 @@ mod windows_app {
                     .encode_utf16()
                     .collect();
                 let _ = DrawTextW(hdc, &mut text, &mut brand, DRAW_TEXT_FORMAT(0x0100));
-                SetTextColor(hdc, MUTED);
+                SetTextColor(hdc, GOLD);
                 let mut text: Vec<u16> = ui_text(state.language(), TextKey::Manager)
                     .encode_utf16()
                     .collect();
@@ -2385,6 +2444,9 @@ mod windows_app {
                     }
                 }
             };
+            if page_identity(state, hwnd) == Some(View::Settings) {
+                paint_settings_group_cards(hdc, state);
+            }
             let title = ui_text(state.language(), title_key);
             let subtitle = ui_text(state.language(), subtitle_key);
             let mut title_rect = scaled_rect(
@@ -2420,6 +2482,79 @@ mod windows_app {
         }
         unsafe {
             let _ = EndPaint(hwnd, &paint);
+        }
+    }
+
+    fn paint_settings_group_cards(hdc: windows::Win32::Graphics::Gdi::HDC, state: &ManagerState) {
+        // Raised cards behind SETTINGS groups (DESIGN.md §7 grouped cards).
+        let cards: [(&str, i32, i32); 4] = [
+            (ui_text(state.language(), TextKey::ProviderSection), 70, 150),
+            (
+                ui_text(state.language(), TextKey::CredentialsSection),
+                212,
+                100,
+            ),
+            (
+                ui_text(state.language(), TextKey::DefaultsSection),
+                318,
+                100,
+            ),
+            (
+                ui_text(state.language(), TextKey::AppearanceSection),
+                420,
+                88,
+            ),
+        ];
+        let (fill, frame) = unsafe { (CreateSolidBrush(CARD_BRUSH), CreateSolidBrush(LINE)) };
+        for (label, top, height) in cards {
+            let rect = scaled_rect(
+                RECT {
+                    left: 16,
+                    top,
+                    right: 760,
+                    bottom: top + height,
+                },
+                state.dpi,
+            );
+            unsafe {
+                let region = CreateRoundRectRgn(
+                    rect.left,
+                    rect.top,
+                    rect.right + 1,
+                    rect.bottom + 1,
+                    scale_for_dpi(10, state.dpi),
+                    scale_for_dpi(10, state.dpi),
+                );
+                if !region.0.is_null() {
+                    let _ = FillRgn(hdc, region, fill);
+                    let _ = FrameRgn(hdc, region, frame, 1, 1);
+                    let _ = DeleteObject(region.into());
+                } else {
+                    let _ = FillRect(hdc, &rect, fill);
+                    let _ = FrameRect(hdc, &rect, frame);
+                }
+            }
+            let mut caption = scaled_rect(
+                RECT {
+                    left: 28,
+                    top: top + 6,
+                    right: 400,
+                    bottom: top + 24,
+                },
+                state.dpi,
+            );
+            let old = unsafe { SelectObject(hdc, HGDIOBJ(state.theme.label_font.0)) };
+            unsafe {
+                SetBkColor(hdc, CARD_BRUSH);
+                SetTextColor(hdc, GOLD);
+                let mut text: Vec<u16> = label.encode_utf16().collect();
+                let _ = DrawTextW(hdc, &mut text, &mut caption, DRAW_TEXT_FORMAT(0x0100));
+                let _ = SelectObject(hdc, HGDIOBJ(old.0));
+            }
+        }
+        unsafe {
+            let _ = DeleteObject(fill.into());
+            let _ = DeleteObject(frame.into());
         }
     }
 

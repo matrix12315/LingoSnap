@@ -58,6 +58,12 @@ pub struct UiSettings {
     /// `0.0` is fully transparent; `1.0` is fully opaque.
     #[serde(default = "default_popup_opacity")]
     pub popup_opacity: f32,
+    /// Remembered result-popup size in 96 DPI logical pixels.
+    /// `None` means use the built-in default until the user resizes.
+    #[serde(default)]
+    pub popup_width: Option<u32>,
+    #[serde(default)]
+    pub popup_height: Option<u32>,
 }
 
 impl Default for UiSettings {
@@ -65,6 +71,8 @@ impl Default for UiSettings {
         Self {
             manager_language: UiLanguage::default(),
             popup_opacity: default_popup_opacity(),
+            popup_width: None,
+            popup_height: None,
         }
     }
 }
@@ -76,6 +84,16 @@ impl UiSettings {
             self.popup_opacity.clamp(0.0, 1.0)
         } else {
             default_popup_opacity()
+        }
+    }
+
+    /// Remembered popup size when both dimensions are present and usable.
+    pub fn remembered_popup_size(&self) -> Option<(u32, u32)> {
+        match (self.popup_width, self.popup_height) {
+            (Some(w), Some(h)) if (200..=4000).contains(&w) && (200..=3000).contains(&h) => {
+                Some((w, h))
+            }
+            _ => None,
         }
     }
 }
@@ -218,6 +236,11 @@ impl AppConfig {
             return Err(ConfigError::Validation(
                 ValidationError::InvalidPopupOpacity,
             ));
+        }
+        if (self.ui.popup_width.is_some() || self.ui.popup_height.is_some())
+            && self.ui.remembered_popup_size().is_none()
+        {
+            return Err(ConfigError::Validation(ValidationError::InvalidPopupSize));
         }
         Ok(())
     }
@@ -399,6 +422,7 @@ pub enum ValidationError {
     InvalidProvider,
     InvalidHotkey,
     InvalidPopupOpacity,
+    InvalidPopupSize,
 }
 
 impl fmt::Display for ValidationError {
@@ -420,6 +444,11 @@ impl fmt::Display for ValidationError {
             Self::InvalidHotkey => formatter.write_str("cycle-profiles hotkey is required"),
             Self::InvalidPopupOpacity => {
                 formatter.write_str("ui.popup_opacity must be a finite number from 0.0 to 1.0")
+            }
+            Self::InvalidPopupSize => {
+                formatter.write_str(
+                    "ui.popup_width and ui.popup_height must both be set (200–4000 × 200–3000)",
+                )
             }
         }
     }
@@ -506,7 +535,7 @@ fn default_profiles() -> Vec<PromptConfig> {
         PromptConfig {
             id: "linguist-analysis".to_owned(),
             name: "Expert linguist analysis".to_owned(),
-            system_prompt: "You are an expert linguist and translator. Analyze the input and respond mainly in English. Return concise, valid Markdown using exactly these four level-2 headings, exactly once each, in this order, with no introduction, conclusion, alternate format, or repeated heading:\n## Translation\n- Chinese: Provide the Chinese translation.\n- English: If the input is not English, provide its natural English translation; otherwise write None.\n- Words: List key words as entries containing word, IPA/soundmark, part of speech (n./v./adj./etc.), and Chinese meaning.\n- Error check: First check spelling and grammar. If an error exists, identify the most likely intended wording and translate it; otherwise write None.\n## Idioms and Grammar\nBriefly explain usage, simple grammar points, and relevant common phrasal verbs or idioms; write None when not applicable.\n## Other Forms\nList common noun, verb, adjective, and adverb forms when applicable; write None when not applicable.\n## Reasoning\nFor non-English input, briefly explain how the English translation is natural and authentic rather than literal or Chinglish. For English input, briefly explain the nuance behind the Chinese translation choice. Write None when not applicable. Do not create any other heading, do not repeat a heading, and never use a `Translation:` field or add alternate translations. Use None for every inapplicable field.".to_owned(),
+            system_prompt: "You are an expert linguist and translator. Analyze the input and respond mainly in English.\n\nOutput format (strict):\n- Return concise, valid Markdown using exactly these four level-2 headings, exactly once each, in this order, with no introduction, conclusion, alternate format, or repeated heading.\n- Keep lines short. Use bold labels and bullets. One idea per line. No walls of text.\n- Use None for every inapplicable field. Do not invent content.\n- never use a `Translation:` field or add alternate translations outside this schema.\n- Do not create any other heading, do not repeat a heading.\n\nFollow this shape (skeleton only — fill real content):\n## Translation\n- **Chinese:** natural Chinese translation\n- **English:** natural English if the input is not English; otherwise None\n- **Words:**\n  - **word** /ipa/ (pos.) meaning\n- **Error check:** likely intended wording and fix; otherwise None\n## Idioms and Grammar\n- Short bullets on usage, grammar points, phrasal verbs, or idioms; None when not applicable\n## Other Forms\n- **noun:** …\n- **verb:** …\n- **adjective:** …\n- **adverb:** …\n(or None)\n## Reasoning\n- 1–3 short bullets on why the translation is natural (or the nuance of the Chinese choice); None when not applicable".to_owned(),
             user_template: "Analyze only this input:\n{target}\n\nSentence context for disambiguation only:\n{context}".to_owned(),
             model: None,
             temperature: Some(0.2),
@@ -681,6 +710,16 @@ mod tests {
         assert_eq!(clamped.ui.normalized_popup_opacity(), 0.0);
         clamped.ui.popup_opacity = f32::NAN;
         assert_eq!(clamped.ui.normalized_popup_opacity(), DEFAULT_POPUP_OPACITY);
+
+        let mut sized = AppConfig::default();
+        sized.ui.popup_width = Some(420);
+        sized.ui.popup_height = Some(480);
+        assert_eq!(sized.ui.remembered_popup_size(), Some((420, 480)));
+        sized.ui.popup_width = Some(50);
+        assert!(sized.validate().is_err());
+        sized.ui.popup_width = Some(420);
+        sized.ui.popup_height = None;
+        assert!(sized.validate().is_err());
     }
 
     #[test]

@@ -28,18 +28,32 @@ max_output_tokens = 768
 [[profiles]]
 id = "linguist-analysis"
 name = "Expert linguist analysis"
-system_prompt = """You are an expert linguist and translator. Analyze the input and respond mainly in English. Return concise, valid Markdown using exactly these four level-2 headings, exactly once each, in this order, with no introduction, conclusion, alternate format, or repeated heading:
+system_prompt = """You are an expert linguist and translator. Analyze the input and respond mainly in English.
+
+Output format (strict):
+- Return concise, valid Markdown using exactly these four level-2 headings, exactly once each, in this order, with no introduction, conclusion, alternate format, or repeated heading.
+- Keep lines short. Use bold labels and bullets. One idea per line. No walls of text.
+- Use None for every inapplicable field. Do not invent content.
+- never use a `Translation:` field or add alternate translations outside this schema.
+- Do not create any other heading, do not repeat a heading.
+
+Follow this shape (skeleton only — fill real content):
 ## Translation
-- Chinese: Provide the Chinese translation.
-- English: If the input is not English, provide its natural English translation; otherwise write None.
-- Words: List key words as entries containing word, IPA/soundmark, part of speech (n./v./adj./etc.), and Chinese meaning.
-- Error check: First check spelling and grammar. If an error exists, identify the most likely intended wording and translate it; otherwise write None.
+- **Chinese:** natural Chinese translation
+- **English:** natural English if the input is not English; otherwise None
+- **Words:**
+  - **word** /ipa/ (pos.) meaning
+- **Error check:** likely intended wording and fix; otherwise None
 ## Idioms and Grammar
-Briefly explain usage, simple grammar points, and relevant common phrasal verbs or idioms; write None when not applicable.
+- Short bullets on usage, grammar points, phrasal verbs, or idioms; None when not applicable
 ## Other Forms
-List common noun, verb, adjective, and adverb forms when applicable; write None when not applicable.
+- **noun:** …
+- **verb:** …
+- **adjective:** …
+- **adverb:** …
+(or None)
 ## Reasoning
-For non-English input, briefly explain how the English translation is natural and authentic rather than literal or Chinglish. For English input, briefly explain the nuance behind the Chinese translation choice. Write None when not applicable. Do not create any other heading, do not repeat a heading, and never use a `Translation:` field or add alternate translations. Use None for every inapplicable field."""
+- 1–3 short bullets on why the translation is natural (or the nuance of the Chinese choice); None when not applicable"""
 user_template = "Analyze only this input:\n{target}\n\nSentence context for disambiguation only:\n{context}"
 temperature = 0.2
 max_output_tokens = 700
@@ -91,3 +105,7 @@ manager_language = "en"
 # Result popup / profile-optioner transparency. 0.0 = fully transparent,
 # 1.0 = fully opaque (default). Values outside 0.0–1.0 are rejected on load.
 popup_opacity = 1.0
+# Optional remembered popup size (96 DPI logical px). Set automatically when
+# you resize the result popup; both fields must be present to take effect.
+# popup_width = 420
+# popup_height = 480

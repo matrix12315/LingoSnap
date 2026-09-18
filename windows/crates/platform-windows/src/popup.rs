@@ -8,6 +8,33 @@ pub struct Point {
     pub y: i32,
 }
 
+// `POPUP_RESIZED` is defined in `windows_impl` and re-exported.
+
+/// Remembered default size in 96 DPI logical px; 0 = not set.
+static REMEMBERED_SIZE: AtomicU32 = AtomicU32::new(0);
+
+/// Store the user-adjusted popup size (96 DPI logical px) for future popups.
+pub fn set_remembered_popup_size(width: u32, height: u32) {
+    if (200..=4000).contains(&width) && (200..=3000).contains(&height) {
+        REMEMBERED_SIZE.store((width << 16) | height, Ordering::Release);
+    }
+}
+
+/// Previously saved popup size, if any.
+pub fn remembered_popup_size() -> Option<(i32, i32)> {
+    let packed = REMEMBERED_SIZE.load(Ordering::Acquire);
+    if packed == 0 {
+        return None;
+    }
+    let width = ((packed >> 16) & 0xffff) as i32;
+    let height = (packed & 0xffff) as i32;
+    if width >= 200 && height >= 200 {
+        Some((width, height))
+    } else {
+        None
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Rect {
     pub left: i32,
@@ -138,21 +165,21 @@ mod windows_impl {
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslatePopup");
     // Geometry from the egui mockup, scaled to 1x (egui values are ~2x).
-    const WIDTH: i32 = 660;
-    const HEIGHT: i32 = 470;
-    const MIN_WIDTH: i32 = 480;
-    const MIN_HEIGHT: i32 = 360;
-    const MARGIN: i32 = 15;
-    const TARGET_HEIGHT: i32 = 28;
-    const CONTEXT_HEIGHT: i32 = 56;
-    const LABEL_HEIGHT: i32 = 14;
-    const SECTION_GAP: i32 = 8;
-    const CONTENT_GAP: i32 = 10;
-    const BUTTON_HEIGHT: i32 = 35;
-    const BUTTON_GAP: i32 = 9;
+    const WIDTH: i32 = crate::ui_theme::POPUP_WIDTH;
+    const HEIGHT: i32 = crate::ui_theme::POPUP_HEIGHT;
+    const MIN_WIDTH: i32 = crate::ui_theme::POPUP_MIN_WIDTH;
+    const MIN_HEIGHT: i32 = crate::ui_theme::POPUP_MIN_HEIGHT;
+    const MARGIN: i32 = 14;
+    const TARGET_HEIGHT: i32 = 22;
+    const CONTEXT_HEIGHT: i32 = 32;
+    const LABEL_HEIGHT: i32 = 12;
+    const SECTION_GAP: i32 = 6;
+    const CONTENT_GAP: i32 = 8;
+    const BUTTON_HEIGHT: i32 = 34;
+    const BUTTON_GAP: i32 = 8;
     const BUTTON_BOTTOM_GAP: i32 = 12;
-    const CARD_PAD: i32 = 13;
-    const HEADER_HEIGHT: i32 = 56;
+    const CARD_PAD: i32 = 10;
+    const HEADER_HEIGHT: i32 = 44;
     const DRAG_BAND_HEIGHT: i32 = 24;
     const CHOOSER_HEIGHT: i32 = 38;
     const CHOOSER_MARGIN: i32 = 4;
@@ -176,23 +203,21 @@ mod windows_impl {
     pub(super) const RICH_EDIT_CLASS: PCWSTR = w!("RICHEDIT50W");
     const REQUIRED_POPUP_EX_STYLE: u32 = WS_EX_TOPMOST.0 | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0;
 
-    // Shared dark-glass tokens — keep in sync with `ui_theme`.
-    // COLORREF is 0x00BBGGRR.
+    // Shared tokens from DESIGN.md — keep in sync with `ui_theme`.
     pub(super) const POPUP_BG: COLORREF = crate::ui_theme::CANVAS;
     const POPUP_BORDER: COLORREF = crate::ui_theme::BORDER;
-    const POPUP_SECTION_BG: COLORREF = crate::ui_theme::CARD;
+    const POPUP_SECTION_BG: COLORREF = crate::ui_theme::FIELD;
     const POPUP_CARD_BORDER: COLORREF = crate::ui_theme::BORDER;
     const POPUP_HEADER_BG: COLORREF = crate::ui_theme::HEADER;
+    const POPUP_RESULT_BG: COLORREF = crate::ui_theme::LEX;
     const POPUP_RESULT_BORDER: COLORREF = crate::ui_theme::BORDER;
-    const POPUP_FIELD_BG: COLORREF = crate::ui_theme::FIELD;
-    const POPUP_FIELD_BORDER: COLORREF = crate::ui_theme::FIELD_BORDER;
     pub(super) const POPUP_TEXT: COLORREF = crate::ui_theme::TEXT;
     const POPUP_TITLE: COLORREF = crate::ui_theme::TEXT;
     const POPUP_MUTED: COLORREF = crate::ui_theme::MUTED;
     const POPUP_LABEL: COLORREF = crate::ui_theme::MUTED;
     #[allow(dead_code)]
     const POPUP_ICON: COLORREF = crate::ui_theme::MUTED;
-    const POPUP_RESULT_ICON: COLORREF = crate::ui_theme::ACCENT;
+    const POPUP_RESULT_ICON: COLORREF = crate::ui_theme::GOLD;
     #[allow(dead_code)]
     const POPUP_RESULT_TEXT: COLORREF = crate::ui_theme::TEXT;
     #[allow(dead_code)]
@@ -200,12 +225,13 @@ mod windows_impl {
     pub(super) const POPUP_ACCENT: COLORREF = crate::ui_theme::ACCENT;
     const POPUP_LOGO_INK: COLORREF = crate::ui_theme::ACCENT_INK;
     pub(super) const POPUP_ACCENT_DIM: COLORREF = crate::ui_theme::ACCENT_DIM;
-    pub(super) const POPUP_BUTTON_BG: COLORREF = crate::ui_theme::BUTTON;
+    pub(super) const POPUP_BUTTON_BG: COLORREF = crate::ui_theme::BUTTON_GHOST;
     const POPUP_BUTTON_STROKE: COLORREF = crate::ui_theme::BUTTON_STROKE;
     const POPUP_BUTTON_HOVER: COLORREF = crate::ui_theme::HOVER;
     const POPUP_BUTTON_DISABLED: COLORREF = crate::ui_theme::BUTTON_DISABLED;
     const POPUP_BUTTON_TEXT: COLORREF = crate::ui_theme::TEXT;
     const POPUP_PRIMARY_INK: COLORREF = crate::ui_theme::ACCENT_INK;
+    const POPUP_LEX_RAIL: COLORREF = crate::ui_theme::GOLD;
     pub(super) const OWNER_DRAW_BUTTON_STYLE: u32 = BS_PUSHBUTTON as u32 | 0x0000000b;
 
     pub const MAX_OUTPUT_CHARS: usize = 64 * 1024;
@@ -249,6 +275,7 @@ mod windows_impl {
     const INLINE_PROFILE_LIMIT: usize = 3;
     pub const POPUP_DISMISSED: u32 = WM_APP + 8;
     pub const POPUP_RETRY: u32 = WM_APP + 9;
+    pub const POPUP_RESIZED: u32 = WM_APP + 12;
     pub const POPUP_PROMPT: u32 = WM_APP + 10;
     pub const POPUP_PROFILE_SELECTED: u32 = WM_APP + 11;
     pub type PopupId = usize;
@@ -408,7 +435,8 @@ mod windows_impl {
                 in_native_move: false,
                 render_pending: false,
                 render_timer_armed: false,
-                window_size: None,
+                // Remembered user size is applied after DPI is known.
+                window_size: super::remembered_popup_size(),
                 fonts: [HFONT::default(); 2],
             });
             let data_ptr = Box::into_raw(data);
@@ -1133,6 +1161,9 @@ mod windows_impl {
     }
 
     fn default_popup_size(dpi: u32) -> (i32, i32) {
+        if let Some((w, h)) = super::remembered_popup_size() {
+            return scaled_size((w, h), dpi);
+        }
         scaled_size((WIDTH, HEIGHT), dpi)
     }
 
@@ -1394,15 +1425,16 @@ mod windows_impl {
             layout.field_width,
             layout.context_height,
         );
-        // Keep the result control inside its painted card.
+        // Keep the result control inside its painted lexicon body (gold rail inset).
+        let rail = scale(crate::ui_theme::LEX_RAIL, dpi).max(2);
         let output_height = layout
             .output_height
             .min((layout.output_card_bottom - layout.output_top - scale(8, dpi)).max(1));
         move_child(
             data.output,
-            layout.field_left,
+            layout.field_left + rail + scale(4, dpi),
             layout.output_top,
-            layout.field_width,
+            (layout.field_width - rail - scale(4, dpi)).max(1),
             output_height,
         );
         for (index, button) in data.buttons.iter().enumerate() {
@@ -1576,18 +1608,33 @@ mod windows_impl {
     }
 
     fn set_rich_format(hwnd: HWND, span: FormatSpan) {
-        let (mask, effects, height) = match span.style {
-            MarkdownStyle::Bold => (CFM_BOLD, CFE_BOLD, 0),
-            MarkdownStyle::Italic => (CFM_ITALIC, CFE_ITALIC, 0),
-            MarkdownStyle::Strike => (CFM_STRIKEOUT, CFE_STRIKEOUT, 0),
-            MarkdownStyle::Code => (CFM_SIZE, CFE_EFFECTS(0), 190),
-            MarkdownStyle::Heading(level) => (CFM_SIZE, CFE_EFFECTS(0), 280 - (level as i32 * 20)),
+        let (mask, effects, height, color) = match span.style {
+            MarkdownStyle::Bold => (CFM_BOLD, CFE_BOLD, 0, POPUP_TEXT.0),
+            MarkdownStyle::Italic => (CFM_ITALIC, CFE_ITALIC, 0, POPUP_TEXT.0),
+            MarkdownStyle::Strike => (CFM_STRIKEOUT, CFE_STRIKEOUT, 0, POPUP_MUTED.0),
+            MarkdownStyle::Code => (CFM_SIZE, CFE_EFFECTS(0), 190, crate::ui_theme::GOLD.0),
+            MarkdownStyle::Heading(level) => {
+                let height = match level {
+                    1 => 320,
+                    2 => 280,
+                    3 => 250,
+                    _ => 230,
+                };
+                // Linguistic section marks use lex-gold (DESIGN.md signature).
+                let color = if level <= 2 {
+                    POPUP_RESULT_ICON.0
+                } else {
+                    POPUP_TEXT.0
+                };
+                (CFM_BOLD | CFM_COLOR, CFE_BOLD, height, color)
+            }
         };
         let format = CHARFORMATW {
             cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
             dwMask: mask,
             dwEffects: effects,
             yHeight: height,
+            crTextColor: COLORREF(color),
             ..Default::default()
         };
         unsafe {
@@ -1999,13 +2046,12 @@ mod windows_impl {
             }
             if !data.output.0.is_null() {
                 unsafe {
-                    // Document bg must match the painted field well, or text
-                    // appears to float outside the card on the window canvas.
+                    // Document bg must match the painted lexicon body.
                     let _ = SendMessageW(
                         data.output,
                         EM_SETBKGNDCOLOR,
                         Some(WPARAM(0)),
-                        Some(LPARAM(POPUP_FIELD_BG.0 as isize)),
+                        Some(LPARAM(POPUP_RESULT_BG.0 as isize)),
                     );
                     let _ = SendMessageW(
                         data.output,
@@ -2018,17 +2064,18 @@ mod windows_impl {
             for control in [data.input, data.context_input] {
                 if !control.0.is_null() {
                     unsafe {
+                        // Selection card body — no nested well.
                         let _ = SendMessageW(
                             control,
                             EM_SETBKGNDCOLOR,
                             Some(WPARAM(0)),
-                            Some(LPARAM(POPUP_FIELD_BG.0 as isize)),
+                            Some(LPARAM(POPUP_SECTION_BG.0 as isize)),
                         );
                         let _ = SendMessageW(
                             control,
                             EM_SETMARGINS,
                             Some(WPARAM(0x0003)),
-                            Some(LPARAM(((8i32) << 16 | 8i32) as isize)),
+                            Some(LPARAM(((4i32) << 16 | 4i32) as isize)),
                         );
                     }
                 }
@@ -2100,9 +2147,15 @@ mod windows_impl {
         HBRUSH(raw as *mut core::ffi::c_void)
     }
 
-    fn popup_field_brush() -> HBRUSH {
+    fn popup_selection_brush() -> HBRUSH {
         static BRUSH: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-        let raw = *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(POPUP_FIELD_BG).0 as usize });
+        let raw = *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(POPUP_SECTION_BG).0 as usize });
+        HBRUSH(raw as *mut core::ffi::c_void)
+    }
+
+    fn popup_lex_brush() -> HBRUSH {
+        static BRUSH: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+        let raw = *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(POPUP_RESULT_BG).0 as usize });
         HBRUSH(raw as *mut core::ffi::c_void)
     }
 
@@ -2360,6 +2413,7 @@ mod windows_impl {
         );
 
         // Input card (Target + Context) and Result card.
+        // Combined selection card (mockup): one raised panel for TARGET + CONTEXT.
         paint_round_rect(
             hdc,
             RECT {
@@ -2372,20 +2426,7 @@ mod windows_impl {
             POPUP_SECTION_BG,
             Some(POPUP_CARD_BORDER),
         );
-        paint_round_rect(
-            hdc,
-            RECT {
-                left,
-                top: layout.output_card_top,
-                right,
-                bottom: layout.output_card_bottom,
-            },
-            scale(crate::ui_theme::CARD_RADIUS, dpi).max(10),
-            POPUP_HEADER_BG,
-            Some(POPUP_RESULT_BORDER),
-        );
-        let inset = scale(0, dpi);
-        let field_radius = scale(crate::ui_theme::FIELD_RADIUS, dpi).max(6);
+        // Selection card uses flat field fill (no nested wells).
         paint_round_rect(
             hdc,
             RECT {
@@ -2394,9 +2435,9 @@ mod windows_impl {
                 right: layout.field_left + layout.field_width,
                 bottom: layout.target_top + layout.target_height,
             },
-            field_radius,
-            POPUP_FIELD_BG,
-            Some(POPUP_FIELD_BORDER),
+            scale(4, dpi),
+            POPUP_SECTION_BG,
+            None,
         );
         paint_round_rect(
             hdc,
@@ -2406,28 +2447,41 @@ mod windows_impl {
                 right: layout.field_left + layout.field_width,
                 bottom: layout.context_top + layout.context_height,
             },
-            field_radius,
-            POPUP_FIELD_BG,
-            Some(POPUP_FIELD_BORDER),
+            scale(4, dpi),
+            POPUP_SECTION_BG,
+            None,
         );
         paint_round_rect(
             hdc,
             RECT {
-                left: layout.field_left,
-                top: layout.output_top,
-                right: layout.field_left + layout.field_width,
-                bottom: layout.output_top + layout.output_height,
+                left,
+                top: layout.output_card_top,
+                right,
+                bottom: layout.output_card_bottom,
             },
-            field_radius,
-            POPUP_FIELD_BG,
-            Some(POPUP_FIELD_BORDER),
+            scale(crate::ui_theme::CARD_RADIUS, dpi).max(10),
+            POPUP_RESULT_BG,
+            Some(POPUP_RESULT_BORDER),
         );
-        let _ = inset;
+        // Signature: lexicon left rail in gold (DESIGN.md §3).
+        let rail = scale(crate::ui_theme::LEX_RAIL, dpi).max(2);
+        let rail_rect = RECT {
+            left,
+            top: layout.output_card_top + scale(8, dpi),
+            right: left + rail,
+            bottom: layout.output_card_bottom - scale(8, dpi),
+        };
+        let rail_brush = popup_brush(POPUP_LEX_RAIL);
+        unsafe {
+            let _ = FillRect(hdc, &rail_rect, rail_brush);
+            let _ = DeleteObject(rail_brush.into());
+        }
+        // Result well sits on lex body (no second card chrome).
 
         paint_section_label(
             hdc,
             label_font,
-            "Target",
+            "TARGET",
             RECT {
                 left: layout.field_left,
                 top: layout.target_label_top,
@@ -2439,7 +2493,7 @@ mod windows_impl {
         paint_section_label(
             hdc,
             label_font,
-            "Context",
+            "CONTEXT",
             RECT {
                 left: layout.field_left,
                 top: layout.context_label_top,
@@ -2451,9 +2505,9 @@ mod windows_impl {
         paint_section_label(
             hdc,
             label_font,
-            "Result",
+            "RESULT",
             RECT {
-                left: layout.field_left,
+                left: layout.field_left + rail + scale(4, dpi),
                 top: layout.output_label_top,
                 right,
                 bottom: layout.output_label_top + layout.label_height,
@@ -2662,10 +2716,22 @@ mod windows_impl {
                 let child = HWND(lparam.0 as *mut core::ffi::c_void);
                 let muted = data_mut(hwnd)
                     .is_some_and(|data| data.input == child || data.context_input == child);
-                // Field brush matches painted wells so glyphs never sit on canvas color.
-                SetBkColor(hdc, POPUP_FIELD_BG);
+                let is_output = data_mut(hwnd).is_some_and(|data| data.output == child);
+                let bg = if is_output {
+                    POPUP_RESULT_BG
+                } else {
+                    POPUP_SECTION_BG
+                };
+                SetBkColor(hdc, bg);
                 SetTextColor(hdc, if muted { POPUP_MUTED } else { POPUP_TEXT });
-                return LRESULT(popup_field_brush().0 as isize);
+                return LRESULT(
+                    if is_output {
+                        popup_lex_brush()
+                    } else {
+                        popup_selection_brush()
+                    }
+                    .0 as isize,
+                );
             }
             // The popup is initially passive. A Ctrl-click on its background
             // is the explicit user activation path for keyboard navigation.
@@ -2771,6 +2837,13 @@ mod windows_impl {
                             if width >= min.0 && height >= min.1 {
                                 if let Some(data) = data_mut(hwnd) {
                                     data.window_size = Some((width, height));
+                                    let logical_w =
+                                        ((width as i64 * 96) / dpi.max(1) as i64).clamp(200, 4000);
+                                    let logical_h =
+                                        ((height as i64 * 96) / dpi.max(1) as i64).clamp(200, 3000);
+                                    let packed = ((logical_h as usize) << 16)
+                                        | (logical_w as usize & 0xffff);
+                                    post_owner_with_value(hwnd, POPUP_RESIZED, packed);
                                 }
                             }
                         }
@@ -3280,9 +3353,9 @@ mod tests {
             button_fill, popup_corner_radius, scaled_size, ButtonVisualState, POPUP_ACCENT_DIM,
             POPUP_BUTTON_BG,
         };
-        assert_eq!(scaled_size((660, 470), 96), (660, 470));
-        assert_eq!(scaled_size((660, 470), 144), (990, 705));
-        assert_eq!(scaled_size((660, 470), 192), (1320, 940));
+        assert_eq!(scaled_size((420, 480), 96), (420, 480));
+        assert_eq!(scaled_size((420, 480), 144), (630, 720));
+        assert_eq!(scaled_size((420, 480), 192), (840, 960));
         assert_eq!(popup_corner_radius(96), 12);
         assert_eq!(popup_corner_radius(144), 18);
         assert_eq!(popup_corner_radius(192), 24);
