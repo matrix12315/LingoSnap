@@ -228,7 +228,9 @@ fn notification_mentions_file(buffer: &[u8], wanted: &str) -> bool {
         }
         let name = String::from_utf16_lossy(
             &buffer[name_start..name_end]
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|pair| u16::from_ne_bytes([pair[0], pair[1]]))
                 .collect::<Vec<_>>(),
         );

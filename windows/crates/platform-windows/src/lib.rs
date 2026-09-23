@@ -13,6 +13,7 @@ pub mod native_selection;
 pub mod ocr;
 pub mod popup;
 pub mod runtime_trace;
+pub mod theme;
 pub mod tray;
 pub mod uia;
 

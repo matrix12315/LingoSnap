@@ -19,7 +19,7 @@ struct BoundingRect {
 
 #[allow(dead_code)]
 fn point_is_inside_bounding_rectangles(point: (f64, f64), rectangles: &[f64]) -> bool {
-    rectangles.chunks_exact(4).any(|values| {
+    rectangles.as_chunks::<4>().0.iter().any(|values| {
         let rect = BoundingRect {
             left: values[0],
             top: values[1],
@@ -282,7 +282,7 @@ fn word_containing_rect(
             } else {
                 let values = slice::from_raw_parts(data.cast::<f64>(), count);
                 let point = (f64::from(pointer.x), f64::from(pointer.y));
-                let containing = values.chunks_exact(4).find_map(|v| {
+                let containing = values.as_chunks::<4>().0.iter().find_map(|v| {
                     let (left, top, width, height) = (v[0], v[1], v[2], v[3]);
                     let right = left + width;
                     let bottom = top + height;

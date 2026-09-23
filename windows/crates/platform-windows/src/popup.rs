@@ -66,6 +66,7 @@ pub fn cascade_origin(parent: Rect, child_size: (i32, i32), gap: i32, work_area:
 #[cfg(windows)]
 mod windows_impl {
     use super::super::runtime_trace;
+    use super::super::theme;
     use super::{cascade_origin, clamped_origin, Point, Rect};
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{
@@ -73,10 +74,10 @@ mod windows_impl {
         WPARAM,
     };
     use windows::Win32::Graphics::Gdi::{
-        BeginPaint, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DeleteObject, DrawFocusRect,
-        DrawTextW, EndPaint, FillRect, FillRgn, FrameRect, FrameRgn, GetMonitorInfoW,
-        InvalidateRect, MonitorFromPoint, MonitorFromWindow, SelectObject, SetBkColor, SetBkMode,
-        SetTextColor, BACKGROUND_MODE, DRAW_TEXT_FORMAT, FONT_CHARSET, FONT_CLIP_PRECISION,
+        BeginPaint, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DeleteObject, DrawTextW,
+        EndPaint, FillRect, FillRgn, FrameRect, FrameRgn, GetMonitorInfoW, InvalidateRect,
+        MonitorFromPoint, MonitorFromWindow, SelectObject, SetBkColor, SetBkMode, SetTextColor,
+        BACKGROUND_MODE, DRAW_TEXT_FORMAT, FONT_CHARSET, FONT_CLIP_PRECISION,
         FONT_OUTPUT_PRECISION, FONT_QUALITY, HBRUSH, HFONT, HGDIOBJ, HRGN, MONITORINFO,
         MONITOR_DEFAULTTONEAREST, TRANSPARENT,
     };
@@ -90,48 +91,58 @@ mod windows_impl {
         CFM_FACE, CFM_ITALIC, CFM_SIZE, CFM_STRIKEOUT, CHARFORMATW,
     };
     use windows::Win32::UI::Controls::{SetWindowTheme, DRAWITEMSTRUCT, ODT_BUTTON};
-    use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetFocus, VK_ESCAPE};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        ReleaseCapture, SetCapture, SetFocus, VK_ESCAPE,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::GetDlgCtrlID;
     use windows::Win32::UI::WindowsAndMessaging::{
-        AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-        GetAncestor, GetClassNameW, GetClientRect, GetParent, GetWindow, GetWindowLongPtrW,
-        GetWindowRect, GetWindowTextW, IsWindow, IsWindowVisible, MoveWindow, PostMessageW,
-        RegisterClassW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
-        SetWindowTextW, ShowWindow, TrackPopupMenu, WindowFromPoint, BS_PUSHBUTTON, CS_DROPSHADOW,
-        CS_HREDRAW, CS_VREDRAW, ES_AUTOVSCROLL, ES_MULTILINE, ES_NOHIDESEL, ES_READONLY, GA_ROOT,
-        GWLP_USERDATA, GWL_EXSTYLE, GW_OWNER, HMENU, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT,
-        HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HWND_TOPMOST, MA_NOACTIVATE,
-        MF_STRING, MINMAXINFO, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE,
-        SW_SHOWNOACTIVATE, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_TOPALIGN, WINDOW_STYLE, WM_APP,
-        WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE,
-        WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDOWN,
-        WM_MOUSEACTIVATE, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT,
-        WM_SETREDRAW, WM_SIZE, WM_TIMER, WNDCLASSW, WS_CHILD, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-        WS_EX_TOPMOST, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, GetAncestor, GetClassNameW, GetClientRect,
+        GetParent, GetWindow, GetWindowLongPtrW, GetWindowRect, GetWindowTextW, IsWindow,
+        IsWindowVisible, MoveWindow, PostMessageW, RegisterClassW, SendMessageW,
+        SetForegroundWindow, SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow,
+        WindowFromPoint, BS_PUSHBUTTON, CS_DROPSHADOW, CS_HREDRAW, CS_VREDRAW, ES_AUTOVSCROLL,
+        ES_MULTILINE, ES_NOHIDESEL, ES_READONLY, GA_ROOT, GWLP_USERDATA, GWL_EXSTYLE, GW_OWNER,
+        HMENU, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT,
+        HTTOPRIGHT, HWND_TOPMOST, MA_NOACTIVATE, MINMAXINFO, SWP_NOACTIVATE, SWP_NOSIZE,
+        SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, WINDOW_STYLE, WM_APP,
+        WM_CAPTURECHANGED, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM,
+        WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN,
+        WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCREATE, WM_NCDESTROY,
+        WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETREDRAW, WM_SIZE, WM_TIMER, WNDCLASSW,
+        WS_CHILD, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_TABSTOP,
+        WS_VISIBLE, WS_VSCROLL,
     };
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslatePopup");
-    // Geometry from the egui mockup, scaled to 1x (egui values are ~2x).
-    const WIDTH: i32 = 660;
-    const HEIGHT: i32 = 470;
-    const MIN_WIDTH: i32 = 480;
-    const MIN_HEIGHT: i32 = 360;
-    const MARGIN: i32 = 15;
-    const TARGET_HEIGHT: i32 = 28;
-    const CONTEXT_HEIGHT: i32 = 56;
-    const LABEL_HEIGHT: i32 = 14;
-    const SECTION_GAP: i32 = 8;
-    const CONTENT_GAP: i32 = 10;
-    const BUTTON_HEIGHT: i32 = 35;
-    const BUTTON_GAP: i32 = 9;
-    const BUTTON_BOTTOM_GAP: i32 = 12;
-    const CARD_PAD: i32 = 13;
-    const HEADER_HEIGHT: i32 = 56;
-    const DRAG_BAND_HEIGHT: i32 = 24;
+    // Geometry from the approved HTML mockup (logical px, DPI-scaled later).
+    const WIDTH: i32 = 420;
+    const HEIGHT: i32 = 520;
+    const MIN_WIDTH: i32 = 380;
+    const MAX_WIDTH: i32 = 460;
+    const MIN_HEIGHT: i32 = 320;
+    const BODY_PAD_Y: i32 = 12;
+    const BODY_PAD_X: i32 = 14;
+    const BODY_GAP: i32 = 10;
+    const CARD_PAD_TOP: i32 = 8;
+    const CARD_PAD_X: i32 = 12;
+    const CARD_PAD_BOTTOM: i32 = 10;
+    const CAPTION_HEIGHT: i32 = 14;
+    const FOOTER_BUTTON_HEIGHT: i32 = 36;
+    const FOOTER_GAP: i32 = 8;
+    const TITLE_HEIGHT: i32 = 52;
+    const TITLE_PAD_Y: i32 = 12;
+    const TITLE_PAD_X: i32 = 14;
+    const TITLE_MARK: i32 = 28;
+    const TITLE_ICON_HIT: i32 = 32;
+    const RAIL_HEIGHT: i32 = 48;
+    const RAIL_PAD_X: i32 = 14;
+    const PILL_HEIGHT: i32 = 28;
+    const PILL_GAP: i32 = 4;
+    const DRAG_BAND_HEIGHT: i32 = TITLE_HEIGHT;
     const CHOOSER_HEIGHT: i32 = 38;
     const CHOOSER_MARGIN: i32 = 4;
     const CHOOSER_BUTTON_GAP: i32 = 4;
     const CHOOSER_POINTER_GAP: i32 = 8;
-    const CHOOSER_MIN_BUTTON_WIDTH: i32 = 48;
     const CHOOSER_MAX_BUTTON_WIDTH: i32 = 140;
     /// Invisible edge used for custom resize. Frameless so the OS does not
     /// paint a light non-client border over the dark popup.
@@ -149,44 +160,7 @@ mod windows_impl {
     pub(super) const RICH_EDIT_CLASS: PCWSTR = w!("RICHEDIT50W");
     const REQUIRED_POPUP_EX_STYLE: u32 = WS_EX_TOPMOST.0 | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0;
 
-    // One palette is shared by the parent, text controls, and owner-drawn
-    // buttons so the popup reads as a single surface during every state.
-    // COLORREF is 0x00BBGGRR.
-    // Exact RGB tokens from the egui mockup (COLORREF is 0x00BBGGRR).
-    // Outer: rgb(17,29,49) · border rgb(48,72,106)
-    pub(super) const POPUP_BG: COLORREF = COLORREF(0x00311d11);
-    const POPUP_BORDER: COLORREF = COLORREF(0x006a4830);
-    // Input card: rgb(25,40,65) · border rgb(37,57,85)
-    const POPUP_SECTION_BG: COLORREF = COLORREF(0x00412819);
-    const POPUP_CARD_BORDER: COLORREF = COLORREF(0x00553925);
-    // Result card: rgb(24,39,63) · border rgb(38,59,88)
-    const POPUP_HEADER_BG: COLORREF = COLORREF(0x003f2718);
-    const POPUP_RESULT_BORDER: COLORREF = COLORREF(0x00583b26);
-    // Field well: rgb(26,43,69) · stroke rgb(65,91,128)
-    const POPUP_FIELD_BG: COLORREF = COLORREF(0x00452b1a);
-    const POPUP_FIELD_BORDER: COLORREF = COLORREF(0x00805b41);
-    // Text
-    pub(super) const POPUP_TEXT: COLORREF = COLORREF(0x00fcf7f5); // rgb(245,247,252)
-    const POPUP_TITLE: COLORREF = COLORREF(0x00fff5f0); // rgb(240,245,255)
-    const POPUP_MUTED: COLORREF = COLORREF(0x00cda991); // rgb(145,169,205)
-    const POPUP_LABEL: COLORREF = COLORREF(0x00e5bb9e); // rgb(158,187,229)
-    #[allow(dead_code)]
-    const POPUP_ICON: COLORREF = COLORREF(0x00ffe1cd); // rgb(205,225,255)
-    const POPUP_RESULT_ICON: COLORREF = COLORREF(0x00ffa969); // rgb(105,169,255)
-    #[allow(dead_code)]
-    const POPUP_RESULT_TEXT: COLORREF = COLORREF(0x00fdf9f8); // rgb(248,249,253)
-    #[allow(dead_code)]
-    const POPUP_CLOSE: COLORREF = COLORREF(0x00f0d2be); // rgb(190,210,240)
-                                                        // Logo chip
-    pub(super) const POPUP_ACCENT: COLORREF = COLORREF(0x00f4a65b); // rgb(91,166,244)
-    const POPUP_LOGO_INK: COLORREF = COLORREF(0x003c2314); // rgb(20,35,60)
-                                                           // Buttons
-    pub(super) const POPUP_ACCENT_DIM: COLORREF = COLORREF(0x00f4914b); // rgb(75,145,244)
-    pub(super) const POPUP_BUTTON_BG: COLORREF = COLORREF(0x00452b1b); // rgb(27,43,69)
-    const POPUP_BUTTON_STROKE: COLORREF = COLORREF(0x0077523a); // rgb(58,82,119)
-    const POPUP_BUTTON_HOVER: COLORREF = COLORREF(0x005a3c24); // hover fill
-    const POPUP_BUTTON_DISABLED: COLORREF = COLORREF(0x003a2819);
-    const POPUP_BUTTON_TEXT: COLORREF = COLORREF(0x00fff2eb); // rgb(235,242,255)
+    // Shared theme tokens (see theme.rs / DEVELOP_GUIDE). COLORREF is 0x00BBGGRR.
     pub(super) const OWNER_DRAW_BUTTON_STYLE: u32 = BS_PUSHBUTTON as u32 | 0x0000000b;
 
     pub const MAX_OUTPUT_CHARS: usize = 64 * 1024;
@@ -204,7 +178,8 @@ mod windows_impl {
     const PROFILE_MORE_ID: usize = 900;
     const RENDER_TIMER_ID: usize = 1;
     const RENDER_TIMER_MS: u32 = 40;
-    const INLINE_PROFILE_LIMIT: usize = 3;
+    /// Inline profile pills in the rail before overflowing into More….
+    const INLINE_PROFILE_LIMIT: usize = 4;
     pub const POPUP_DISMISSED: u32 = WM_APP + 8;
     pub const POPUP_RETRY: u32 = WM_APP + 9;
     pub const POPUP_PROMPT: u32 = WM_APP + 10;
@@ -300,10 +275,14 @@ mod windows_impl {
         output: HWND,
         rich_edit_module: windows::Win32::Foundation::HMODULE,
         buttons: [HWND; 5],
+        title_buttons: [HWND; 2],
         profile_buttons: Vec<HWND>,
         profile_button_widths: Vec<i32>,
         profile_labels: Vec<String>,
+        active_profile: Option<usize>,
         choosing_profile: bool,
+        /// Title-bar subtitle: “Resident” or the active profile name.
+        subtitle: String,
         /// Only a user close should notify the resident. Replacement and
         /// cancellation destroy the window silently.
         notify_owner: bool,
@@ -319,7 +298,8 @@ mod windows_impl {
         /// default). Present/reanchor paths reuse this instead of snapping
         /// back to the default geometry.
         window_size: Option<(i32, i32)>,
-        fonts: [HFONT; 2],
+        /// UI body, UI semibold, caption, subtitle, mono, CJK.
+        fonts: [HFONT; 6],
     }
 
     pub struct Popup {
@@ -358,16 +338,19 @@ mod windows_impl {
                 output: HWND::default(),
                 rich_edit_module: windows::Win32::Foundation::HMODULE::default(),
                 buttons: [HWND::default(); 5],
+                title_buttons: [HWND::default(); 2],
                 profile_buttons: Vec::new(),
                 profile_button_widths: Vec::new(),
                 profile_labels: Vec::new(),
+                active_profile: None,
                 choosing_profile: false,
+                subtitle: String::from("Resident"),
                 notify_owner: true,
                 in_native_move: false,
                 render_pending: false,
                 render_timer_armed: false,
                 window_size: None,
-                fonts: [HFONT::default(); 2],
+                fonts: [HFONT::default(); 6],
             });
             let data_ptr = Box::into_raw(data);
             let result = unsafe {
@@ -571,8 +554,10 @@ mod windows_impl {
             }
         }
 
-        /// Replace the result surface with a names-only profile chooser.
-        /// No selected text or prompt content is placed in these controls.
+        /// Populate the profile rail with inline pills (up to 4 + More…).
+        /// Selection / Result stay visible; changing a pill posts
+        /// `POPUP_PROFILE_SELECTED` and the owner re-requests with the same
+        /// selection/context. No selected text is placed in profile controls.
         pub fn show_profile_choices(&mut self, names: &[String]) -> bool {
             let Some(data) = data_mut(self.hwnd) else {
                 return false;
@@ -580,16 +565,24 @@ mod windows_impl {
             if names.is_empty() {
                 return false;
             }
+            // Standalone chooser only (guide §3.4 / §4.1): never embed the
+            // profile bar inside the popup.
+            let use_inline_rail = false;
             clear_profile_buttons(data);
+            let previous_active = data.active_profile;
             data.profile_labels = names
                 .iter()
                 .map(|name| compact_profile_label(name))
                 .collect();
-            set_standard_controls_visible(data, false);
+            if !use_inline_rail {
+                set_standard_controls_visible(data, false);
+            }
             let Ok(instance) =
                 (unsafe { windows::Win32::System::LibraryLoader::GetModuleHandleW(None) })
             else {
-                set_standard_controls_visible(data, true);
+                if !use_inline_rail {
+                    set_standard_controls_visible(data, true);
+                }
                 return false;
             };
             let inline_count = data.profile_labels.len().min(INLINE_PROFILE_LIMIT);
@@ -599,7 +592,7 @@ mod windows_impl {
             }
             data.profile_button_widths = visible_labels
                 .iter()
-                .map(|label| chooser_button_width(label))
+                .map(|label| pill_button_width(label))
                 .collect();
             for (index, name) in visible_labels.iter().enumerate() {
                 let command_id = if index == INLINE_PROFILE_LIMIT {
@@ -619,23 +612,66 @@ mod windows_impl {
                         1,
                         1,
                         Some(self.hwnd),
-                        Some(child_menu(command_id)),
+                        Some(HMENU(command_id as *mut core::ffi::c_void)),
                         Some(HINSTANCE(instance.0)),
                         None,
                     )
                 }
                 .unwrap_or_default();
+                if !button.0.is_null() {
+                    unsafe {
+                        // Pill slot in userdata (More… uses usize::MAX).
+                        let slot = if command_id == PROFILE_MORE_ID {
+                            usize::MAX
+                        } else {
+                            index
+                        };
+                        let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(
+                            button,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                            slot as isize,
+                        );
+                    }
+                }
                 if button.0.is_null() {
                     clear_profile_buttons(data);
-                    set_standard_controls_visible(data, true);
+                    if !use_inline_rail {
+                        set_standard_controls_visible(data, true);
+                    }
                     return false;
                 }
                 data.profile_buttons.push(button);
             }
-            data.choosing_profile = true;
+            data.active_profile = previous_active
+                .filter(|index| *index < names.len())
+                .or(Some(0));
+            data.choosing_profile = !use_inline_rail;
             let anchor = data.anchor;
             let dpi = data.dpi;
-            let size = chooser_size(anchor, &data.profile_button_widths, dpi);
+            let buttons = data.profile_buttons.clone();
+            let button_font = data.fonts[1];
+            let button_widths = data.profile_button_widths.clone();
+            if use_inline_rail {
+                for button in buttons {
+                    if !button.0.is_null() && !button_font.0.is_null() {
+                        unsafe {
+                            let _ = SendMessageW(
+                                button,
+                                0x0030,
+                                Some(WPARAM(button_font.0 as usize)),
+                                Some(LPARAM(1)),
+                            );
+                            let _ = InvalidateRect(Some(button), None, true);
+                        }
+                    }
+                }
+                apply_layout(self.hwnd, anchor, dpi);
+                unsafe {
+                    let _ = InvalidateRect(Some(self.hwnd), None, true);
+                }
+                return true;
+            }
+            let size = chooser_size(anchor, &button_widths, dpi);
             let origin = chooser_origin(anchor, size, dpi).unwrap_or(anchor);
             let presented = present_popup(self.hwnd, origin, size);
             if presented {
@@ -662,9 +698,8 @@ mod windows_impl {
             presented
         }
 
-        /// Target and context stay in separate panes so the user can see
-        /// exactly which text is being translated versus which local sentence
-        /// is only disambiguating it.
+        /// Target and context share one Selection card. The selected target is
+        /// never replaced by context text.
         pub fn set_input(&mut self, target: &str, context: Option<&str>) {
             if let Some(data) = data_mut(self.hwnd) {
                 set_control_text(data.input, &bounded_input(target));
@@ -961,17 +996,94 @@ mod windows_impl {
         Focused,
     }
 
-    pub(super) fn button_fill(state: ButtonVisualState) -> COLORREF {
-        match state {
-            ButtonVisualState::Normal => POPUP_BUTTON_BG,
-            ButtonVisualState::Pressed => POPUP_ACCENT_DIM,
-            ButtonVisualState::Disabled => POPUP_BUTTON_DISABLED,
-            ButtonVisualState::Focused => POPUP_BUTTON_HOVER,
+    /// Footer / rail control roles from the mockup button table.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub(super) enum ButtonKind {
+        /// Copy — only filled primary in the footer.
+        Primary,
+        /// Retry, Prompt.
+        Default,
+        /// Pin, Close (footer).
+        Ghost,
+        /// Title-bar Pin / Close icon buttons.
+        GhostIcon,
+        /// Inactive profile pill.
+        Pill,
+        /// Active profile pill (accent fill).
+        PillActive,
+        /// More… pill (raised + line).
+        PillMore,
+    }
+
+    pub(super) fn button_kind_for_id(id: usize, active_profile: Option<usize>) -> ButtonKind {
+        match id {
+            COPY_ID => ButtonKind::Primary,
+            RETRY_ID | PROMPT_ID => ButtonKind::Default,
+            PIN_ID | CLOSE_ID => ButtonKind::Ghost,
+            PROFILE_MORE_ID => ButtonKind::PillMore,
+            _ => {
+                if profile_choice_index(id, usize::MAX).is_some() {
+                    let index = id - PROFILE_CHOICE_ID_START;
+                    let active = active_profile.or(Some(0));
+                    if active == Some(index) {
+                        ButtonKind::PillActive
+                    } else {
+                        ButtonKind::Pill
+                    }
+                } else {
+                    ButtonKind::Default
+                }
+            }
         }
     }
 
+    pub(super) fn button_fill(kind: ButtonKind, state: ButtonVisualState) -> COLORREF {
+        match kind {
+            ButtonKind::Primary => match state {
+                ButtonVisualState::Pressed => theme::LINE,
+                ButtonVisualState::Disabled => theme::RAISED,
+                _ => theme::ACCENT,
+            },
+            ButtonKind::Default => match state {
+                ButtonVisualState::Normal | ButtonVisualState::Disabled => theme::RAISED,
+                ButtonVisualState::Pressed | ButtonVisualState::Focused => theme::LINE,
+            },
+            ButtonKind::Ghost | ButtonKind::GhostIcon => match state {
+                ButtonVisualState::Pressed => theme::LINE,
+                ButtonVisualState::Disabled => theme::SURFACE,
+                _ => theme::SURFACE,
+            },
+            ButtonKind::Pill => theme::SURFACE,
+            ButtonKind::PillActive => theme::ACCENT,
+            ButtonKind::PillMore => match state {
+                ButtonVisualState::Pressed | ButtonVisualState::Focused => theme::LINE,
+                _ => theme::RAISED,
+            },
+        }
+    }
+
+    pub(super) fn button_text_color(kind: ButtonKind) -> COLORREF {
+        match kind {
+            ButtonKind::Primary | ButtonKind::PillActive => theme::ON_ACCENT,
+            ButtonKind::Default
+            | ButtonKind::Ghost
+            | ButtonKind::GhostIcon
+            | ButtonKind::PillMore => theme::INK,
+            ButtonKind::Pill => theme::MUTED,
+        }
+    }
+
+    /// Approximate `rgba(accent, a)` over `base` (GDI has no alpha brush here).
+    pub(super) fn blend_over(base: COLORREF, over: COLORREF, over_alpha: u8) -> COLORREF {
+        let (br, bg, bb) = (base.0 & 0xff, (base.0 >> 8) & 0xff, (base.0 >> 16) & 0xff);
+        let (fr, fg, fb) = (over.0 & 0xff, (over.0 >> 8) & 0xff, (over.0 >> 16) & 0xff);
+        let a = u32::from(over_alpha);
+        let mix = |b: u32, f: u32| ((b * (255 - a) + f * a + 127) / 255) as u8;
+        theme::rgb(mix(br, fr), mix(bg, fg), mix(bb, fb))
+    }
+
     pub(super) fn popup_corner_radius(dpi: u32) -> i32 {
-        scale(12, dpi).max(8)
+        scale(theme::RADIUS_POPUP, dpi).max(8)
     }
 
     fn work_area_for(anchor: Point) -> windows::core::Result<Rect> {
@@ -1021,8 +1133,12 @@ mod windows_impl {
     }
 
     pub(super) fn chooser_button_width(label: &str) -> i32 {
-        ((label.chars().count() as i32).saturating_mul(8) + 20)
-            .clamp(CHOOSER_MIN_BUTTON_WIDTH, CHOOSER_MAX_BUTTON_WIDTH)
+        ((label.chars().count() as i32).saturating_mul(8) + 20).clamp(48, CHOOSER_MAX_BUTTON_WIDTH)
+    }
+
+    /// Profile-rail pill natural width (pad 8×14 language).
+    pub(super) fn pill_button_width(label: &str) -> i32 {
+        chooser_button_width(label)
     }
 
     pub(super) fn compact_profile_label(name: &str) -> String {
@@ -1058,9 +1174,12 @@ mod windows_impl {
         stored: Option<(i32, i32)>,
         min: (i32, i32),
         fallback: (i32, i32),
+        max_width: i32,
     ) -> (i32, i32) {
         match stored {
-            Some((width, height)) if width >= min.0 && height >= min.1 => (width, height),
+            Some((width, height)) if width >= min.0 && height >= min.1 => {
+                (width.min(max_width).max(min.0), height)
+            }
             _ => fallback,
         }
     }
@@ -1068,20 +1187,31 @@ mod windows_impl {
     fn resolve_window_size(hwnd: HWND, dpi: u32) -> (i32, i32) {
         let min = min_popup_size(dpi);
         let fallback = default_popup_size(dpi);
+        let max_width = max_popup_width(dpi);
         if let Some(data) = data_mut(hwnd) {
-            let size = valid_result_size(data.window_size, min, fallback);
+            let size = valid_result_size(data.window_size, min, fallback, max_width);
             data.window_size = Some(size);
             return size;
         }
         fallback
     }
 
-    fn default_popup_size(dpi: u32) -> (i32, i32) {
+    pub(super) fn default_popup_size(dpi: u32) -> (i32, i32) {
         scaled_size((WIDTH, HEIGHT), dpi)
     }
 
-    fn min_popup_size(dpi: u32) -> (i32, i32) {
+    pub(super) fn min_popup_size(dpi: u32) -> (i32, i32) {
         scaled_size((MIN_WIDTH, MIN_HEIGHT), dpi)
+    }
+
+    pub(super) fn max_popup_width(dpi: u32) -> i32 {
+        scale(MAX_WIDTH, dpi)
+    }
+
+    /// Footer buttons size to content (Copy is the only filled primary).
+    pub(super) fn footer_button_width(label: &str, dpi: u32) -> i32 {
+        let chars = label.chars().count() as i32;
+        scale((chars * 7 + 28).clamp(56, 120), dpi)
     }
 
     fn apply_layout(hwnd: HWND, anchor: Point, dpi: u32) {
@@ -1152,96 +1282,156 @@ mod windows_impl {
         }
     }
 
-    /// Shared geometry for child controls and parent paint. Every metric is
-    /// derived from the current client size so a resize updates the whole
-    /// popup, not only the result pane.
+    /// Shared geometry for child controls and parent paint. Metrics follow the
+    /// mockup chrome stack: title → profile rail → body (Selection + Result) → footer.
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub(super) struct PopupLayout {
         pub(super) content_width: i32,
-        pub(super) margin: i32,
-        pub(super) drag_band: i32,
-        pub(super) label_height: i32,
-        pub(super) target_label_top: i32,
+        pub(super) margin_x: i32,
+        pub(super) title_height: i32,
+        pub(super) rail_top: i32,
+        pub(super) rail_height: i32,
+        pub(super) body_top: i32,
+        pub(super) body_height: i32,
+        pub(super) selection_top: i32,
+        pub(super) selection_height: i32,
+        pub(super) selection_caption_top: i32,
         pub(super) target_top: i32,
         pub(super) target_height: i32,
-        pub(super) context_label_top: i32,
         pub(super) context_top: i32,
         pub(super) context_height: i32,
-        pub(super) output_label_top: i32,
+        pub(super) result_top: i32,
+        pub(super) result_height: i32,
+        pub(super) result_caption_top: i32,
         pub(super) output_top: i32,
         pub(super) output_height: i32,
+        pub(super) footer_top: i32,
         pub(super) button_top: i32,
         pub(super) button_height: i32,
-        pub(super) button_width: i32,
+        pub(super) button_widths: [i32; 5],
+        pub(super) button_xs: [i32; 5],
         pub(super) button_gap: i32,
-        pub(super) header_height: i32,
-        pub(super) input_card_top: i32,
-        pub(super) input_card_bottom: i32,
-        pub(super) output_card_top: i32,
-        pub(super) output_card_bottom: i32,
+        pub(super) title_icon_xs: [i32; 2],
+        pub(super) title_icon_size: i32,
+        pub(super) drag_band: i32,
     }
 
     pub(super) fn compute_layout(
         client_width: i32,
         client_height: i32,
         dpi: u32,
-        button_count: i32,
+        button_labels: [&str; 5],
     ) -> PopupLayout {
-        let margin = scale(MARGIN, dpi);
-        let header = scale(HEADER_HEIGHT, dpi);
-        let label_height = scale(LABEL_HEIGHT, dpi);
-        let section_gap = scale(SECTION_GAP, dpi);
-        let content_gap = scale(CONTENT_GAP, dpi);
-        let card_pad = scale(CARD_PAD, dpi);
-        let button_height = scale(BUTTON_HEIGHT, dpi);
-        let button_gap = scale(BUTTON_GAP, dpi);
-        let button_bottom_gap = scale(BUTTON_BOTTOM_GAP, dpi);
-        let preferred_target = scale(TARGET_HEIGHT, dpi).max(1);
-        let preferred_context = scale(CONTEXT_HEIGHT, dpi).max(1);
-        let content_width = (client_width - margin * 2).max(1);
-        let button_count = button_count.max(1);
-        let button_width =
-            ((content_width - button_gap * (button_count - 1)) / button_count).max(1);
+        let pad_x = scale(BODY_PAD_X, dpi);
+        let pad_y = scale(BODY_PAD_Y, dpi);
+        let gap = scale(BODY_GAP, dpi);
+        let title_height = scale(TITLE_HEIGHT, dpi);
+        let rail_height = scale(RAIL_HEIGHT, dpi);
+        let caption_height = scale(CAPTION_HEIGHT, dpi);
+        let footer_button = scale(FOOTER_BUTTON_HEIGHT, dpi);
+        let footer_gap = scale(FOOTER_GAP, dpi);
+        let card_pad_top = scale(CARD_PAD_TOP, dpi);
+        let card_pad_bottom = scale(CARD_PAD_BOTTOM, dpi);
+        let content_width = (client_width - pad_x * 2).max(1);
+        let margin_x = pad_x;
 
-        let button_top = (client_height - button_height - button_bottom_gap).max(header + margin);
-        let output_card_bottom = (button_top - content_gap).max(header + margin);
+        let footer_height = pad_y * 2 + footer_button;
+        let footer_top = (client_height - footer_height).max(title_height + rail_height);
+        let body_top = title_height + rail_height;
+        let body_height = (footer_top - body_top - pad_y).max(scale(80, dpi));
 
-        // Input card holds Target + Context; result card holds Result.
-        let target_label_top = header + scale(8, dpi);
-        let target_top = target_label_top + label_height + scale(4, dpi);
-        let context_label_top = target_top + preferred_target + section_gap;
-        let context_top = context_label_top + label_height + scale(4, dpi);
-        let input_card_bottom = context_top + preferred_context + card_pad;
-        let input_card_top = header + scale(4, dpi);
+        // Selection card max-height ≈ 30% of body (spec S2.3).
+        let selection_max = (body_height * 30 / 100).max(scale(72, dpi));
+        let target_preferred = scale(40, dpi);
+        let context_preferred = scale(36, dpi);
+        let selection_inner =
+            caption_height + scale(6, dpi) + target_preferred + scale(6, dpi) + context_preferred;
+        let selection_height = (selection_inner + card_pad_top + card_pad_bottom)
+            .min(selection_max)
+            .max(scale(64, dpi));
+        let selection_top = body_top + pad_y / 2;
 
-        let output_card_top = input_card_bottom + content_gap;
-        let output_label_top = output_card_top + card_pad;
-        let output_top = output_label_top + label_height + scale(4, dpi);
-        let output_height = (output_card_bottom - output_top - card_pad).max(scale(48, dpi));
+        let selection_caption_top = selection_top + card_pad_top;
+        let target_top = selection_caption_top + caption_height + scale(6, dpi);
+        let available_sel =
+            selection_height - card_pad_top - card_pad_bottom - caption_height - scale(6, dpi);
+        let target_height = (available_sel * 55 / 100).max(scale(24, dpi));
+        let context_top = target_top + target_height + scale(6, dpi);
+        let context_height = (available_sel - target_height - scale(6, dpi)).max(scale(20, dpi));
 
+        let result_top = selection_top + selection_height + gap;
+        let result_height = (footer_top - pad_y - result_top).max(scale(80, dpi));
+        let result_caption_top = result_top + card_pad_top;
+        let output_top = result_caption_top + caption_height + scale(6, dpi);
+        let output_height =
+            (result_top + result_height - card_pad_bottom - output_top).max(scale(48, dpi));
+
+        let button_top = footer_top + pad_y;
+        let button_gap = footer_gap;
+        let mut button_widths = [0i32; 5];
+        let mut button_xs = [0i32; 5];
+        let natural: [i32; 5] = [
+            footer_button_width(button_labels[0], dpi),
+            footer_button_width(button_labels[1], dpi),
+            footer_button_width(button_labels[2], dpi),
+            footer_button_width(button_labels[3], dpi),
+            footer_button_width(button_labels[4], dpi),
+        ];
+        let natural_total = natural.iter().sum::<i32>() + button_gap * 4;
+        let mut x = margin_x;
+        if natural_total <= content_width {
+            for index in 0..5 {
+                button_widths[index] = natural[index];
+                button_xs[index] = x;
+                x += natural[index] + button_gap;
+            }
+        } else {
+            // Shrink evenly when the client is narrower than the natural row.
+            let each = ((content_width - button_gap * 4) / 5).max(scale(40, dpi));
+            for index in 0..5 {
+                button_widths[index] = each;
+                button_xs[index] = x;
+                x += each + button_gap;
+            }
+        }
+
+        let icon = scale(TITLE_ICON_HIT, dpi);
+        let title_icon_xs = [
+            client_width - pad_x - icon * 2 - scale(4, dpi),
+            client_width - pad_x - icon,
+        ];
+
+        // Body max-height clamp (~78vh / 600) is applied by default window size;
+        // a user-resized taller client simply grows Result.
         PopupLayout {
             content_width,
-            margin,
-            drag_band: header,
-            label_height,
-            target_label_top,
+            margin_x,
+            title_height,
+            rail_top: title_height,
+            rail_height,
+            body_top,
+            body_height,
+            selection_top,
+            selection_height,
+            selection_caption_top,
             target_top,
-            target_height: preferred_target,
-            context_label_top,
+            target_height,
             context_top,
-            context_height: preferred_context,
-            output_label_top,
+            context_height,
+            result_top,
+            result_height,
+            result_caption_top,
             output_top,
             output_height,
+            footer_top,
             button_top,
-            button_height,
-            button_width,
+            button_height: footer_button,
+            button_widths,
+            button_xs,
             button_gap,
-            header_height: header,
-            input_card_top,
-            input_card_bottom,
-            output_card_top,
-            output_card_bottom,
+            title_icon_xs,
+            title_icon_size: icon,
+            drag_band: title_height,
         }
     }
 
@@ -1296,37 +1486,88 @@ mod windows_impl {
             }
             return;
         }
-        let layout = compute_layout(client.right, client.bottom, dpi, data.buttons.len() as i32);
+        let labels = [
+            "Copy",
+            "Retry",
+            "Prompt",
+            if data.pinned { "Unpin" } else { "Pin" },
+            "Close",
+        ];
+        let layout = compute_layout(client.right, client.bottom, dpi, labels);
+
+        // Title-bar Pin / Close icon buttons (right).
+        for (index, button) in data.title_buttons.iter().enumerate() {
+            let x = layout.title_icon_xs[index];
+            move_child(
+                *button,
+                x,
+                (layout.title_height - layout.title_icon_size) / 2,
+                layout.title_icon_size,
+                layout.title_icon_size,
+            );
+        }
+
+        // Profile rail pills (inline language; compact chooser keeps strip mode).
+        layout_profile_rail(data, &layout, dpi);
+
+        // Integrated Selection card: target + context stacked inside one well.
         move_child(
             data.input,
-            layout.margin,
+            layout.margin_x + scale(CARD_PAD_X, dpi),
             layout.target_top,
-            layout.content_width,
+            layout.content_width - scale(CARD_PAD_X, dpi) * 2,
             layout.target_height,
         );
         move_child(
             data.context_input,
-            layout.margin,
+            layout.margin_x + scale(CARD_PAD_X, dpi),
             layout.context_top,
-            layout.content_width,
+            layout.content_width - scale(CARD_PAD_X, dpi) * 2,
             layout.context_height,
         );
         move_child(
             data.output,
-            layout.margin,
+            layout.margin_x + scale(CARD_PAD_X, dpi),
             layout.output_top,
-            layout.content_width,
+            layout.content_width - scale(CARD_PAD_X, dpi) * 2,
             layout.output_height,
         );
         for (index, button) in data.buttons.iter().enumerate() {
-            let x = layout.margin + index as i32 * (layout.button_width + layout.button_gap);
             move_child(
                 *button,
-                x,
+                layout.button_xs[index],
                 layout.button_top,
-                layout.button_width,
+                layout.button_widths[index],
                 layout.button_height,
             );
+        }
+    }
+
+    fn layout_profile_rail(data: &mut PopupData, layout: &PopupLayout, dpi: u32) {
+        if data.profile_buttons.is_empty() {
+            return;
+        }
+        let pad_x = scale(RAIL_PAD_X, dpi);
+        let gap = scale(PILL_GAP, dpi);
+        let height = scale(PILL_HEIGHT, dpi).max(scale(32, dpi));
+        let top = layout.rail_top + (layout.rail_height - height) / 2;
+        let natural: Vec<i32> = data
+            .profile_button_widths
+            .iter()
+            .map(|width| scale(*width, dpi).max(1))
+            .collect();
+        let count = natural.len().max(1) as i32;
+        let available = (layout.content_width + pad_x - gap * (count - 1)).max(1);
+        let natural_total = natural.iter().copied().sum::<i32>().max(1);
+        let mut x = pad_x;
+        for (index, button) in data.profile_buttons.iter().enumerate() {
+            let width = if natural_total > available {
+                (natural.get(index).copied().unwrap_or(1) * available / natural_total).max(1)
+            } else {
+                natural.get(index).copied().unwrap_or(1)
+            };
+            move_child(*button, x, top, width, height);
+            x += width + gap;
         }
     }
 
@@ -1489,20 +1730,46 @@ mod windows_impl {
     }
 
     fn set_rich_format(hwnd: HWND, span: FormatSpan) {
-        let (mask, effects, height) = match span.style {
-            MarkdownStyle::Bold => (CFM_BOLD, CFE_BOLD, 0),
-            MarkdownStyle::Italic => (CFM_ITALIC, CFE_ITALIC, 0),
-            MarkdownStyle::Strike => (CFM_STRIKEOUT, CFE_STRIKEOUT, 0),
-            MarkdownStyle::Code => (CFM_SIZE, CFE_EFFECTS(0), 190),
-            MarkdownStyle::Heading(level) => (CFM_SIZE, CFE_EFFECTS(0), 280 - (level as i32 * 20)),
+        // H2 14/600 · code mono 12 gold (spec S2.3 / DEVELOP_GUIDE §4.1).
+        let (mask, effects, height, color, face) = match span.style {
+            MarkdownStyle::Bold => (CFM_BOLD, CFE_BOLD, 0, theme::INK, None),
+            MarkdownStyle::Italic => (CFM_ITALIC, CFE_ITALIC, 0, theme::INK, None),
+            MarkdownStyle::Strike => (CFM_STRIKEOUT, CFE_STRIKEOUT, 0, theme::INK, None),
+            MarkdownStyle::Code => (
+                CFM_SIZE | CFM_COLOR | CFM_FACE,
+                CFE_EFFECTS(0),
+                240,
+                theme::GOLD,
+                Some(theme::MONO_FONT),
+            ),
+            MarkdownStyle::Heading(level) => {
+                let height = match level {
+                    1 => 320,
+                    2 => 280,
+                    3 => 260,
+                    _ => 240,
+                };
+                (
+                    CFM_SIZE | CFM_BOLD | CFM_COLOR,
+                    CFE_BOLD,
+                    height,
+                    theme::INK,
+                    None,
+                )
+            }
         };
-        let format = CHARFORMATW {
+        let mut format = CHARFORMATW {
             cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
             dwMask: mask,
             dwEffects: effects,
             yHeight: height,
+            crTextColor: color,
             ..Default::default()
         };
+        if let Some(face) = face {
+            let face: Vec<u16> = face.encode_utf16().collect();
+            format.szFaceName[..face.len()].copy_from_slice(&face);
+        }
         unsafe {
             let _ = SendMessageW(
                 hwnd,
@@ -1531,12 +1798,12 @@ mod windows_impl {
                 | CFM_CHARSET,
             dwEffects: windows::Win32::UI::Controls::RichEdit::CFE_EFFECTS(0),
             yHeight: BASE_FONT_HEIGHT_TWIPS,
-            crTextColor: POPUP_TEXT,
+            crTextColor: theme::INK,
             bCharSet: FONT_CHARSET(1), // DEFAULT_CHARSET
             bPitchAndFamily: 0x20,     // FF_SWISS
             ..Default::default()
         };
-        let face: Vec<u16> = "Segoe UI".encode_utf16().collect();
+        let face: Vec<u16> = theme::UI_FONT.encode_utf16().collect();
         format.szFaceName[..face.len()].copy_from_slice(&face);
         unsafe {
             let _ = SendMessageW(
@@ -1744,7 +2011,9 @@ mod windows_impl {
     }
 
     fn leave_profile_chooser(data: &mut PopupData) {
-        if !data.choosing_profile && data.profile_buttons.is_empty() {
+        // Inline rail pills stay populated so the user can switch profiles
+        // again; only a compact cascade chooser needs tearing down.
+        if !data.choosing_profile {
             return;
         }
         clear_profile_buttons(data);
@@ -1778,47 +2047,40 @@ mod windows_impl {
         let Some(data) = data_mut(hwnd) else { return };
         {
             data.dpi = dpi;
-            let body_height = -scale(13, dpi);
-            // Buttons need a readable face for CJK labels; 9pt was too tight.
-            let label_height = -scale(12, dpi);
-            let face = w!("Segoe UI");
+            let ui_body = -scale(theme::BODY_SIZE_PT, dpi);
+            let ui_semi = -scale(theme::BUTTON_SIZE_PT, dpi);
+            let caption = -scale(theme::CAPTION_SIZE_PT, dpi);
+            let subtitle = -scale(11, dpi);
+            let mono = -scale(theme::BODY_SIZE_PT, dpi);
+            let cjk = -scale(12, dpi);
+            let make_font = |height: i32, weight: i32, face: &str| {
+                let mut face: Vec<u16> = face.encode_utf16().chain(std::iter::once(0)).collect();
+                unsafe {
+                    CreateFontW(
+                        height,
+                        0,
+                        0,
+                        0,
+                        weight,
+                        0,
+                        0,
+                        0,
+                        FONT_CHARSET(1),
+                        FONT_OUTPUT_PRECISION(0),
+                        FONT_CLIP_PRECISION(0),
+                        FONT_QUALITY(5),
+                        0,
+                        PCWSTR(face.as_mut_ptr()),
+                    )
+                }
+            };
             data.fonts = [
-                unsafe {
-                    CreateFontW(
-                        body_height,
-                        0,
-                        0,
-                        0,
-                        400,
-                        0,
-                        0,
-                        0,
-                        FONT_CHARSET(1),
-                        FONT_OUTPUT_PRECISION(0),
-                        FONT_CLIP_PRECISION(0),
-                        FONT_QUALITY(5),
-                        0,
-                        face,
-                    )
-                },
-                unsafe {
-                    CreateFontW(
-                        label_height,
-                        0,
-                        0,
-                        0,
-                        600,
-                        0,
-                        0,
-                        0,
-                        FONT_CHARSET(1),
-                        FONT_OUTPUT_PRECISION(0),
-                        FONT_CLIP_PRECISION(0),
-                        FONT_QUALITY(5),
-                        0,
-                        face,
-                    )
-                },
+                make_font(ui_body, 400, theme::UI_FONT),
+                make_font(ui_semi, 600, theme::UI_FONT),
+                make_font(caption, 600, theme::UI_FONT),
+                make_font(subtitle, 400, theme::UI_FONT),
+                make_font(mono, 400, theme::MONO_FONT),
+                make_font(cjk, 400, theme::CJK_FONT),
             ];
             let edit_style = WS_CHILD
                 | WS_VISIBLE
@@ -1919,7 +2181,7 @@ mod windows_impl {
                         data.output,
                         EM_SETBKGNDCOLOR,
                         Some(WPARAM(0)),
-                        Some(LPARAM(POPUP_BG.0 as isize)),
+                        Some(LPARAM(theme::RAISED.0 as isize)),
                     );
                 }
             }
@@ -1930,10 +2192,9 @@ mod windows_impl {
                             control,
                             EM_SETBKGNDCOLOR,
                             Some(WPARAM(0)),
-                            Some(LPARAM(POPUP_SECTION_BG.0 as isize)),
+                            Some(LPARAM(theme::RAISED.0 as isize)),
                         );
-                        // 2px side margins keep the pane tight around the text
-                        // without changing the 12pt font.
+                        // Tight side margins inside the Selection card.
                         let _ = SendMessageW(
                             control,
                             EM_SETMARGINS,
@@ -1947,7 +2208,8 @@ mod windows_impl {
             apply_dark_scrollbar_theme(data.context_input);
             apply_dark_scrollbar_theme(data.output);
 
-            let labels = ["▣  Copy", "↻  Retry", "☵  Prompt", "⌖  Pin", "×  Close"];
+            // Footer: Copy (primary) · Retry · Prompt · Pin · Close (ghost).
+            let labels = ["Copy", "Retry", "Prompt", "Pin", "Close"];
             let ids = [COPY_ID, RETRY_ID, PROMPT_ID, PIN_ID, CLOSE_ID];
             for ((button, label), id) in data.buttons.iter_mut().zip(labels).zip(ids) {
                 let mut value: Vec<u16> = label.encode_utf16().chain(std::iter::once(0)).collect();
@@ -1968,24 +2230,76 @@ mod windows_impl {
                     )
                 }
                 .unwrap_or_default();
+                if !button.0.is_null() {
+                    unsafe {
+                        let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(
+                            *button,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                            -1,
+                        );
+                    }
+                }
             }
-            for control in [data.input, data.context_input, data.output] {
-                if !control.0.is_null() && !data.fonts[0].0.is_null() {
+            // Title-bar ghost icon buttons: Pin + Close.
+            let title_labels = ["⌖", "✕"];
+            let title_ids = [PIN_ID, CLOSE_ID];
+            for ((button, label), id) in data
+                .title_buttons
+                .iter_mut()
+                .zip(title_labels)
+                .zip(title_ids)
+            {
+                let mut value: Vec<u16> = label.encode_utf16().chain(std::iter::once(0)).collect();
+                *button = unsafe {
+                    CreateWindowExW(
+                        Default::default(),
+                        w!("BUTTON"),
+                        PCWSTR(value.as_mut_ptr()),
+                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(OWNER_DRAW_BUTTON_STYLE),
+                        0,
+                        0,
+                        1,
+                        1,
+                        Some(hwnd),
+                        Some(child_menu(id)),
+                        Some(HINSTANCE(instance.0)),
+                        None,
+                    )
+                }
+                .unwrap_or_default();
+                if !button.0.is_null() {
+                    unsafe {
+                        let _ = windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(
+                            *button,
+                            windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+                            -1,
+                        );
+                    }
+                }
+            }
+            // Target mono · context CJK · result body UI.
+            let control_fonts = [
+                (data.input, data.fonts[4]),
+                (data.context_input, data.fonts[5]),
+                (data.output, data.fonts[0]),
+            ];
+            for (control, font) in control_fonts {
+                if !control.0.is_null() && !font.0.is_null() {
                     unsafe {
                         let _ = SendMessageW(
                             control,
                             0x0030,
-                            Some(WPARAM(data.fonts[0].0 as usize)),
+                            Some(WPARAM(font.0 as usize)),
                             Some(LPARAM(1)),
                         );
                     }
                 }
             }
-            for button in data.buttons {
+            for button in data.buttons.iter().chain(data.title_buttons.iter()) {
                 if !button.0.is_null() && !data.fonts[1].0.is_null() {
                     unsafe {
                         let _ = SendMessageW(
-                            button,
+                            *button,
                             0x0030,
                             Some(WPARAM(data.fonts[1].0 as usize)),
                             Some(LPARAM(1)),
@@ -2006,13 +2320,13 @@ mod windows_impl {
 
     fn popup_background_brush() -> HBRUSH {
         static BRUSH: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-        let raw = *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(POPUP_BG).0 as usize });
+        let raw = *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(theme::SURFACE).0 as usize });
         HBRUSH(raw as *mut core::ffi::c_void)
     }
 
     fn popup_section_brush() -> HBRUSH {
         static BRUSH: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-        let raw = *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(POPUP_SECTION_BG).0 as usize });
+        let raw = *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(theme::RAISED).0 as usize });
         HBRUSH(raw as *mut core::ffi::c_void)
     }
 
@@ -2032,30 +2346,64 @@ mod windows_impl {
         } else {
             ButtonVisualState::Normal
         };
-        // Primary action (Copy) uses the accent fill so the action row has
-        // hierarchy instead of five identical grey pills.
-        let mut primary_label = [0u16; 16];
-        let primary_len = unsafe { GetWindowTextW(item.hwndItem, &mut primary_label) } as usize;
-        let is_primary = String::from_utf16_lossy(&primary_label[..primary_len]).contains("Copy");
-        let fill = if is_primary {
-            match state {
-                ButtonVisualState::Normal | ButtonVisualState::Focused => POPUP_ACCENT_DIM,
-                ButtonVisualState::Pressed => POPUP_ACCENT,
-                ButtonVisualState::Disabled => POPUP_BUTTON_DISABLED,
+        let ctrl_id = unsafe { GetDlgCtrlID(item.hwndItem) } as usize;
+        let parent = unsafe { GetParent(item.hwndItem) }.unwrap_or_default();
+        let active_profile = data_mut(parent).and_then(|data| data.active_profile);
+        let is_title_icon =
+            data_mut(parent).is_some_and(|data| data.title_buttons.contains(&item.hwndItem));
+        let pill_slot = unsafe {
+            windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+                item.hwndItem,
+                windows::Win32::UI::WindowsAndMessaging::GWLP_USERDATA,
+            )
+        };
+        // Pill slots are stored as >=0; non-pills use -1 (set at create).
+        let is_pill = pill_slot >= 0;
+        let kind = if is_title_icon {
+            ButtonKind::GhostIcon
+        } else if is_pill {
+            let slot = pill_slot as usize;
+            if slot == usize::MAX {
+                ButtonKind::PillMore
+            } else {
+                let active = active_profile.or(Some(0));
+                if active == Some(slot) {
+                    ButtonKind::PillActive
+                } else {
+                    ButtonKind::Pill
+                }
             }
         } else {
-            button_fill(state)
+            button_kind_for_id(ctrl_id, active_profile)
         };
-        let brush = popup_brush(fill);
-        let border = popup_brush(if is_primary {
-            fill
-        } else if focused {
-            POPUP_ACCENT
-        } else {
-            POPUP_BUTTON_STROKE
+        let fill = button_fill(kind, state);
+        let text_color = button_text_color(kind);
+        let border = popup_brush(match kind {
+            ButtonKind::Primary | ButtonKind::PillActive => fill,
+            ButtonKind::Ghost | ButtonKind::GhostIcon => {
+                if focused {
+                    theme::ACCENT
+                } else {
+                    fill
+                }
+            }
+            _ => {
+                if focused {
+                    theme::ACCENT
+                } else {
+                    theme::LINE
+                }
+            }
         });
-        let mut rect = item.rcItem;
-        let radius = ((rect.bottom - rect.top) / 2).clamp(6, 10);
+        let brush = popup_brush(fill);
+        let rect = item.rcItem;
+        let radius = match kind {
+            ButtonKind::Pill | ButtonKind::PillActive | ButtonKind::PillMore => {
+                ((rect.bottom - rect.top) / 2).max(12)
+            }
+            ButtonKind::GhostIcon => scale(theme::RADIUS_CONTROL, 96) / 2,
+            _ => scale(theme::RADIUS_CONTROL, 96),
+        };
         let region = unsafe {
             CreateRoundRectRgn(
                 rect.left,
@@ -2069,7 +2417,9 @@ mod windows_impl {
         unsafe {
             if !region.0.is_null() {
                 let _ = FillRgn(item.hDC, region, brush);
-                let _ = FrameRgn(item.hDC, region, border, 1, 1);
+                if kind != ButtonKind::Ghost && kind != ButtonKind::GhostIcon || focused {
+                    let _ = FrameRgn(item.hDC, region, border, 1, 1);
+                }
                 let _ = DeleteObject(region.into());
             } else {
                 let _ = FillRect(item.hDC, &rect, brush);
@@ -2085,12 +2435,8 @@ mod windows_impl {
             } else {
                 None
             };
-            // Transparent bk keeps glyph edges clean; opaque fill was showing
-            // as a misaligned slab around CJK text.
             let old_bk = SetBkMode(item.hDC, TRANSPARENT);
-            SetTextColor(item.hDC, POPUP_BUTTON_TEXT);
-            // Inset the text rect so DrawText centers the face, not the
-            // full owner-rect including the 1px frame.
+            SetTextColor(item.hDC, text_color);
             let mut text_rect = rect;
             text_rect.left += 2;
             text_rect.right -= 2;
@@ -2103,11 +2449,21 @@ mod windows_impl {
             );
             let _ = SetBkMode(item.hDC, BACKGROUND_MODE(old_bk as u32));
             if focused {
-                rect.left += 4;
-                rect.top += 4;
-                rect.right -= 4;
-                rect.bottom -= 4;
-                let _ = DrawFocusRect(item.hDC, &rect);
+                // Focus-visible: 2px accent outline + 2px offset (S2.5).
+                let focus_brush = popup_brush(theme::ACCENT);
+                let mut outer = rect;
+                outer.left += 1;
+                outer.top += 1;
+                outer.right -= 1;
+                outer.bottom -= 1;
+                let _ = FrameRect(item.hDC, &outer, focus_brush);
+                let mut inner = rect;
+                inner.left += 3;
+                inner.top += 3;
+                inner.right -= 3;
+                inner.bottom -= 3;
+                let _ = FrameRect(item.hDC, &inner, focus_brush);
+                let _ = DeleteObject(focus_brush.into());
             }
             if let Some(old_font) = old_font {
                 let _ = SelectObject(item.hDC, old_font);
@@ -2183,173 +2539,177 @@ mod windows_impl {
         if unsafe { GetClientRect(hwnd, &mut client) }.is_err() {
             return;
         }
-        let background = popup_brush(POPUP_BG);
+        let background = popup_brush(theme::SURFACE);
         unsafe {
             let _ = FillRect(hdc, &client, background);
             let _ = DeleteObject(background.into());
         }
-        let border = popup_brush(POPUP_BORDER);
+        let border = popup_brush(theme::LINE);
         unsafe {
             let _ = FrameRect(hdc, &client, border);
             let _ = DeleteObject(border.into());
         }
-        let layout = compute_layout(client.right, client.bottom, dpi, 5);
-        let radius = popup_corner_radius(dpi).max(12);
-        let left = layout.margin;
-        let right = client.right - layout.margin;
-        let label_font = data_mut(hwnd)
-            .map(|data| data.fonts[1])
-            .filter(|font| !font.0.is_null());
+        let labels = ["Copy", "Retry", "Prompt", "Pin", "Close"];
+        let layout = compute_layout(client.right, client.bottom, dpi, labels);
+        let card_radius = scale(theme::RADIUS_CARD, dpi).max(8);
+        let left = layout.margin_x;
+        let right = client.right - layout.margin_x;
+        let fonts = data_mut(hwnd)
+            .map(|data| data.fonts)
+            .unwrap_or([HFONT::default(); 6]);
+        let title_font = Some(fonts[1]).filter(|font| !font.0.is_null());
+        let caption_font = Some(fonts[2]).filter(|font| !font.0.is_null());
+        let subtitle_font = Some(fonts[3]).filter(|font| !font.0.is_null());
 
-        // Header band with icon chip, title, subtitle.
-        paint_round_rect(
-            hdc,
-            RECT {
+        // Title bar (surface + border-bottom line).
+        let title_bottom = layout.title_height;
+        let line_brush = popup_brush(theme::LINE);
+        unsafe {
+            let divider = RECT {
                 left: 0,
-                top: 0,
+                top: title_bottom - 1,
                 right: client.right,
-                bottom: layout.header_height,
-            },
-            0,
-            POPUP_HEADER_BG,
-            None,
-        );
+                bottom: title_bottom,
+            };
+            let _ = FillRect(hdc, &divider, line_brush);
+        }
+        // 28×28 accent mark with 文.
+        let mark = scale(TITLE_MARK, dpi);
+        let mark_left = left + scale(TITLE_PAD_X, dpi);
+        let mark_top = (title_bottom - mark) / 2;
         paint_round_rect(
             hdc,
             RECT {
-                left,
-                top: scale(18, dpi),
-                right: left + scale(36, dpi),
-                bottom: scale(54, dpi),
+                left: mark_left,
+                top: mark_top,
+                right: mark_left + mark,
+                bottom: mark_top + mark,
             },
-            scale(10, dpi),
-            POPUP_ACCENT,
+            scale(8, dpi),
+            theme::ACCENT,
             None,
         );
         paint_section_label(
             hdc,
-            label_font,
+            title_font,
             "文",
             RECT {
-                left,
-                top: scale(14, dpi),
-                right: left + scale(36, dpi),
-                bottom: scale(50, dpi),
+                left: mark_left,
+                top: mark_top,
+                right: mark_left + mark,
+                bottom: mark_top + mark,
             },
-            POPUP_LOGO_INK,
+            theme::ON_ACCENT,
         );
+        let text_left = mark_left + mark + scale(10, dpi);
+        let text_right = layout.title_icon_xs[0] - scale(4, dpi);
         paint_section_label(
             hdc,
-            label_font,
+            title_font,
             "Selection Translate",
             RECT {
-                left: left + scale(48, dpi),
-                top: scale(12, dpi),
-                right,
-                bottom: scale(36, dpi),
+                left: text_left,
+                top: scale(TITLE_PAD_Y, dpi) - scale(2, dpi),
+                right: text_right,
+                bottom: scale(TITLE_PAD_Y, dpi) + scale(16, dpi),
             },
-            POPUP_TITLE,
+            theme::INK,
         );
+        let subtitle = data_mut(hwnd)
+            .map(|data| data.subtitle.clone())
+            .unwrap_or_else(|| "Resident".to_owned());
         paint_section_label(
             hdc,
-            label_font,
-            "Translate your selection with context",
+            subtitle_font,
+            &subtitle,
             RECT {
-                left: left + scale(48, dpi),
-                top: scale(36, dpi),
-                right,
-                bottom: scale(54, dpi),
+                left: text_left,
+                top: scale(TITLE_PAD_Y, dpi) + scale(16, dpi),
+                right: text_right,
+                bottom: title_bottom - scale(4, dpi),
             },
-            POPUP_MUTED,
+            theme::MUTED,
         );
 
-        // Input card (Target + Context) and Result card.
+        // Profile rail (border-bottom line).
+        let rail_bottom = layout.rail_top + layout.rail_height;
+        unsafe {
+            let divider = RECT {
+                left: 0,
+                top: rail_bottom - 1,
+                right: client.right,
+                bottom: rail_bottom,
+            };
+            let _ = FillRect(hdc, &divider, line_brush);
+            let _ = DeleteObject(line_brush.into());
+        }
+
+        // Selection card (raised + line, radius 10) — integrated Target + Context.
         paint_round_rect(
             hdc,
             RECT {
                 left,
-                top: layout.input_card_top,
+                top: layout.selection_top,
                 right,
-                bottom: layout.input_card_bottom,
+                bottom: layout.selection_top + layout.selection_height,
             },
-            radius,
-            POPUP_SECTION_BG,
-            Some(POPUP_CARD_BORDER),
+            card_radius,
+            theme::RAISED,
+            Some(theme::LINE),
         );
+        paint_section_label(
+            hdc,
+            caption_font,
+            "SELECTION",
+            RECT {
+                left: left + scale(CARD_PAD_X, dpi),
+                top: layout.selection_caption_top,
+                right,
+                bottom: layout.selection_caption_top + scale(CAPTION_HEIGHT, dpi),
+            },
+            theme::MUTED,
+        );
+        // Selection card: two paragraphs only (target mono ink, context muted
+        // CJK) — no ctx chip (guide §4.1).
+
+        // Result card (raised + line, radius 10) — visual hero.
         paint_round_rect(
             hdc,
             RECT {
                 left,
-                top: layout.output_card_top,
+                top: layout.result_top,
                 right,
-                bottom: layout.output_card_bottom,
+                bottom: layout.result_top + layout.result_height,
             },
-            radius,
-            POPUP_HEADER_BG,
-            Some(POPUP_RESULT_BORDER),
+            card_radius,
+            theme::RAISED,
+            Some(theme::LINE),
         );
-        let inset = scale(4, dpi);
-        paint_round_rect(
+        paint_section_label(
             hdc,
+            caption_font,
+            "RESULT",
             RECT {
-                left: left + inset,
-                top: layout.target_top - inset,
-                right: right - inset,
-                bottom: layout.target_top + layout.target_height + inset,
+                left: left + scale(CARD_PAD_X, dpi),
+                top: layout.result_caption_top,
+                right,
+                bottom: layout.result_caption_top + scale(CAPTION_HEIGHT, dpi),
             },
-            scale(9, dpi),
-            POPUP_FIELD_BG,
-            Some(POPUP_FIELD_BORDER),
-        );
-        paint_round_rect(
-            hdc,
-            RECT {
-                left: left + inset,
-                top: layout.context_top - inset,
-                right: right - inset,
-                bottom: layout.context_top + layout.context_height + inset,
-            },
-            scale(9, dpi),
-            POPUP_FIELD_BG,
-            Some(POPUP_FIELD_BORDER),
+            theme::MUTED,
         );
 
-        paint_section_label(
-            hdc,
-            label_font,
-            "◎  Target",
-            RECT {
-                left: left + scale(12, dpi),
-                top: layout.target_label_top,
-                right,
-                bottom: layout.target_label_top + layout.label_height,
-            },
-            POPUP_LABEL,
-        );
-        paint_section_label(
-            hdc,
-            label_font,
-            "▤  Context",
-            RECT {
-                left: left + scale(12, dpi),
-                top: layout.context_label_top,
-                right,
-                bottom: layout.context_label_top + layout.label_height,
-            },
-            POPUP_LABEL,
-        );
-        paint_section_label(
-            hdc,
-            label_font,
-            "✦  Result",
-            RECT {
-                left: left + scale(12, dpi),
-                top: layout.output_label_top,
-                right,
-                bottom: layout.output_label_top + layout.label_height,
-            },
-            POPUP_RESULT_ICON,
-        );
+        // Footer border-top line.
+        unsafe {
+            let line = popup_brush(theme::LINE);
+            let divider = RECT {
+                left: 0,
+                top: layout.footer_top,
+                right: client.right,
+                bottom: layout.footer_top + 1,
+            };
+            let _ = FillRect(hdc, &divider, line);
+            let _ = DeleteObject(line.into());
+        }
     }
 
     fn copy_text(text: &str) {
@@ -2426,6 +2786,15 @@ mod windows_impl {
         let profile_choice =
             data_mut(hwnd).and_then(|data| profile_choice_index(id, data.profile_labels.len()));
         if let Some(index) = profile_choice {
+            if let Some(data) = data_mut(hwnd) {
+                data.active_profile = Some(index);
+                if let Some(name) = data.profile_labels.get(index) {
+                    data.subtitle = name.clone();
+                }
+            }
+            unsafe {
+                let _ = InvalidateRect(Some(hwnd), None, true);
+            }
             post_owner_with_value(hwnd, POPUP_PROFILE_SELECTED, index);
             return;
         }
@@ -2461,50 +2830,226 @@ mod windows_impl {
         if labels.len() <= INLINE_PROFILE_LIMIT {
             return;
         }
-        let Ok(menu) = (unsafe { CreatePopupMenu() }) else {
+        // Dark raised command menu — never the light system menu.
+        let items: Vec<(usize, String)> = labels
+            .iter()
+            .enumerate()
+            .skip(INLINE_PROFILE_LIMIT)
+            .map(|(index, label)| (index, label.clone()))
+            .collect();
+        if items.is_empty() {
             return;
-        };
-        let mut appended = true;
-        for (index, label) in labels.iter().enumerate().skip(INLINE_PROFILE_LIMIT) {
-            let mut value: Vec<u16> = label.encode_utf16().chain(std::iter::once(0)).collect();
-            if unsafe {
-                AppendMenuW(
-                    menu,
-                    MF_STRING,
-                    PROFILE_CHOICE_ID_START + index,
-                    PCWSTR(value.as_mut_ptr()),
-                )
-            }
-            .is_err()
-            {
-                appended = false;
-                break;
-            }
         }
-        if appended {
-            let mut rect = RECT::default();
-            if unsafe { GetWindowRect(hwnd, &mut rect) }.is_ok() {
+        show_dark_profile_menu(hwnd, &items);
+    }
+
+    /// Compact dark raised menu (radius 10, pad 6) for overflow profiles.
+    fn show_dark_profile_menu(parent: HWND, items: &[(usize, String)]) {
+        static MENU_CLASS: std::sync::OnceLock<()> = std::sync::OnceLock::new();
+        let _ = MENU_CLASS.get_or_init(|| {
+            let instance =
+                unsafe { windows::Win32::System::LibraryLoader::GetModuleHandleW(None) }.ok();
+            if let Some(instance) = instance {
+                let class = WNDCLASSW {
+                    style: CS_HREDRAW | CS_VREDRAW | CS_DROPSHADOW,
+                    lpfnWndProc: Some(profile_menu_wnd_proc),
+                    hInstance: HINSTANCE(instance.0),
+                    hbrBackground: popup_section_brush(),
+                    lpszClassName: w!("SelectionTranslateProfileMenu"),
+                    ..Default::default()
+                };
                 unsafe {
-                    let _ = SetForegroundWindow(hwnd);
-                    let command = TrackPopupMenu(
-                        menu,
-                        TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RETURNCMD,
-                        rect.left,
-                        rect.bottom,
-                        Some(0),
-                        hwnd,
-                        None,
-                    );
-                    let command_id = command.0 as usize;
-                    if let Some(index) = profile_choice_index(command_id, labels.len()) {
-                        post_owner_with_value(hwnd, POPUP_PROFILE_SELECTED, index);
-                    }
+                    let _ = RegisterClassW(&class);
                 }
             }
-        }
+        });
+        let Ok(instance) =
+            (unsafe { windows::Win32::System::LibraryLoader::GetModuleHandleW(None) })
+        else {
+            return;
+        };
+        let dpi = dpi_for_window(parent);
+        let item_h = scale(32, dpi);
+        let pad = scale(6, dpi);
+        let width = scale(176, dpi);
+        let height = pad * 2 + item_h * items.len() as i32;
+        let mut parent_rect = RECT::default();
+        let origin = if unsafe { GetWindowRect(parent, &mut parent_rect) }.is_ok() {
+            Point {
+                x: parent_rect.left + scale(12, dpi),
+                y: parent_rect.bottom,
+            }
+        } else {
+            Point { x: 0, y: 0 }
+        };
+        let menu_data = Box::new(ProfileMenuData {
+            items: items.to_vec(),
+            hover: None,
+            parent,
+        });
+        let data_ptr = Box::into_raw(menu_data);
+        let menu = unsafe {
+            CreateWindowExW(
+                WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+                w!("SelectionTranslateProfileMenu"),
+                w!(""),
+                WS_POPUP | WS_VISIBLE,
+                origin.x,
+                origin.y,
+                width,
+                height,
+                Some(parent),
+                None,
+                Some(HINSTANCE(instance.0)),
+                Some(data_ptr.cast()),
+            )
+        };
+        let Ok(menu) = menu else {
+            unsafe { drop(Box::from_raw(data_ptr)) };
+            return;
+        };
+        apply_round_region(menu, (width, height), dpi);
         unsafe {
-            let _ = DestroyMenu(menu);
+            let _ = SetWindowPos(
+                menu,
+                Some(HWND_TOPMOST),
+                origin.x,
+                origin.y,
+                width,
+                height,
+                SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            );
+            // Capture so an outside click dismisses the menu.
+            let _ = SetCapture(menu);
         }
+    }
+
+    #[derive(Debug)]
+    struct ProfileMenuData {
+        items: Vec<(usize, String)>,
+        hover: Option<usize>,
+        parent: HWND,
+    }
+
+    unsafe extern "system" fn profile_menu_wnd_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        match msg {
+            WM_NCCREATE => {
+                let create =
+                    &*(lparam.0 as *const windows::Win32::UI::WindowsAndMessaging::CREATESTRUCTW);
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, create.lpCreateParams as isize);
+            }
+            WM_NCDESTROY => {
+                let pointer = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut ProfileMenuData;
+                if !pointer.is_null() {
+                    drop(Box::from_raw(pointer));
+                    SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+                }
+                let _ = ReleaseCapture();
+            }
+            WM_PAINT => {
+                let mut paint = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
+                let hdc = BeginPaint(hwnd, &mut paint);
+                let mut client = RECT::default();
+                let _ = GetClientRect(hwnd, &mut client);
+                let fill = popup_brush(theme::RAISED);
+                let _ = FillRect(hdc, &client, fill);
+                let _ = DeleteObject(fill.into());
+                let frame = popup_brush(theme::LINE);
+                let _ = FrameRect(hdc, &client, frame);
+                let _ = DeleteObject(frame.into());
+                let pointer = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut ProfileMenuData;
+                if !pointer.is_null() {
+                    let data = &*pointer;
+                    let dpi = DEFAULT_DPI;
+                    let pad = scale(6, dpi);
+                    let item_h = scale(32, dpi);
+                    let font = data_mut(data.parent)
+                        .map(|p| p.fonts[0])
+                        .filter(|font| !font.0.is_null());
+                    for (row, (_, label)) in data.items.iter().enumerate() {
+                        let top = pad + row as i32 * item_h;
+                        let rect = RECT {
+                            left: pad,
+                            top,
+                            right: client.right - pad,
+                            bottom: top + item_h,
+                        };
+                        if data.hover == Some(row) {
+                            paint_round_rect(
+                                hdc,
+                                rect,
+                                scale(6, dpi),
+                                blend_over(theme::RAISED, theme::ACCENT, 30),
+                                None,
+                            );
+                        }
+                        paint_section_label(
+                            hdc,
+                            font,
+                            label,
+                            rect,
+                            if data.hover == Some(row) {
+                                theme::ACCENT
+                            } else {
+                                theme::INK
+                            },
+                        );
+                    }
+                }
+                let _ = EndPaint(hwnd, &paint);
+                return LRESULT(0);
+            }
+            WM_MOUSEMOVE => {
+                let y = ((lparam.0 as u32 >> 16) & 0xffff) as i16 as i32;
+                let pointer = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut ProfileMenuData;
+                if !pointer.is_null() {
+                    let data = &mut *pointer;
+                    let pad = scale(6, DEFAULT_DPI);
+                    let item_h = scale(32, DEFAULT_DPI);
+                    let row = ((y - pad) / item_h).max(0) as usize;
+                    let hover = (row < data.items.len()).then_some(row);
+                    if hover != data.hover {
+                        data.hover = hover;
+                        unsafe {
+                            let _ = InvalidateRect(Some(hwnd), None, true);
+                        }
+                    }
+                }
+                return LRESULT(0);
+            }
+            WM_LBUTTONUP => {
+                let y = ((lparam.0 as u32 >> 16) & 0xffff) as i16 as i32;
+                let pointer = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut ProfileMenuData;
+                if !pointer.is_null() {
+                    let data = &*pointer;
+                    let pad = scale(6, DEFAULT_DPI);
+                    let item_h = scale(32, DEFAULT_DPI);
+                    let row = ((y - pad) / item_h).max(0) as usize;
+                    if let Some((index, _)) = data.items.get(row) {
+                        let parent = data.parent;
+                        let index = *index;
+                        post_owner_with_value(parent, POPUP_PROFILE_SELECTED, index);
+                    }
+                }
+                let _ = DestroyWindow(hwnd);
+                return LRESULT(0);
+            }
+            WM_CAPTURECHANGED => {
+                let _ = DestroyWindow(hwnd);
+                return LRESULT(0);
+            }
+            WM_KEYDOWN if wparam.0 as u32 == VK_ESCAPE.0 as u32 => {
+                let _ = DestroyWindow(hwnd);
+                return LRESULT(0);
+            }
+            _ => {}
+        }
+        DefWindowProcW(hwnd, msg, wparam, lparam)
     }
 
     pub(super) fn profile_choice_index(command_id: usize, profile_count: usize) -> Option<usize> {
@@ -2550,10 +3095,9 @@ mod windows_impl {
             0x0133 | 0x0135 | 0x0138 => {
                 let hdc = windows::Win32::Graphics::Gdi::HDC(wparam.0 as *mut _);
                 let child = HWND(lparam.0 as *mut core::ffi::c_void);
-                let muted = data_mut(hwnd)
-                    .is_some_and(|data| data.input == child || data.context_input == child);
-                SetBkColor(hdc, POPUP_SECTION_BG);
-                SetTextColor(hdc, if muted { POPUP_MUTED } else { POPUP_TEXT });
+                let is_context = data_mut(hwnd).is_some_and(|data| data.context_input == child);
+                SetBkColor(hdc, theme::RAISED);
+                SetTextColor(hdc, if is_context { theme::MUTED } else { theme::INK });
                 return LRESULT(popup_section_brush().0 as isize);
             }
             // The popup is initially passive. A Ctrl-click on its background
@@ -2657,15 +3201,18 @@ mod windows_impl {
                         // result-popup size.
                         if !choosing {
                             let min = min_popup_size(dpi);
+                            let max_w = max_popup_width(dpi);
                             if width >= min.0 && height >= min.1 {
                                 if let Some(data) = data_mut(hwnd) {
-                                    data.window_size = Some((width, height));
+                                    data.window_size = Some((width.min(max_w), height));
                                 }
                             }
                         }
                         layout_children(hwnd, dpi);
                         apply_round_region(hwnd, (width, height), dpi);
-                        let _ = InvalidateRect(Some(hwnd), None, true);
+                        unsafe {
+                            let _ = InvalidateRect(Some(hwnd), None, true);
+                        }
                     }
                 }
                 return LRESULT(0);
@@ -2677,6 +3224,7 @@ mod windows_impl {
                     let info = &mut *(lparam.0 as *mut MINMAXINFO);
                     info.ptMinTrackSize.x = min_width;
                     info.ptMinTrackSize.y = min_height;
+                    info.ptMaxTrackSize.x = max_popup_width(dpi);
                 }
                 return LRESULT(0);
             }
@@ -2711,7 +3259,9 @@ mod windows_impl {
                     }
                     layout_children(hwnd, dpi);
                     apply_round_region(hwnd, size, dpi);
-                    let _ = InvalidateRect(Some(hwnd), None, true);
+                    unsafe {
+                        let _ = InvalidateRect(Some(hwnd), None, true);
+                    }
                 }
                 return LRESULT(0);
             }
@@ -2866,6 +3416,16 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn first_profile_pill_is_active_by_default() {
+        use super::windows_impl::{button_kind_for_id, ButtonKind};
+        const ID0: usize = 1000;
+        assert_eq!(button_kind_for_id(ID0, None), ButtonKind::PillActive);
+        assert_eq!(button_kind_for_id(ID0, Some(0)), ButtonKind::PillActive);
+        assert_eq!(button_kind_for_id(ID0 + 1, Some(0)), ButtonKind::Pill);
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn profile_choice_commands_map_only_to_visible_names() {
         use super::windows_impl::profile_choice_index;
 
@@ -2912,6 +3472,14 @@ mod tests {
         .expect("parent");
         let mut popup =
             Popup::show(parent, 99, super::Point { x: 120, y: 120 }).expect("popup show");
+        popup.show_profile_choices(&[
+            "Translate".to_owned(),
+            "Expert".to_owned(),
+            "Program".to_owned(),
+            "Concise".to_owned(),
+            "Contextual".to_owned(),
+            "Word".to_owned(),
+        ]);
         popup.set_input("annotation", Some("Corner radius is capped at 8px."));
         popup.set_text("# Translation\n\n• Chinese: 注释\n• English: annotation\n");
         // Pump a few messages so WM_PAINT can run.
@@ -2943,7 +3511,7 @@ mod tests {
         unsafe { GetWindowRect(popup_hwnd, &mut rect) }.expect("rect");
         let width = rect.right - rect.left;
         let height = rect.bottom - rect.top;
-        assert!(width >= 400, "result popup width {width}");
+        assert!(width >= 380, "result popup width {width}");
         assert!(
             height >= 300,
             "result popup height {height}, chooser pollution?"
@@ -2984,9 +3552,9 @@ mod tests {
             let _ = DeleteDC(mem);
             ReleaseDC(Some(popup_hwnd), screen);
         }
-        // Write 32-bit BI_RGB BMP (bottom-up).
-        let out =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tmp/popup_preview.bmp");
+        // Write 32-bit BI_RGB BMP (bottom-up) under windows/tmp for visual QA.
+        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tmp/ui-redesign-popup/popup_preview.bmp");
         std::fs::create_dir_all(out.parent().unwrap()).ok();
         let mut file = std::fs::File::create(&out).expect("create bmp");
         use std::io::Write;
@@ -3025,16 +3593,41 @@ mod tests {
     fn chooser_height_cannot_persist_as_result_popup_size() {
         use super::windows_impl::valid_result_size;
 
-        let min = (360, 280);
-        let fallback = (540, 400);
+        let min = (380, 320);
+        let fallback = (420, 520);
         // Chooser strip must not become the result size.
-        assert_eq!(valid_result_size(Some((400, 38)), min, fallback), fallback);
-        assert_eq!(valid_result_size(Some((200, 400)), min, fallback), fallback);
         assert_eq!(
-            valid_result_size(Some((700, 500)), min, fallback),
-            (700, 500)
+            valid_result_size(Some((400, 38)), min, fallback, 460),
+            fallback
         );
-        assert_eq!(valid_result_size(None, min, fallback), fallback);
+        assert_eq!(
+            valid_result_size(Some((200, 400)), min, fallback, 460),
+            fallback
+        );
+        assert_eq!(
+            valid_result_size(Some((700, 500)), min, fallback, 460),
+            (460, 500)
+        );
+        assert_eq!(
+            valid_result_size(Some((420, 520)), min, fallback, 460),
+            (420, 520)
+        );
+        assert_eq!(valid_result_size(None, min, fallback, 460), fallback);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn default_popup_width_is_420_clamped_to_380_460() {
+        use super::windows_impl::{
+            default_popup_size, max_popup_width, min_popup_size, scaled_size,
+        };
+
+        let (w, h) = default_popup_size(96);
+        assert_eq!(w, 420);
+        assert_eq!(h, 520);
+        assert_eq!(min_popup_size(96).0, 380);
+        assert_eq!(max_popup_width(96), 460);
+        assert_eq!(scaled_size((420, 520), 120), (525, 650));
     }
 
     #[cfg(windows)]
@@ -3101,41 +3694,35 @@ mod tests {
     fn layout_fills_width_and_lets_result_absorb_extra_height() {
         use super::windows_impl::compute_layout;
 
-        let base = compute_layout(440, 260, 96, 5);
-        let wide = compute_layout(800, 260, 96, 5);
-        let tall = compute_layout(440, 500, 96, 5);
+        let labels = ["Copy", "Retry", "Prompt", "Pin", "Close"];
+        let base = compute_layout(420, 520, 96, labels);
+        let tall = compute_layout(420, 700, 96, labels);
+        let short = compute_layout(420, 360, 96, labels);
 
-        // Buttons stretch with content width (integer division may leave 1px).
-        assert!(wide.button_width > base.button_width);
-        let wide_used = wide.button_width * 5 + wide.button_gap * 4 + wide.margin * 2;
-        let base_used = base.button_width * 5 + base.button_gap * 4 + base.margin * 2;
-        // Integer division may leave a few leftover pixels.
-        assert!((790..=800).contains(&wide_used));
-        assert!((430..=440).contains(&base_used));
-
-        // Target/context stay compact; result grows with height.
-        assert_eq!(tall.target_height, base.target_height);
-        assert_eq!(tall.context_height, base.context_height);
-        assert_eq!(tall.output_top, base.output_top);
+        // Selection stays compact (~30% body); Result absorbs extra height.
+        assert!(tall.result_height > base.result_height);
         assert!(tall.output_height > base.output_height);
-        assert!(tall.button_top > base.button_top);
-
-        // Shorter client shrinks panes instead of overflowing buttons.
-        let short = compute_layout(440, 180, 96, 5);
-        assert!(short.context_height <= base.context_height);
-        assert!(short.target_height <= base.target_height);
+        assert!(base.selection_height <= base.body_height * 35 / 100);
         assert!(short.output_height >= 1);
-        assert!(short.button_top + short.button_height <= 180);
+        assert!(short.button_top + short.button_height <= 360);
+        // Footer buttons are content-sized, not equal-width dumps.
+        assert!(base.button_widths[0] > 0);
+        assert!(base.button_xs[1] > base.button_xs[0]);
+        assert!(base.button_xs[4] + base.button_widths[4] <= 420);
+        // Title drag band is the full title height.
+        assert_eq!(base.drag_band, base.title_height);
     }
 
     #[cfg(windows)]
     #[test]
     fn unified_popup_palette_and_control_styles_are_dark_and_borderless() {
-        use super::windows_impl::{OWNER_DRAW_BUTTON_STYLE, POPUP_ACCENT, POPUP_BG, POPUP_TEXT};
+        use super::super::theme;
+        use super::windows_impl::OWNER_DRAW_BUTTON_STYLE;
         use windows::Win32::UI::WindowsAndMessaging::BS_PUSHBUTTON;
 
-        assert_ne!(POPUP_BG, POPUP_TEXT);
-        assert_ne!(POPUP_BG, POPUP_ACCENT);
+        assert_ne!(theme::SURFACE, theme::INK);
+        assert_ne!(theme::SURFACE, theme::ACCENT);
+        assert_eq!(theme::VOID, theme::ON_ACCENT);
         assert_eq!(
             OWNER_DRAW_BUTTON_STYLE & BS_PUSHBUTTON as u32,
             BS_PUSHBUTTON as u32
@@ -3146,20 +3733,32 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn visual_geometry_and_button_states_scale_at_common_dpi_values() {
+        use super::super::theme;
         use super::windows_impl::{
-            button_fill, popup_corner_radius, scaled_size, ButtonVisualState, POPUP_ACCENT_DIM,
-            POPUP_BUTTON_BG,
+            button_fill, popup_corner_radius, scaled_size, ButtonKind, ButtonVisualState,
         };
-        assert_eq!(scaled_size((660, 470), 96), (660, 470));
-        assert_eq!(scaled_size((660, 470), 144), (990, 705));
-        assert_eq!(scaled_size((660, 470), 192), (1320, 940));
+        assert_eq!(scaled_size((420, 520), 96), (420, 520));
+        assert_eq!(scaled_size((420, 520), 144), (630, 780));
+        assert_eq!(scaled_size((420, 520), 192), (840, 1040));
         assert_eq!(popup_corner_radius(96), 12);
         assert_eq!(popup_corner_radius(144), 18);
         assert_eq!(popup_corner_radius(192), 24);
-        assert_eq!(button_fill(ButtonVisualState::Normal), POPUP_BUTTON_BG);
-        assert_eq!(button_fill(ButtonVisualState::Pressed), POPUP_ACCENT_DIM);
-        assert_ne!(button_fill(ButtonVisualState::Disabled), POPUP_BUTTON_BG);
-        assert_ne!(button_fill(ButtonVisualState::Focused), POPUP_BUTTON_BG);
+        assert_eq!(
+            button_fill(ButtonKind::Primary, ButtonVisualState::Normal),
+            theme::ACCENT
+        );
+        assert_eq!(
+            button_fill(ButtonKind::Default, ButtonVisualState::Normal),
+            theme::RAISED
+        );
+        assert_eq!(
+            button_fill(ButtonKind::Ghost, ButtonVisualState::Normal),
+            theme::SURFACE
+        );
+        assert_eq!(
+            button_fill(ButtonKind::PillActive, ButtonVisualState::Normal),
+            theme::ACCENT
+        );
     }
 
     #[cfg(windows)]
@@ -3328,51 +3927,52 @@ mod tests {
     fn drag_band_client_routing_only_accepts_blank_top_strip() {
         use super::windows_impl::drag_band_client_contains;
 
+        // Title height 52 is the drag band at 96 DPI.
         assert!(drag_band_client_contains(
-            Point { x: 100, y: 23 },
-            (440, 260),
+            Point { x: 100, y: 51 },
+            (420, 520),
             96,
             false
         ));
         assert!(!drag_band_client_contains(
-            Point { x: 100, y: 24 },
-            (440, 260),
+            Point { x: 100, y: 52 },
+            (420, 520),
             96,
             false
         ));
         assert!(!drag_band_client_contains(
             Point { x: 100, y: 10 },
-            (440, 260),
+            (420, 520),
             96,
             true
         ));
         assert!(!drag_band_client_contains(
             Point { x: -1, y: 10 },
-            (440, 260),
+            (420, 520),
             96,
             false
         ));
         assert!(drag_band_client_contains(
-            Point { x: 100, y: 35 },
-            (660, 390),
+            Point { x: 100, y: 77 },
+            (630, 780),
             144,
             false
         ));
         assert!(!drag_band_client_contains(
-            Point { x: 100, y: 36 },
-            (660, 390),
+            Point { x: 100, y: 78 },
+            (630, 780),
             144,
             false
         ));
         assert!(drag_band_client_contains(
-            Point { x: 100, y: 47 },
-            (880, 520),
+            Point { x: 100, y: 103 },
+            (840, 1040),
             192,
             false
         ));
         assert!(!drag_band_client_contains(
-            Point { x: 100, y: 48 },
-            (880, 520),
+            Point { x: 100, y: 104 },
+            (840, 1040),
             192,
             false
         ));
@@ -3470,7 +4070,8 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn hidden_richedit_applies_bold_format_to_completed_markdown() {
-        use super::windows_impl::{set_output, POPUP_TEXT, RICH_EDIT_CLASS};
+        use super::super::theme;
+        use super::windows_impl::{set_output, RICH_EDIT_CLASS};
         use windows::core::w;
         use windows::Win32::Foundation::{FreeLibrary, HINSTANCE, LPARAM, WPARAM};
         use windows::Win32::System::LibraryLoader::{GetModuleHandleW, LoadLibraryW};
@@ -3543,7 +4144,7 @@ mod tests {
             assert_ne!(format.dwMask.0 & CFM_BOLD.0, 0);
             assert_ne!(format.dwEffects.0 & CFE_BOLD.0, 0);
             assert_ne!(format.dwMask.0 & CFM_COLOR.0, 0);
-            assert_eq!(format.crTextColor, POPUP_TEXT);
+            assert_eq!(format.crTextColor, theme::INK);
             assert_ne!(format.dwMask.0 & CFM_FACE.0, 0);
             let face = String::from_utf16_lossy(&format.szFaceName);
             assert_eq!(face.trim_end_matches('\0'), "Segoe UI");

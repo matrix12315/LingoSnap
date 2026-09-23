@@ -18,7 +18,6 @@ pub const DEFAULT_CREDENTIAL_TARGET: &str = "SelectionTranslate/OpenAI";
 
 /// Configuration stored at `%LOCALAPPDATA%\\SelectionTranslate\\config.toml`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct AppConfig {
     #[serde(default = "default_profiles")]
     pub profiles: Vec<PromptConfig>,
@@ -47,14 +46,12 @@ pub enum UiLanguage {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct UiSettings {
     #[serde(default)]
     pub manager_language: UiLanguage,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct DefaultProfiles {
     #[serde(default = "default_selection_profile")]
     pub selection: String,
@@ -72,7 +69,6 @@ impl Default for DefaultProfiles {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct ProviderSettings {
     #[serde(default = "default_endpoint")]
     pub endpoint: String,
@@ -94,7 +90,6 @@ impl Default for ProviderSettings {
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-#[serde(deny_unknown_fields)]
 pub struct HotkeySettings {
     #[serde(default = "default_cycle_profiles_hotkey")]
     pub cycle_profiles: String,

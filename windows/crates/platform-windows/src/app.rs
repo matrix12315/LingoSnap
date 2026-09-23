@@ -2136,7 +2136,10 @@ mod windows_impl {
         };
         // `can_start*` ran with identical inputs on this same message-loop
         // thread, so no state can change between the check and commit.
-        let handle = handle.expect("same-thread Coordinator preflight must remain valid");
+        let Ok(handle) = handle else {
+            runtime_trace::record("preflight_handle_missing_at_commit");
+            return;
+        };
         let prepared = preflight_prepared.bind_job_id(handle.input.id);
         state.popup_failure_reported = false;
 
@@ -2158,6 +2161,8 @@ mod windows_impl {
             prepared.context(),
             cached_output.as_deref(),
         );
+        // Standalone profile bar (guide §1 / §3.4) as its own surface.
+        show_standalone_profile_bar(state, hwnd, anchor);
 
         // This is the commit point for a candidate replacement: extraction
         // produced a valid target, coordination and RequestGate admitted it,
@@ -2616,6 +2621,37 @@ mod windows_impl {
         runtime_trace::record("popup_staged_commit");
     }
 
+    fn show_standalone_profile_bar(state: &mut ShellState, hwnd: HWND, anchor: popup::Point) {
+        let ordered = profile_chooser_order(&state.runtime.config.profiles);
+        let names: Vec<String> = ordered
+            .iter()
+            .map(|&index| state.runtime.config.profiles[index].name.clone())
+            .collect();
+        if names.is_empty() {
+            return;
+        }
+        let id = allocate_popup_id(state);
+        let Ok(mut bar) = popup::Popup::show(hwnd, id, anchor) else {
+            runtime_trace::record("profile_bar_show_failure");
+            return;
+        };
+        if !bar.show_profile_choices(&names) {
+            runtime_trace::record("profile_bar_choices_failure");
+            return;
+        }
+        state.popups.push(PopupEntry {
+            id,
+            popup: bar,
+            last_request: None,
+            last_text: None,
+            presented_trigger: None,
+            guard_root_window: 0,
+            anchor,
+            parent: None,
+            created_order: id as u64,
+        });
+    }
+
     fn initialize_result_surface(
         state: &mut ShellState,
         surface: &ResultSurfaceReady,
@@ -2623,9 +2659,12 @@ mod windows_impl {
         context: Option<&str>,
         cached_output: Option<&str>,
     ) {
-        let popup = popup_entry_mut(state, surface.popup_id)
-            .map(|entry| &mut entry.popup)
-            .expect("result-surface capability requires a live popup");
+        let Some(popup) = popup_entry_mut(state, surface.popup_id).map(|entry| &mut entry.popup)
+        else {
+            runtime_trace::record("initialize_result_surface_missing_popup");
+            return;
+        };
+        // Result popup has no embedded pills (guide §3.4 / §4.1).
         popup.set_input(target, context);
         if let Some(output) = cached_output {
             popup.set_text(output);
