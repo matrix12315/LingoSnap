@@ -1798,9 +1798,15 @@ mod windows_impl {
                 .pending_profile_choice
                 .as_ref()
                 .map(|choice| choice.popup_id);
+            let highlight = state.pending_profile_choice.as_ref().and_then(|choice| {
+                choice
+                    .profile_ids
+                    .iter()
+                    .position(|id| *id == choice.pending.spec.prompt_id)
+            });
             let refreshed = chooser_id
                 .and_then(|id| popup_entry_mut(state, id))
-                .is_some_and(|entry| entry.popup.show_profile_choices(&profile_names));
+                .is_some_and(|entry| entry.popup.show_profile_choices(&profile_names, highlight));
             if refreshed {
                 if let Some(choice) = state.pending_profile_choice.as_mut() {
                     choice.pending.config_generation = state.config_generation;
@@ -1948,11 +1954,14 @@ mod windows_impl {
                 .iter()
                 .map(|&index| state.runtime.config.profiles[index].name.clone())
                 .collect();
+            let highlight = profile_ids
+                .iter()
+                .position(|id| *id == pending.spec.prompt_id);
             let admission = ensure_popup(hwnd, state, anchor, None, None, false);
             let popup_id = admission.map(|admission| admission.popup_id);
             let shown = popup_id
                 .and_then(|id| popup_entry_mut(state, id))
-                .is_some_and(|entry| entry.popup.show_profile_choices(&profile_names));
+                .is_some_and(|entry| entry.popup.show_profile_choices(&profile_names, highlight));
             if !shown {
                 if let Some(id) = popup_id {
                     remove_popup(state, id, true);

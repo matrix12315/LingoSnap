@@ -26,10 +26,11 @@ mod windows_app {
         COLORREF, HANDLE, HGLOBAL, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM,
     };
     use windows::Win32::Graphics::Gdi::{
-        BeginPaint, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DeleteObject, DrawFocusRect,
-        DrawTextW, EndPaint, FillRect, FillRgn, FrameRgn, InvalidateRect, SelectObject, SetBkColor,
-        SetTextColor, UpdateWindow, DRAW_TEXT_FORMAT, FONT_CHARSET, FONT_CLIP_PRECISION,
-        FONT_OUTPUT_PRECISION, FONT_QUALITY, HBRUSH, HFONT, HGDIOBJ,
+        BeginPaint, CreateFontW, CreatePen, CreateRoundRectRgn, CreateSolidBrush, DeleteObject,
+        DrawFocusRect, DrawTextW, Ellipse, EndPaint, FillRect, FillRgn, FrameRect, FrameRgn,
+        GetTextExtentPoint32W, InvalidateRect, SelectObject, SetBkColor, SetBkMode, SetTextColor,
+        UpdateWindow, BACKGROUND_MODE, DRAW_TEXT_FORMAT, FONT_CHARSET, FONT_CLIP_PRECISION,
+        FONT_OUTPUT_PRECISION, FONT_QUALITY, HBRUSH, HDC, HFONT, HGDIOBJ, PS_NULL, TRANSPARENT,
     };
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
@@ -37,7 +38,9 @@ mod windows_app {
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
     use windows::Win32::System::Ole::CF_UNICODETEXT;
-    use windows::Win32::UI::Controls::{SetWindowTheme, DRAWITEMSTRUCT, ODT_BUTTON};
+    use windows::Win32::UI::Controls::{
+        SetWindowTheme, DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_LISTBOX,
+    };
     use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
@@ -48,8 +51,8 @@ mod windows_app {
         ES_PASSWORD, GWLP_USERDATA, IDYES, MB_DEFBUTTON2, MB_ICONWARNING, MB_YESNO, MINMAXINFO,
         SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOW, WINDOW_STYLE, WM_CLOSE, WM_COMMAND,
         WM_CREATE, WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ERASEBKGND, WM_GETMINMAXINFO,
-        WM_NOTIFY, WM_PAINT, WM_SETFONT, WM_SIZE, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
-        WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU,
+        WM_MEASUREITEM, WM_NOTIFY, WM_PAINT, WM_SETFONT, WM_SIZE, WNDCLASSW, WS_BORDER, WS_CAPTION,
+        WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU,
         WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
     };
 
@@ -63,8 +66,6 @@ mod windows_app {
     const ID_DELETE_KEY: usize = 112;
     const ID_SAVE_PROMPT: usize = 120;
     const ID_NEW_PROMPT: usize = 121;
-    const ID_PREVIOUS_PROMPT: usize = 122;
-    const ID_NEXT_PROMPT: usize = 123;
     const ID_CLOSE: usize = 130;
     const ID_HISTORY_PROMPT: usize = 141;
     const ID_HISTORY_SOURCE: usize = 142;
@@ -93,24 +94,36 @@ mod windows_app {
     const ID_PROMPT_MODEL: usize = 170;
     const ID_PROMPT_TEMPERATURE: usize = 171;
     const ID_PROMPT_MAX_TOKENS: usize = 172;
-    const ID_PROMPT_SELECTION_DEFAULT: usize = 173;
-    const ID_PROMPT_HOVER_DEFAULT: usize = 174;
     const ID_HISTORY_SEARCH: usize = 175;
 
     const DEFAULT_DPI: u32 = 96;
-    const NAV_WIDTH: i32 = 176;
-    const PAGE_HEADER_HEIGHT: i32 = 56;
-    const MIN_CONTENT_WIDTH: i32 = 780;
-    const MIN_CLIENT_HEIGHT: i32 = 610;
-    const MANAGER_BG: COLORREF = COLORREF(0x002A_170F);
-    const NAV_BG: COLORREF = COLORREF(0x001C_0F0A);
-    const SURFACE_BG: COLORREF = COLORREF(0x0036_2218);
-    const SURFACE_HOVER: COLORREF = COLORREF(0x0045_2D21);
-    const BORDER: COLORREF = COLORREF(0x0055_4133);
-    const TEXT: COLORREF = COLORREF(0x00F0_E8E2);
-    const MUTED: COLORREF = COLORREF(0x00B8_A394);
-    const ACCENT: COLORREF = COLORREF(0x00FA_A560);
-    const DANGER: COLORREF = COLORREF(0x0071_71F8);
+    // Redesign mockup metrics (logical px): a horizontal tab bar over
+    // full-width pages whose content is capped at 720px and centered.
+    const TAB_BAR_HEIGHT: i32 = 46;
+    const PAGE_HEADER_HEIGHT: i32 = 64;
+    const CONTENT_PADDING: i32 = 32;
+    const CONTENT_MAX_WIDTH: i32 = 720;
+    const MIN_CONTENT_WIDTH: i32 = CONTENT_MAX_WIDTH + CONTENT_PADDING * 2;
+    const MIN_CLIENT_HEIGHT: i32 = 706;
+    const TAB_BUTTON_WIDTH: i32 = 92;
+    const TAB_BUTTON_HEIGHT: i32 = 32;
+    // Tokens from the redesign mockup. COLORREF is 0x00BBGGRR.
+    const MANAGER_BG: COLORREF = COLORREF(0x0013_0E0B); // --void #0B0E13
+    const TAB_BG: COLORREF = COLORREF(0x001F_1712); // --surface #12171F
+    const SURFACE_BG: COLORREF = COLORREF(0x0030_221A); // --raised #1A2230 (cards)
+    const SURFACE_HOVER: COLORREF = COLORREF(0x003F_2D23); // raised hover #232D3F
+    const TAB_HOT: COLORREF = COLORREF(0x003E_2C23); // accent 14% over surface #232C3E
+    const BORDER: COLORREF = COLORREF(0x0046_362C); // --line #2C3646
+    const TEXT: COLORREF = COLORREF(0x00FA_F4F0); // --ink #F0F4FA
+    const MUTED: COLORREF = COLORREF(0x00A8_978B); // --muted #8B97A8
+    const ACCENT: COLORREF = COLORREF(0x00FF_AC8B); // --accent #8BACFF
+    #[allow(dead_code)]
+    const GOLD: COLORREF = COLORREF(0x006A_B5D4); // --lex-gold #D4B56A
+    const OK: COLORREF = COLORREF(0x00A5_D14F); // --ok #4FD1A5
+    const DANGER: COLORREF = COLORREF(0x0078_71F0); // --err #F07178
+    const DANGER_BG: COLORREF = COLORREF(0x0036_282B); // err 8% over raised
+    const DANGER_BORDER: COLORREF = COLORREF(0x0049_3E65); // err 35% over raised
+    const PRIMARY_INK: COLORREF = COLORREF(0x0013_0E0B); // --void text on accent
 
     const LB_ADDSTRING: u32 = 0x0180;
     const LB_RESETCONTENT: u32 = 0x0184;
@@ -122,7 +135,10 @@ mod windows_app {
     const CB_SETCURSEL: u32 = 0x014E;
     const CB_GETCURSEL: u32 = 0x0147;
     const LBS_NOTIFY: u32 = 0x0001;
+    const LBS_OWNERDRAWFIXED: u32 = 0x0010;
+    const LBS_NOINTEGRALHEIGHT: u32 = 0x0100;
     const CBS_DROPDOWNLIST: u32 = 0x0003;
+    const CBS_DROPDOWN: u32 = 0x0002;
     const EM_SETREADONLY: u32 = 0x00CF;
 
     #[link(name = "kernel32")]
@@ -150,6 +166,9 @@ mod windows_app {
         PromptsSubtitle,
         HistorySubtitle,
         InterfaceLanguage,
+        ProviderCard,
+        CredentialsCard,
+        DefaultsCard,
         ProviderEndpoint,
         Model,
         CredentialTarget,
@@ -160,9 +179,6 @@ mod windows_app {
         HoverDefaultProfile,
         SaveSettings,
         CredentialPrivacy,
-        Profile,
-        Previous,
-        Next,
         New,
         Id,
         Name,
@@ -171,9 +187,10 @@ mod windows_app {
         ModelOverride,
         Temperature,
         MaxOutputTokens,
-        DefaultsSelectionHover,
         SavePrompt,
         PromptHint,
+        SearchCard,
+        EntriesCard,
         SearchTargetOutput,
         Refresh,
         CopyOutput,
@@ -209,6 +226,9 @@ mod windows_app {
         TextKey::PromptsSubtitle,
         TextKey::HistorySubtitle,
         TextKey::InterfaceLanguage,
+        TextKey::ProviderCard,
+        TextKey::CredentialsCard,
+        TextKey::DefaultsCard,
         TextKey::ProviderEndpoint,
         TextKey::Model,
         TextKey::CredentialTarget,
@@ -219,9 +239,6 @@ mod windows_app {
         TextKey::HoverDefaultProfile,
         TextKey::SaveSettings,
         TextKey::CredentialPrivacy,
-        TextKey::Profile,
-        TextKey::Previous,
-        TextKey::Next,
         TextKey::New,
         TextKey::Id,
         TextKey::Name,
@@ -230,9 +247,10 @@ mod windows_app {
         TextKey::ModelOverride,
         TextKey::Temperature,
         TextKey::MaxOutputTokens,
-        TextKey::DefaultsSelectionHover,
         TextKey::SavePrompt,
         TextKey::PromptHint,
+        TextKey::SearchCard,
+        TextKey::EntriesCard,
         TextKey::SearchTargetOutput,
         TextKey::Refresh,
         TextKey::CopyOutput,
@@ -272,21 +290,21 @@ mod windows_app {
                 "Search recent translations without keeping the database open"
             }
             (UiLanguage::English, InterfaceLanguage) => "Interface language",
+            (UiLanguage::English, ProviderCard) => "Provider",
+            (UiLanguage::English, CredentialsCard) => "Credentials",
+            (UiLanguage::English, DefaultsCard) => "Defaults",
             (UiLanguage::English, ProviderEndpoint) => "Provider endpoint",
             (UiLanguage::English, Model) => "Model",
             (UiLanguage::English, CredentialTarget) => "Credential target",
             (UiLanguage::English, ApiKey) => "API key",
             (UiLanguage::English, SaveKey) => "Save key",
             (UiLanguage::English, DeleteSavedKey) => "Delete saved key",
-            (UiLanguage::English, SelectionDefaultProfile) => "Selection default profile",
-            (UiLanguage::English, HoverDefaultProfile) => "Hover default profile",
+            (UiLanguage::English, SelectionDefaultProfile) => "Selection profile",
+            (UiLanguage::English, HoverDefaultProfile) => "Hover profile",
             (UiLanguage::English, SaveSettings) => "Save settings",
             (UiLanguage::English, CredentialPrivacy) => {
                 "Keys are held by Windows Credential Manager; they never enter config.toml."
             }
-            (UiLanguage::English, Profile) => "Profile",
-            (UiLanguage::English, Previous) => "Previous",
-            (UiLanguage::English, Next) => "Next",
             (UiLanguage::English, New) => "New",
             (UiLanguage::English, Id) => "ID",
             (UiLanguage::English, Name) => "Name",
@@ -295,11 +313,12 @@ mod windows_app {
             (UiLanguage::English, ModelOverride) => "Model override",
             (UiLanguage::English, Temperature) => "Temperature",
             (UiLanguage::English, MaxOutputTokens) => "Max output tokens",
-            (UiLanguage::English, DefaultsSelectionHover) => "Defaults: selection / hover",
             (UiLanguage::English, SavePrompt) => "Save prompt",
             (UiLanguage::English, PromptHint) => {
                 "Use {target}, {context}, and {source}; every user template needs {target}."
             }
+            (UiLanguage::English, SearchCard) => "Search",
+            (UiLanguage::English, EntriesCard) => "Entries",
             (UiLanguage::English, SearchTargetOutput) => "Search target/output",
             (UiLanguage::English, Refresh) => "Refresh",
             (UiLanguage::English, CopyOutput) => "Copy output",
@@ -334,21 +353,21 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, PromptsSubtitle) => "创建和调整可复用的 LLM 指令",
             (UiLanguage::SimplifiedChinese, HistorySubtitle) => "搜索最近结果；数据库仅按需打开",
             (UiLanguage::SimplifiedChinese, InterfaceLanguage) => "界面语言",
+            (UiLanguage::SimplifiedChinese, ProviderCard) => "服务商",
+            (UiLanguage::SimplifiedChinese, CredentialsCard) => "凭据",
+            (UiLanguage::SimplifiedChinese, DefaultsCard) => "默认配置",
             (UiLanguage::SimplifiedChinese, ProviderEndpoint) => "服务端点",
             (UiLanguage::SimplifiedChinese, Model) => "模型",
             (UiLanguage::SimplifiedChinese, CredentialTarget) => "凭据目标",
             (UiLanguage::SimplifiedChinese, ApiKey) => "API 密钥",
             (UiLanguage::SimplifiedChinese, SaveKey) => "保存密钥",
             (UiLanguage::SimplifiedChinese, DeleteSavedKey) => "删除已存密钥",
-            (UiLanguage::SimplifiedChinese, SelectionDefaultProfile) => "划词默认配置",
-            (UiLanguage::SimplifiedChinese, HoverDefaultProfile) => "悬停默认配置",
+            (UiLanguage::SimplifiedChinese, SelectionDefaultProfile) => "划词配置",
+            (UiLanguage::SimplifiedChinese, HoverDefaultProfile) => "悬停配置",
             (UiLanguage::SimplifiedChinese, SaveSettings) => "保存设置",
             (UiLanguage::SimplifiedChinese, CredentialPrivacy) => {
                 "密钥保存在 Windows 凭据管理器中，绝不会写入 config.toml。"
             }
-            (UiLanguage::SimplifiedChinese, Profile) => "配置",
-            (UiLanguage::SimplifiedChinese, Previous) => "上一个",
-            (UiLanguage::SimplifiedChinese, Next) => "下一个",
             (UiLanguage::SimplifiedChinese, New) => "新建",
             (UiLanguage::SimplifiedChinese, Id) => "ID",
             (UiLanguage::SimplifiedChinese, Name) => "名称",
@@ -357,11 +376,12 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, ModelOverride) => "模型覆盖",
             (UiLanguage::SimplifiedChinese, Temperature) => "温度",
             (UiLanguage::SimplifiedChinese, MaxOutputTokens) => "最大输出令牌数",
-            (UiLanguage::SimplifiedChinese, DefaultsSelectionHover) => "默认配置：划词 / 悬停",
             (UiLanguage::SimplifiedChinese, SavePrompt) => "保存提示词",
             (UiLanguage::SimplifiedChinese, PromptHint) => {
                 "可使用 {target}、{context} 和 {source}；用户模板必须包含 {target}。"
             }
+            (UiLanguage::SimplifiedChinese, SearchCard) => "搜索",
+            (UiLanguage::SimplifiedChinese, EntriesCard) => "记录",
             (UiLanguage::SimplifiedChinese, SearchTargetOutput) => "搜索目标/输出",
             (UiLanguage::SimplifiedChinese, Refresh) => "刷新",
             (UiLanguage::SimplifiedChinese, CopyOutput) => "复制输出",
@@ -452,7 +472,6 @@ mod windows_app {
             detail: &'a str,
         },
         NewPromptUnsaved,
-        NewDraft,
         UnsavedPromptDiscarded,
         PromptInvalid {
             detail: &'a str,
@@ -467,10 +486,6 @@ mod windows_app {
         },
         HistoryCount {
             count: usize,
-        },
-        ProfilePosition {
-            current: usize,
-            total: usize,
         },
     }
 
@@ -600,7 +615,6 @@ mod windows_app {
             NoPromptProfile => match language { UiLanguage::English => "There is no prompt profile to save.".to_owned(), UiLanguage::SimplifiedChinese => "没有可保存的提示词配置。".to_owned() },
             CannotSavePrompt { detail } => match language { UiLanguage::English => format!("Cannot save prompt: {detail}"), UiLanguage::SimplifiedChinese => format!("无法保存提示词：{detail}") },
             NewPromptUnsaved => match language { UiLanguage::English => "New prompt is unsaved. Edit it, then choose Save prompt.".to_owned(), UiLanguage::SimplifiedChinese => "新提示词尚未保存。编辑后请选择“保存提示词”。".to_owned() },
-            NewDraft => match language { UiLanguage::English => "New draft".to_owned(), UiLanguage::SimplifiedChinese => "新草稿".to_owned() },
             UnsavedPromptDiscarded => match language { UiLanguage::English => "Unsaved new prompt discarded; the saved configuration was unchanged.".to_owned(), UiLanguage::SimplifiedChinese => "已丢弃未保存的新提示词；已保存的配置未更改。".to_owned() },
             PromptInvalid { detail } => match language { UiLanguage::English => format!("Prompt is invalid: {detail}"), UiLanguage::SimplifiedChinese => format!("提示词无效：{detail}") },
             InvalidTemperature => match language { UiLanguage::English => "Temperature must be a number from 0 to 2.".to_owned(), UiLanguage::SimplifiedChinese => "温度必须是 0 到 2 之间的数字。".to_owned() },
@@ -610,7 +624,6 @@ mod windows_app {
             CredentialStatusAbsent => match language { UiLanguage::English => "No saved key for this target.".to_owned(), UiLanguage::SimplifiedChinese => "此目标没有已保存的密钥。".to_owned() },
             CredentialStatusUnavailable { detail } => match language { UiLanguage::English => format!("Credential status unavailable: {detail}"), UiLanguage::SimplifiedChinese => format!("凭据状态不可用：{detail}") },
             HistoryCount { count } => match language { UiLanguage::English if count == 1 => "1 entry".to_owned(), UiLanguage::English => format!("{count} entries"), UiLanguage::SimplifiedChinese => format!("{count} 条记录") },
-            ProfilePosition { current, total } => match language { UiLanguage::English => format!("{current} of {total}"), UiLanguage::SimplifiedChinese => format!("第 {current} 个，共 {total} 个") },
         }
     }
 
@@ -623,46 +636,42 @@ mod windows_app {
 
     #[derive(Clone, Copy)]
     struct ManagerLayout {
-        nav: RECT,
+        tab_bar: RECT,
         page: RECT,
         status: RECT,
-        nav_buttons: [RECT; 4],
+        tabs: [RECT; 3],
     }
 
     impl ManagerLayout {
         fn for_client(width: i32, height: i32, dpi: u32) -> Self {
             let logical_width = unscale_from_dpi(width.max(1), dpi);
             let logical_height = unscale_from_dpi(height.max(1), dpi);
-            let nav_width = NAV_WIDTH.min(logical_width);
-            let button_left = 16;
-            let button_right = (nav_width - 16).max(button_left + 1);
-            let button = |top: i32| RECT {
-                left: button_left,
-                top,
-                right: button_right,
-                bottom: top + 42,
+            let tab = |index: i32| RECT {
+                left: 12 + index * (TAB_BUTTON_WIDTH + 4),
+                top: (TAB_BAR_HEIGHT - TAB_BUTTON_HEIGHT) / 2,
+                right: 12 + index * (TAB_BUTTON_WIDTH + 4) + TAB_BUTTON_WIDTH,
+                bottom: (TAB_BAR_HEIGHT - TAB_BUTTON_HEIGHT) / 2 + TAB_BUTTON_HEIGHT,
             };
-            let close_top = (logical_height - 58).max(216);
             Self {
-                nav: RECT {
+                tab_bar: RECT {
                     left: 0,
                     top: 0,
-                    right: nav_width,
-                    bottom: logical_height,
+                    right: logical_width,
+                    bottom: TAB_BAR_HEIGHT,
                 },
                 page: RECT {
-                    left: nav_width,
-                    top: 0,
+                    left: 0,
+                    top: TAB_BAR_HEIGHT,
                     right: logical_width,
                     bottom: logical_height,
                 },
                 status: RECT {
-                    left: 16,
-                    top: 238,
-                    right: button_right,
-                    bottom: close_top - 12,
+                    left: (logical_width - 16 - 380).max(310),
+                    top: (TAB_BAR_HEIGHT - 20) / 2,
+                    right: logical_width - 16,
+                    bottom: (TAB_BAR_HEIGHT - 20) / 2 + 20,
                 },
-                nav_buttons: [button(78), button(126), button(174), button(close_top)],
+                tabs: [tab(0), tab(1), tab(2)],
             }
         }
     }
@@ -671,10 +680,7 @@ mod windows_app {
     struct ControlPlacement {
         hwnd: HWND,
         view: View,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
+        slot: Slot,
     }
 
     #[derive(Clone, Copy)]
@@ -685,17 +691,21 @@ mod windows_app {
 
     struct ThemeResources {
         background: HBRUSH,
-        nav: HBRUSH,
         surface: HBRUSH,
+        card: HBRUSH,
         body_font: HFONT,
         title_font: HFONT,
-        label_font: HFONT,
+        caps_font: HFONT,
+        small_font: HFONT,
+        note_font: HFONT,
+        mono_font: HFONT,
     }
 
     impl ThemeResources {
         fn new(dpi: u32) -> Self {
             let face = w!("Segoe UI");
-            let font = |size: i32, weight: i32| unsafe {
+            let mono_face = w!("Consolas");
+            let font = |size: i32, weight: i32, face: PCWSTR| unsafe {
                 CreateFontW(
                     -scale_for_dpi(size, dpi),
                     0,
@@ -715,11 +725,14 @@ mod windows_app {
             };
             Self {
                 background: unsafe { CreateSolidBrush(MANAGER_BG) },
-                nav: unsafe { CreateSolidBrush(NAV_BG) },
-                surface: unsafe { CreateSolidBrush(SURFACE_BG) },
-                body_font: font(14, 400),
-                title_font: font(24, 600),
-                label_font: font(12, 600),
+                surface: unsafe { CreateSolidBrush(TAB_BG) },
+                card: unsafe { CreateSolidBrush(SURFACE_BG) },
+                body_font: font(13, 400, face),
+                title_font: font(26, 600, face),
+                caps_font: font(10, 600, face),
+                small_font: font(11, 400, face),
+                note_font: font(12, 400, face),
+                mono_font: font(12, 400, mono_face),
             }
         }
     }
@@ -729,11 +742,14 @@ mod windows_app {
             unsafe {
                 for object in [
                     HGDIOBJ(self.background.0),
-                    HGDIOBJ(self.nav.0),
                     HGDIOBJ(self.surface.0),
+                    HGDIOBJ(self.card.0),
                     HGDIOBJ(self.body_font.0),
                     HGDIOBJ(self.title_font.0),
-                    HGDIOBJ(self.label_font.0),
+                    HGDIOBJ(self.caps_font.0),
+                    HGDIOBJ(self.small_font.0),
+                    HGDIOBJ(self.note_font.0),
+                    HGDIOBJ(self.mono_font.0),
                 ] {
                     if !object.0.is_null() {
                         let _ = DeleteObject(object);
@@ -747,7 +763,6 @@ mod windows_app {
         settings_nav: HWND,
         prompts_nav: HWND,
         history_nav: HWND,
-        close: HWND,
         language: HWND,
         settings_page: HWND,
         prompts_page: HWND,
@@ -759,9 +774,6 @@ mod windows_app {
         credential_status: HWND,
         settings_selection_default: HWND,
         settings_hover_default: HWND,
-        prompt_selection_default: HWND,
-        prompt_hover_default: HWND,
-        profile_number: HWND,
         profile_id: HWND,
         profile_name: HWND,
         system_prompt: HWND,
@@ -791,7 +803,6 @@ mod windows_app {
                 settings_nav: null,
                 prompts_nav: null,
                 history_nav: null,
-                close: null,
                 language: null,
                 settings_page: null,
                 prompts_page: null,
@@ -803,9 +814,6 @@ mod windows_app {
                 credential_status: null,
                 settings_selection_default: null,
                 settings_hover_default: null,
-                prompt_selection_default: null,
-                prompt_hover_default: null,
-                profile_number: null,
                 profile_id: null,
                 profile_name: null,
                 system_prompt: null,
@@ -924,7 +932,7 @@ mod windows_app {
                 0,
                 0,
                 scale_for_dpi(980, dpi),
-                scale_for_dpi(680, dpi),
+                scale_for_dpi(760, dpi),
                 None,
                 None,
                 Some(HINSTANCE(instance.0)),
@@ -945,7 +953,7 @@ mod windows_app {
                 0,
                 0,
                 scale_for_dpi(980, window_dpi),
-                scale_for_dpi(680, window_dpi),
+                scale_for_dpi(760, window_dpi),
                 SWP_NOACTIVATE | SWP_NOZORDER,
             );
             let _ = ShowWindow(
@@ -1041,7 +1049,7 @@ mod windows_app {
                 0,
                 0,
                 scale_for_dpi(980, window_dpi),
-                scale_for_dpi(680, window_dpi),
+                scale_for_dpi(760, window_dpi),
                 SWP_NOACTIVATE | SWP_NOZORDER,
             );
             apply_manager_layout(hwnd, &*state);
@@ -1078,8 +1086,7 @@ mod windows_app {
             }
             WM_GETMINMAXINFO => {
                 let limits = &mut *(lparam.0 as *mut MINMAXINFO);
-                limits.ptMinTrackSize.x =
-                    scale_for_dpi(NAV_WIDTH + MIN_CONTENT_WIDTH, (*state).dpi);
+                limits.ptMinTrackSize.x = scale_for_dpi(MIN_CONTENT_WIDTH, (*state).dpi);
                 limits.ptMinTrackSize.y = scale_for_dpi(MIN_CLIENT_HEIGHT + 40, (*state).dpi);
                 LRESULT(0)
             }
@@ -1090,9 +1097,24 @@ mod windows_app {
             WM_ERASEBKGND => LRESULT(1),
             WM_DRAWITEM => {
                 if lparam.0 != 0 {
-                    draw_manager_button(&*(lparam.0 as *const DRAWITEMSTRUCT), &*state);
+                    let item = &*(lparam.0 as *const DRAWITEMSTRUCT);
+                    if item.CtlType == ODT_LISTBOX {
+                        draw_history_list_item(item, &*state);
+                    } else {
+                        draw_manager_button(item, &*state);
+                    }
                 }
                 LRESULT(1)
+            }
+            WM_MEASUREITEM => {
+                if lparam.0 != 0 {
+                    let measure = &mut *(lparam.0 as *mut MEASUREITEMSTRUCT);
+                    if measure.CtlType == ODT_LISTBOX {
+                        measure.itemHeight = scale_for_dpi(56, (*state).dpi).max(8) as u32;
+                        return LRESULT(1);
+                    }
+                }
+                DefWindowProcW(hwnd, message, wparam, lparam)
             }
             0x0133 | 0x0134 | 0x0135 | 0x0138 => {
                 themed_control_color(&*state, message, wparam, lparam)
@@ -1119,7 +1141,14 @@ mod windows_app {
     ) -> LRESULT {
         if matches!(
             message,
-            WM_COMMAND | WM_NOTIFY | WM_DRAWITEM | 0x0133 | 0x0134 | 0x0135 | 0x0138
+            WM_COMMAND
+                | WM_NOTIFY
+                | WM_DRAWITEM
+                | WM_MEASUREITEM
+                | 0x0133
+                | 0x0134
+                | 0x0135
+                | 0x0138
         ) {
             if let Ok(parent) = unsafe { windows::Win32::UI::WindowsAndMessaging::GetParent(hwnd) }
             {
@@ -1138,40 +1167,33 @@ mod windows_app {
 
     fn initialize_controls(hwnd: HWND, state: &mut ManagerState) -> windows::core::Result<()> {
         let mut h = Handles::default();
+        // Horizontal tab bar (Settings · Prompts · History); the live status
+        // label sits on the right side of the same bar. Geometry comes from
+        // ManagerLayout during apply_manager_layout.
         h.settings_nav = add_button(
             hwnd,
             &mut h,
             ID_SETTINGS_TAB,
             "Settings",
-            18,
-            16,
-            112,
-            32,
             None,
+            Slot::SaveSettings,
         )?;
         h.prompts_nav = add_button(
             hwnd,
             &mut h,
             ID_PROMPTS_TAB,
             "Prompts",
-            136,
-            16,
-            112,
-            32,
             None,
+            Slot::SaveSettings,
         )?;
         h.history_nav = add_button(
             hwnd,
             &mut h,
             ID_HISTORY_TAB,
             "History",
-            254,
-            16,
-            112,
-            32,
             None,
+            Slot::SaveSettings,
         )?;
-        h.close = add_button(hwnd, &mut h, ID_CLOSE, "Close", 652, 16, 100, 32, None)?;
 
         // Page controls live under one dedicated child container each.  This
         // makes tab switching a single parent visibility operation; hidden
@@ -1180,46 +1202,19 @@ mod windows_app {
         h.prompts_page = create_page_container(hwnd, ID_PROMPTS_PAGE)?;
         h.history_page = create_page_container(hwnd, ID_HISTORY_PAGE)?;
 
-        add_label(
-            hwnd,
-            &mut h,
-            "Interface language",
-            486,
-            24,
-            122,
-            22,
-            Some(View::Settings),
-        )?;
-        h.language = add_combo(
-            hwnd,
-            &mut h,
-            ID_LANGUAGE,
-            610,
-            18,
-            130,
-            180,
-            Some(View::Settings),
-        )?;
-
+        // —— Settings: grouped cards (Provider / Credentials / Defaults) ——
         add_label(
             hwnd,
             &mut h,
             "Provider endpoint",
-            28,
-            76,
-            180,
-            22,
             Some(View::Settings),
+            Slot::EndpointLabel,
         )?;
         h.endpoint = add_edit_with_id(
             hwnd,
             &mut h,
-            "",
-            220,
-            72,
-            520,
-            26,
             Some(View::Settings),
+            Slot::Endpoint,
             false,
             false,
             ID_SETTINGS_ENDPOINT,
@@ -1228,21 +1223,14 @@ mod windows_app {
             hwnd,
             &mut h,
             "Model",
-            28,
-            116,
-            180,
-            22,
             Some(View::Settings),
+            Slot::ModelLabel,
         )?;
         h.model = add_edit_with_id(
             hwnd,
             &mut h,
-            "",
-            220,
-            112,
-            520,
-            26,
             Some(View::Settings),
+            Slot::Model,
             false,
             false,
             ID_SETTINGS_MODEL,
@@ -1251,44 +1239,31 @@ mod windows_app {
             hwnd,
             &mut h,
             "Credential target",
-            28,
-            156,
-            180,
-            22,
             Some(View::Settings),
+            Slot::CredentialTargetLabel,
         )?;
         h.credential_target = add_edit_with_id(
             hwnd,
             &mut h,
-            "",
-            220,
-            152,
-            520,
-            26,
             Some(View::Settings),
+            Slot::CredentialTarget,
             false,
             false,
             ID_SETTINGS_CREDENTIAL_TARGET,
         )?;
+
         add_label(
             hwnd,
             &mut h,
             "API key",
-            28,
-            196,
-            180,
-            22,
             Some(View::Settings),
+            Slot::ApiKeyLabel,
         )?;
         h.api_key = add_edit_with_id(
             hwnd,
             &mut h,
-            "",
-            220,
-            192,
-            380,
-            26,
             Some(View::Settings),
+            Slot::ApiKey,
             true,
             false,
             ID_SETTINGS_API_KEY,
@@ -1298,145 +1273,106 @@ mod windows_app {
             &mut h,
             ID_SAVE_KEY,
             "Save key",
-            610,
-            191,
-            130,
-            28,
             Some(View::Settings),
+            Slot::SaveKey,
         )?;
         add_button(
             hwnd,
             &mut h,
             ID_DELETE_KEY,
             "Delete saved key",
-            220,
-            228,
-            160,
-            28,
             Some(View::Settings),
+            Slot::DeleteKey,
         )?;
-        h.credential_status = add_label(hwnd, &mut h, "", 392, 232, 348, 22, Some(View::Settings))?;
-        add_label(
+        h.credential_status = add_label(
             hwnd,
             &mut h,
-            "Selection default profile",
-            28,
-            286,
-            180,
-            22,
+            "",
             Some(View::Settings),
-        )?;
-        h.settings_selection_default = add_combo(
-            hwnd,
-            &mut h,
-            ID_SETTINGS_SELECTION_DEFAULT,
-            220,
-            282,
-            520,
-            220,
-            Some(View::Settings),
-        )?;
-        add_label(
-            hwnd,
-            &mut h,
-            "Hover default profile",
-            28,
-            326,
-            180,
-            22,
-            Some(View::Settings),
-        )?;
-        h.settings_hover_default = add_combo(
-            hwnd,
-            &mut h,
-            ID_SETTINGS_HOVER_DEFAULT,
-            220,
-            322,
-            520,
-            220,
-            Some(View::Settings),
-        )?;
-        add_button(
-            hwnd,
-            &mut h,
-            ID_SAVE_SETTINGS,
-            "Save settings",
-            220,
-            366,
-            160,
-            32,
-            Some(View::Settings),
+            Slot::CredentialStatus,
         )?;
         add_label(
             hwnd,
             &mut h,
             "Keys are held by Windows Credential Manager; they never enter config.toml.",
-            28,
-            420,
-            712,
-            36,
             Some(View::Settings),
+            Slot::CredentialHint,
         )?;
 
-        add_label(hwnd, &mut h, "Profile", 28, 76, 80, 22, Some(View::Prompts))?;
-        h.profile_number = add_label(hwnd, &mut h, "", 112, 76, 120, 22, Some(View::Prompts))?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Selection profile",
+            Some(View::Settings),
+            Slot::SelectionLabel,
+        )?;
+        h.settings_selection_default = add_combo(
+            hwnd,
+            &mut h,
+            ID_SETTINGS_SELECTION_DEFAULT,
+            Some(View::Settings),
+            Slot::SelectionDefault,
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Hover profile",
+            Some(View::Settings),
+            Slot::HoverLabel,
+        )?;
+        h.settings_hover_default = add_combo(
+            hwnd,
+            &mut h,
+            ID_SETTINGS_HOVER_DEFAULT,
+            Some(View::Settings),
+            Slot::HoverDefault,
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Interface language",
+            Some(View::Settings),
+            Slot::LangLabel,
+        )?;
+        h.language = add_combo(
+            hwnd,
+            &mut h,
+            ID_LANGUAGE,
+            Some(View::Settings),
+            Slot::Language,
+        )?;
+
         add_button(
             hwnd,
             &mut h,
-            ID_PREVIOUS_PROMPT,
-            "Previous",
-            270,
-            70,
-            100,
-            30,
-            Some(View::Prompts),
+            ID_SAVE_SETTINGS,
+            "Save settings",
+            Some(View::Settings),
+            Slot::SaveSettings,
         )?;
-        add_button(
+
+        // —— Prompts: meta row on top, side-by-side editors below ——
+        add_label(hwnd, &mut h, "ID", Some(View::Prompts), Slot::PromptIdLabel)?;
+        h.profile_id = add_combo_with_kind(
             hwnd,
             &mut h,
-            ID_NEXT_PROMPT,
-            "Next",
-            378,
-            70,
-            86,
-            30,
-            Some(View::Prompts),
-        )?;
-        add_button(
-            hwnd,
-            &mut h,
-            ID_NEW_PROMPT,
-            "New",
-            472,
-            70,
-            86,
-            30,
-            Some(View::Prompts),
-        )?;
-        add_label(hwnd, &mut h, "ID", 28, 118, 180, 22, Some(View::Prompts))?;
-        h.profile_id = add_edit_with_id(
-            hwnd,
-            &mut h,
-            "",
-            220,
-            114,
-            520,
-            26,
-            Some(View::Prompts),
-            false,
-            false,
             ID_PROMPT_ID,
+            Some(View::Prompts),
+            Slot::PromptId,
+            CBS_DROPDOWN,
         )?;
-        add_label(hwnd, &mut h, "Name", 28, 158, 180, 22, Some(View::Prompts))?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Name",
+            Some(View::Prompts),
+            Slot::PromptNameLabel,
+        )?;
         h.profile_name = add_edit_with_id(
             hwnd,
             &mut h,
-            "",
-            220,
-            154,
-            520,
-            26,
             Some(View::Prompts),
+            Slot::PromptName,
             false,
             false,
             ID_PROMPT_NAME,
@@ -1444,68 +1380,15 @@ mod windows_app {
         add_label(
             hwnd,
             &mut h,
-            "System prompt",
-            28,
-            198,
-            180,
-            22,
-            Some(View::Prompts),
-        )?;
-        h.system_prompt = add_edit_with_id(
-            hwnd,
-            &mut h,
-            "",
-            220,
-            194,
-            520,
-            64,
-            Some(View::Prompts),
-            false,
-            true,
-            ID_PROMPT_SYSTEM,
-        )?;
-        add_label(
-            hwnd,
-            &mut h,
-            "User template",
-            28,
-            278,
-            180,
-            22,
-            Some(View::Prompts),
-        )?;
-        h.user_template = add_edit_with_id(
-            hwnd,
-            &mut h,
-            "",
-            220,
-            274,
-            520,
-            74,
-            Some(View::Prompts),
-            false,
-            true,
-            ID_PROMPT_USER_TEMPLATE,
-        )?;
-        add_label(
-            hwnd,
-            &mut h,
             "Model override",
-            28,
-            368,
-            180,
-            22,
             Some(View::Prompts),
+            Slot::PromptModelLabel,
         )?;
         h.profile_model = add_edit_with_id(
             hwnd,
             &mut h,
-            "",
-            220,
-            364,
-            520,
-            26,
             Some(View::Prompts),
+            Slot::PromptModel,
             false,
             false,
             ID_PROMPT_MODEL,
@@ -1514,21 +1397,14 @@ mod windows_app {
             hwnd,
             &mut h,
             "Temperature",
-            28,
-            408,
-            180,
-            22,
             Some(View::Prompts),
+            Slot::PromptTempLabel,
         )?;
         h.temperature = add_edit_with_id(
             hwnd,
             &mut h,
-            "",
-            220,
-            404,
-            180,
-            26,
             Some(View::Prompts),
+            Slot::PromptTemp,
             false,
             false,
             ID_PROMPT_TEMPERATURE,
@@ -1537,103 +1413,67 @@ mod windows_app {
             hwnd,
             &mut h,
             "Max output tokens",
-            424,
-            408,
-            150,
-            22,
             Some(View::Prompts),
+            Slot::PromptTokensLabel,
         )?;
         h.max_tokens = add_edit_with_id(
             hwnd,
             &mut h,
-            "",
-            574,
-            404,
-            166,
-            26,
             Some(View::Prompts),
+            Slot::PromptTokens,
             false,
             false,
             ID_PROMPT_MAX_TOKENS,
         )?;
-        add_label(
+        add_button(
             hwnd,
             &mut h,
-            "Defaults: selection / hover",
-            28,
-            448,
-            180,
-            22,
+            ID_NEW_PROMPT,
+            "New",
             Some(View::Prompts),
+            Slot::NewPrompt,
         )?;
-        h.prompt_selection_default = add_edit_with_id(
-            hwnd,
-            &mut h,
-            "",
-            220,
-            444,
-            240,
-            26,
-            Some(View::Prompts),
-            false,
-            false,
-            ID_PROMPT_SELECTION_DEFAULT,
-        )?;
-        h.prompt_hover_default = add_edit_with_id(
-            hwnd,
-            &mut h,
-            "",
-            500,
-            444,
-            240,
-            26,
-            Some(View::Prompts),
-            false,
-            false,
-            ID_PROMPT_HOVER_DEFAULT,
-        )?;
-        h.prompt_status = add_label(hwnd, &mut h, "", 28, 486, 712, 40, Some(View::Prompts))?;
         add_button(
             hwnd,
             &mut h,
             ID_SAVE_PROMPT,
             "Save prompt",
-            220,
-            536,
-            160,
-            32,
             Some(View::Prompts),
+            Slot::SavePrompt,
         )?;
         add_label(
             hwnd,
             &mut h,
             "Use {target}, {context}, and {source}; every user template needs {target}.",
-            392,
-            538,
-            348,
-            34,
             Some(View::Prompts),
+            Slot::PromptHint,
         )?;
-
-        add_label(
+        h.system_prompt = add_edit_with_id(
             hwnd,
             &mut h,
-            "Search target/output",
-            28,
-            76,
-            150,
-            22,
-            Some(View::History),
+            Some(View::Prompts),
+            Slot::SystemPrompt,
+            false,
+            true,
+            ID_PROMPT_SYSTEM,
         )?;
+        h.user_template = add_edit_with_id(
+            hwnd,
+            &mut h,
+            Some(View::Prompts),
+            Slot::UserTemplate,
+            false,
+            true,
+            ID_PROMPT_USER_TEMPLATE,
+        )?;
+        h.prompt_status = add_label(hwnd, &mut h, "", Some(View::Prompts), Slot::PromptStatus)?;
+
+        // —— History: search card over a list/detail split ——
         h.history_search = add_edit_with_id(
             hwnd,
             &mut h,
-            "",
-            178,
-            72,
-            330,
-            26,
             Some(View::History),
+            Slot::HistorySearch,
             false,
             false,
             ID_HISTORY_SEARCH,
@@ -1643,107 +1483,73 @@ mod windows_app {
             &mut h,
             ID_HISTORY_REFRESH,
             "Refresh",
-            520,
-            70,
-            100,
-            30,
             Some(View::History),
+            Slot::HistoryRefresh,
         )?;
         add_button(
             hwnd,
             &mut h,
             ID_HISTORY_COPY,
             "Copy output",
-            628,
-            70,
-            112,
-            30,
             Some(View::History),
+            Slot::HistoryCopy,
         )?;
-        add_label(hwnd, &mut h, "Prompt", 28, 114, 70, 22, Some(View::History))?;
         h.history_prompt = add_combo(
             hwnd,
             &mut h,
             ID_HISTORY_PROMPT,
-            100,
-            110,
-            220,
-            260,
             Some(View::History),
-        )?;
-        add_label(
-            hwnd,
-            &mut h,
-            "Source",
-            340,
-            114,
-            70,
-            22,
-            Some(View::History),
+            Slot::HistPromptFilter,
         )?;
         h.history_source = add_combo(
             hwnd,
             &mut h,
             ID_HISTORY_SOURCE,
-            410,
-            110,
-            150,
-            260,
             Some(View::History),
+            Slot::HistSourceFilter,
         )?;
-        add_label(hwnd, &mut h, "Order", 578, 114, 54, 22, Some(View::History))?;
         h.history_order = add_combo(
             hwnd,
             &mut h,
             ID_HISTORY_ORDER,
-            632,
-            110,
-            108,
-            260,
             Some(View::History),
+            Slot::HistOrderFilter,
         )?;
-        h.history_list = add_list(hwnd, &mut h, 28, 148, 712, 156, Some(View::History))?;
-        add_label(hwnd, &mut h, "Target", 28, 320, 75, 22, Some(View::History))?;
-        h.history_target =
-            add_readonly_edit(hwnd, &mut h, 103, 316, 637, 36, Some(View::History), true)?;
+        h.history_list = add_list(hwnd, &mut h, Some(View::History), Slot::HistoryList)?;
+        h.history_target = add_readonly_edit(
+            hwnd,
+            &mut h,
+            Some(View::History),
+            Slot::HistoryTarget,
+            false,
+        )?;
+        h.history_context = add_readonly_edit(
+            hwnd,
+            &mut h,
+            Some(View::History),
+            Slot::HistoryContext,
+            false,
+        )?;
+        h.history_output =
+            add_readonly_edit(hwnd, &mut h, Some(View::History), Slot::HistoryOutput, true)?;
         add_label(
             hwnd,
             &mut h,
-            "Context",
-            28,
-            364,
-            75,
-            22,
+            "History is loaded only while this tab is open; the database is never held open.",
             Some(View::History),
+            Slot::HistoryHint,
         )?;
-        h.history_context =
-            add_readonly_edit(hwnd, &mut h, 103, 360, 637, 54, Some(View::History), true)?;
-        add_label(hwnd, &mut h, "Output", 28, 426, 75, 22, Some(View::History))?;
-        h.history_output =
-            add_readonly_edit(hwnd, &mut h, 103, 422, 637, 92, Some(View::History), true)?;
-        h.history_meta = add_label(hwnd, &mut h, "", 28, 522, 712, 24, Some(View::History))?;
+        h.history_meta = add_label(hwnd, &mut h, "", Some(View::History), Slot::HistoryMeta)?;
         add_button(
             hwnd,
             &mut h,
             ID_HISTORY_DELETE,
             "Delete selected",
-            28,
-            552,
-            140,
-            30,
             Some(View::History),
+            Slot::HistoryDelete,
         )?;
-        add_label(
-            hwnd,
-            &mut h,
-            "History is loaded only while this tab is open; the database is never held open.",
-            184,
-            554,
-            556,
-            28,
-            Some(View::History),
-        )?;
-        h.status = add_label(hwnd, &mut h, "", 28, 584, 712, 28, None)?;
+
+        h.status = add_label(hwnd, &mut h, "", None, Slot::PromptStatus)?;
         state.handles = h;
         apply_control_fonts(state);
         apply_control_themes(state);
@@ -1753,14 +1559,6 @@ mod windows_app {
         set_text(
             state.handles.credential_target,
             &state.config.provider.credential_target,
-        );
-        set_text(
-            state.handles.prompt_selection_default,
-            &state.config.defaults.selection,
-        );
-        set_text(
-            state.handles.prompt_hover_default,
-            &state.config.defaults.hover,
         );
         state.profile_index = 0;
         refresh_prompt_form(state);
@@ -1782,39 +1580,78 @@ mod windows_app {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn add_control(
-        state: &mut Handles,
-        hwnd: HWND,
-        view: Option<View>,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
-    ) -> HWND {
+    /// Identifies a control's role in the responsive page layout. Geometry
+    /// is computed per slot in `page_geometry` from the live window size, so
+    /// components stretch to use the whole window.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum Slot {
+        EndpointLabel,
+        Endpoint,
+        ModelLabel,
+        Model,
+        CredentialTargetLabel,
+        CredentialTarget,
+        ApiKeyLabel,
+        ApiKey,
+        SaveKey,
+        DeleteKey,
+        CredentialStatus,
+        CredentialHint,
+        SelectionLabel,
+        SelectionDefault,
+        HoverLabel,
+        HoverDefault,
+        LangLabel,
+        Language,
+        SaveSettings,
+        PromptIdLabel,
+        PromptId,
+        PromptNameLabel,
+        PromptName,
+        PromptModelLabel,
+        PromptModel,
+        PromptTempLabel,
+        PromptTemp,
+        PromptTokensLabel,
+        PromptTokens,
+        NewPrompt,
+        SavePrompt,
+        PromptHint,
+        SystemPrompt,
+        UserTemplate,
+        PromptStatus,
+        HistorySearch,
+        HistoryRefresh,
+        HistoryCopy,
+        HistPromptFilter,
+        HistSourceFilter,
+        HistOrderFilter,
+        HistoryList,
+        HistoryTarget,
+        HistoryContext,
+        HistoryOutput,
+        HistoryHint,
+        HistoryMeta,
+        HistoryDelete,
+    }
+
+    fn add_control(state: &mut Handles, hwnd: HWND, view: Option<View>, slot: Slot) -> HWND {
         if let Some(view) = view {
-            state.placements.push(ControlPlacement {
-                hwnd,
-                view,
-                x,
-                y,
-                width,
-                height,
-            });
+            state.placements.push(ControlPlacement { hwnd, view, slot });
         }
         hwnd
     }
 
-    fn page_parent(parent: HWND, h: &Handles, view: Option<View>, y: i32) -> (HWND, i32) {
+    fn page_parent(parent: HWND, h: &Handles, view: Option<View>) -> HWND {
         match view {
-            Some(View::Settings) => (h.settings_page, y - PAGE_TOP),
-            Some(View::Prompts) => (h.prompts_page, y - PAGE_TOP),
-            Some(View::History) => (h.history_page, y - PAGE_TOP),
-            None => (parent, y),
+            Some(View::Settings) => h.settings_page,
+            Some(View::Prompts) => h.prompts_page,
+            Some(View::History) => h.history_page,
+            None => parent,
         }
     }
 
-    const PAGE_TOP: i32 = 56;
+    const PAGE_TOP: i32 = TAB_BAR_HEIGHT;
 
     fn create_page_container(parent: HWND, id: usize) -> windows::core::Result<HWND> {
         create_control_with_style(
@@ -1824,104 +1661,88 @@ mod windows_app {
             WS_CHILD | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
             0,
             PAGE_TOP,
-            780,
-            528,
+            1000,
+            700,
             id,
         )
     }
+
     #[allow(clippy::too_many_arguments)]
     fn add_label(
         parent: HWND,
         h: &mut Handles,
         text: &str,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
         view: Option<View>,
+        slot: Slot,
     ) -> windows::core::Result<HWND> {
-        let (parent, y) = page_parent(parent, h, view, y);
+        let target = page_parent(parent, h, view);
         let hwnd = create_control(
-            parent,
+            target,
             w!("STATIC"),
             text,
             WS_CHILD | visibility_style(view),
-            x,
-            y,
-            width,
-            height,
+            0,
+            0,
+            100,
+            20,
             0,
         )?;
         if let Some(key) = text_key_from_english(text) {
             h.localized.push(LocalizedControl { hwnd, key });
         }
-        Ok(add_control(h, hwnd, view, x, y, width, height))
+        Ok(add_control(h, hwnd, view, slot))
     }
-    #[allow(clippy::too_many_arguments)]
+
     fn add_button(
         parent: HWND,
         h: &mut Handles,
         id: usize,
         text: &str,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
         view: Option<View>,
+        slot: Slot,
     ) -> windows::core::Result<HWND> {
-        let (parent, y) = page_parent(parent, h, view, y);
+        let target = page_parent(parent, h, view);
         let hwnd = create_control(
-            parent,
+            target,
             w!("BUTTON"),
             text,
             WS_CHILD
                 | visibility_style(view)
                 | WS_TABSTOP
                 | WINDOW_STYLE(BS_PUSHBUTTON as u32 | BS_OWNERDRAW as u32),
-            x,
-            y,
-            width,
-            height,
+            0,
+            0,
+            100,
+            28,
             id,
         )?;
         if let Some(key) = text_key_from_english(text) {
             h.localized.push(LocalizedControl { hwnd, key });
         }
-        Ok(add_control(h, hwnd, view, x, y, width, height))
+        Ok(add_control(h, hwnd, view, slot))
     }
-    #[allow(clippy::too_many_arguments)]
+
     fn add_edit(
         parent: HWND,
         h: &mut Handles,
-        text: &str,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
         view: Option<View>,
+        slot: Slot,
         password: bool,
         multiline: bool,
     ) -> windows::core::Result<HWND> {
-        add_edit_with_id(
-            parent, h, text, x, y, width, height, view, password, multiline, 0,
-        )
+        add_edit_with_id(parent, h, view, slot, password, multiline, 0)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn add_edit_with_id(
         parent: HWND,
         h: &mut Handles,
-        text: &str,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
         view: Option<View>,
+        slot: Slot,
         password: bool,
         multiline: bool,
         id: usize,
     ) -> windows::core::Result<HWND> {
-        let (parent, y) = page_parent(parent, h, view, y);
+        let target = page_parent(parent, h, view);
         let mut style = WS_CHILD
             | WS_CLIPSIBLINGS
             | visibility_style(view)
@@ -1936,82 +1757,83 @@ mod windows_app {
                 | WINDOW_STYLE(ES_AUTOVSCROLL as u32)
                 | WS_VSCROLL;
         }
-        let hwnd = create_control(parent, w!("EDIT"), text, style, x, y, width, height, id)?;
-        Ok(add_control(h, hwnd, view, x, y, width, height))
+        let hwnd = create_control(target, w!("EDIT"), "", style, 0, 0, 100, 24, id)?;
+        Ok(add_control(h, hwnd, view, slot))
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn add_readonly_edit(
         parent: HWND,
         h: &mut Handles,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
         view: Option<View>,
+        slot: Slot,
         multiline: bool,
     ) -> windows::core::Result<HWND> {
-        let hwnd = add_edit(parent, h, "", x, y, width, height, view, false, multiline)?;
+        let hwnd = add_edit(parent, h, view, slot, false, multiline)?;
         unsafe {
             let _ = SendMessageW(hwnd, EM_SETREADONLY, Some(WPARAM(1)), Some(LPARAM(0)));
         }
         Ok(hwnd)
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn add_combo(
         parent: HWND,
         h: &mut Handles,
         id: usize,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
         view: Option<View>,
+        slot: Slot,
     ) -> windows::core::Result<HWND> {
-        let (parent, y) = page_parent(parent, h, view, y);
+        add_combo_with_kind(parent, h, id, view, slot, CBS_DROPDOWNLIST)
+    }
+
+    /// `kind` selects closed-list (`CBS_DROPDOWNLIST`) versus the editable
+    /// ID dropdown (`CBS_DROPDOWN`) that also offers profile switching.
+    fn add_combo_with_kind(
+        parent: HWND,
+        h: &mut Handles,
+        id: usize,
+        view: Option<View>,
+        slot: Slot,
+        kind: u32,
+    ) -> windows::core::Result<HWND> {
+        let target = page_parent(parent, h, view);
         let style = WS_CHILD
             | WS_CLIPSIBLINGS
             | visibility_style(view)
             | WS_TABSTOP
             | WS_VSCROLL
-            | WINDOW_STYLE(CBS_DROPDOWNLIST)
-            | WS_BORDER;
+            | WINDOW_STYLE(kind);
         let hwnd =
-            create_control_with_style(parent, w!("COMBOBOX"), "", style, x, y, width, height, id)?;
-        Ok(add_control(h, hwnd, view, x, y, width, height))
+            create_control_with_style(target, w!("COMBOBOX"), "", style, 0, 0, 100, 200, id)?;
+        Ok(add_control(h, hwnd, view, slot))
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn add_list(
         parent: HWND,
         h: &mut Handles,
-        x: i32,
-        y: i32,
-        width: i32,
-        height: i32,
         view: Option<View>,
+        slot: Slot,
     ) -> windows::core::Result<HWND> {
-        let (parent, y) = page_parent(parent, h, view, y);
+        let target = page_parent(parent, h, view);
+        // Owner-draw rows render the mockup's three-line history items
+        // (target, output preview, time · profile) against the void well.
         let style = WS_CHILD
             | WS_CLIPSIBLINGS
             | visibility_style(view)
             | WS_TABSTOP
-            | WS_BORDER
             | WS_VSCROLL
-            | WINDOW_STYLE(LBS_NOTIFY);
+            | WINDOW_STYLE(LBS_NOTIFY | LBS_OWNERDRAWFIXED | LBS_NOINTEGRALHEIGHT);
         let hwnd = create_control_with_style(
-            parent,
+            target,
             w!("LISTBOX"),
             "",
             style,
-            x,
-            y,
-            width,
-            height,
+            0,
+            0,
+            100,
+            200,
             ID_HISTORY_LIST,
         )?;
-        Ok(add_control(h, hwnd, view, x, y, width, height))
+        Ok(add_control(h, hwnd, view, slot))
     }
     #[allow(clippy::too_many_arguments)]
     fn create_control(
@@ -2146,10 +1968,9 @@ mod windows_app {
         }
         let layout = ManagerLayout::for_client(client.right, client.bottom, state.dpi);
         for (control, rect) in [
-            (state.handles.settings_nav, layout.nav_buttons[0]),
-            (state.handles.prompts_nav, layout.nav_buttons[1]),
-            (state.handles.history_nav, layout.nav_buttons[2]),
-            (state.handles.close, layout.nav_buttons[3]),
+            (state.handles.settings_nav, layout.tabs[0]),
+            (state.handles.prompts_nav, layout.tabs[1]),
+            (state.handles.history_nav, layout.tabs[2]),
             (state.handles.status, layout.status),
         ] {
             place_control(control, rect, state.dpi);
@@ -2172,18 +1993,33 @@ mod windows_app {
                 );
             }
         }
-        for placement in &state.handles.placements {
-            let _ = placement.view;
-            place_control(
-                placement.hwnd,
-                RECT {
-                    left: placement.x,
-                    top: placement.y + PAGE_HEADER_HEIGHT,
-                    right: placement.x + placement.width,
-                    bottom: placement.y + PAGE_HEADER_HEIGHT + placement.height,
-                },
-                state.dpi,
-            );
+        // Responsive page geometry: every control takes its rect from the
+        // same computation the painter uses, so components stretch to use
+        // the whole window at any size.
+        // Responsive page geometry: every control takes its rect from the
+        // same computation the painter uses, so components stretch to use
+        // the whole window at any size.
+        let page_width = unscale_from_dpi(page_rect.right - page_rect.left, state.dpi);
+        let container_height = unscale_from_dpi(page_rect.bottom - page_rect.top, state.dpi);
+        let geometry = page_geometry(state.view, page_width, container_height);
+        for (slot, rect) in &geometry.slots {
+            if let Some(placement) = state
+                .handles
+                .placements
+                .iter()
+                .find(|item| item.view == state.view && item.slot == *slot)
+            {
+                place_control(
+                    placement.hwnd,
+                    RECT {
+                        left: CONTENT_PADDING + rect.left,
+                        top: rect.top,
+                        right: CONTENT_PADDING + rect.right,
+                        bottom: rect.bottom,
+                    },
+                    state.dpi,
+                );
+            }
         }
         unsafe {
             for button in [
@@ -2205,26 +2041,576 @@ mod windows_app {
         }
     }
 
+    /// Responsive geometry for one page. Everything is computed from the
+    /// live container size so cards, fields, editors, and the history split
+    /// stretch to use the whole window. Returned rects are logical units in
+    /// page-container coordinates (content starts at PAGE_HEADER_HEIGHT).
+    struct PageGeometry {
+        cards: Vec<(RECT, TextKey)>,
+        wells: Vec<RECT>,
+        extra_caps: Vec<(RECT, TextKey)>,
+        slots: Vec<(Slot, RECT)>,
+    }
+
+    /// Evenly distribute `count` blocks of `block` logical pixels between
+    /// `top` and `bottom`; leftover space becomes equal gaps, so growing a
+    /// card breathes instead of leaving a dead strip at its bottom.
+    fn distributed_tops(count: i32, top: i32, bottom: i32, block: i32) -> Vec<i32> {
+        let count = count.max(1);
+        let span = (bottom - top - block * count).max(0);
+        let gap = span / (count + 1);
+        (0..count)
+            .map(|index| top + gap * (index + 1) + block * index)
+            .collect()
+    }
+
+    fn page_geometry(view: View, page_width: i32, container_height: i32) -> PageGeometry {
+        let content_width = (page_width - CONTENT_PADDING * 2).max(200);
+        let content_top = PAGE_HEADER_HEIGHT;
+        let content_height = (container_height - PAGE_HEADER_HEIGHT - 24).max(120);
+        let mut slots: Vec<(Slot, RECT)> = Vec::new();
+        let mut cards: Vec<(RECT, TextKey)> = Vec::new();
+        let mut wells: Vec<RECT> = Vec::new();
+        let mut extra_caps: Vec<(RECT, TextKey)> = Vec::new();
+        let field_block = 44; // label 14 + 2 + input 28
+        match view {
+            View::Settings => {
+                // Three cards share the vertical extra space by field count;
+                // the Save row stays pinned under the last card.
+                let base = [184, 140, 184];
+                let weights = [3, 2, 3];
+                let reserve = 36 + 10; // Save settings row + gap
+                let card_area = (content_height - reserve).max(528);
+                let extra = (card_area - 528).max(0);
+                let mut tops = [0, 0, 0];
+                let mut heights = [0, 0, 0];
+                let mut y = 0;
+                for index in 0..3 {
+                    heights[index] = base[index] + extra * weights[index] / 8;
+                    tops[index] = y;
+                    y += heights[index] + 10;
+                }
+                let card_keys = [
+                    TextKey::ProviderCard,
+                    TextKey::CredentialsCard,
+                    TextKey::DefaultsCard,
+                ];
+                for index in 0..3 {
+                    cards.push((
+                        RECT {
+                            left: 0,
+                            top: content_top + tops[index],
+                            right: content_width,
+                            bottom: content_top + tops[index] + heights[index],
+                        },
+                        card_keys[index],
+                    ));
+                }
+                let inner_width = content_width - 24;
+                // Field rows are computed in card-absolute coordinates so
+                // every slot carries the same content_top offset as its card.
+                let rows = distributed_tops(
+                    3,
+                    content_top + tops[0] + 28,
+                    content_top + tops[0] + heights[0] - 12,
+                    field_block,
+                );
+                for (label_slot, input_slot, row) in [
+                    (Slot::EndpointLabel, Slot::Endpoint, rows[0]),
+                    (Slot::ModelLabel, Slot::Model, rows[1]),
+                    (Slot::CredentialTargetLabel, Slot::CredentialTarget, rows[2]),
+                ] {
+                    slots.push((
+                        label_slot,
+                        RECT {
+                            left: 12,
+                            top: row,
+                            right: 12 + inner_width,
+                            bottom: row + 14,
+                        },
+                    ));
+                    slots.push((
+                        input_slot,
+                        RECT {
+                            left: 12,
+                            top: row + 16,
+                            right: 12 + inner_width,
+                            bottom: row + 44,
+                        },
+                    ));
+                }
+                // Credentials: key row, action row, hint — evenly spread.
+                let rows = distributed_tops(
+                    3,
+                    content_top + tops[1] + 28,
+                    content_top + tops[1] + heights[1] - 12,
+                    field_block,
+                );
+                slots.push((
+                    Slot::ApiKeyLabel,
+                    RECT {
+                        left: 12,
+                        top: rows[0],
+                        right: 12 + inner_width,
+                        bottom: rows[0] + 14,
+                    },
+                ));
+                slots.push((
+                    Slot::ApiKey,
+                    RECT {
+                        left: 12,
+                        top: rows[0] + 16,
+                        right: 12 + inner_width,
+                        bottom: rows[0] + 44,
+                    },
+                ));
+                slots.push((
+                    Slot::SaveKey,
+                    RECT {
+                        left: 12,
+                        top: rows[1],
+                        right: 122,
+                        bottom: rows[1] + 28,
+                    },
+                ));
+                slots.push((
+                    Slot::DeleteKey,
+                    RECT {
+                        left: 132,
+                        top: rows[1],
+                        right: 282,
+                        bottom: rows[1] + 28,
+                    },
+                ));
+                slots.push((
+                    Slot::CredentialStatus,
+                    RECT {
+                        left: 294,
+                        top: rows[1] + 4,
+                        right: content_width - 12,
+                        bottom: rows[1] + 24,
+                    },
+                ));
+                slots.push((
+                    Slot::CredentialHint,
+                    RECT {
+                        left: 12,
+                        top: rows[2],
+                        right: content_width - 12,
+                        bottom: rows[2] + 16,
+                    },
+                ));
+                let rows = distributed_tops(
+                    3,
+                    content_top + tops[2] + 28,
+                    content_top + tops[2] + heights[2] - 12,
+                    field_block,
+                );
+                for (label_slot, input_slot, row) in [
+                    (Slot::SelectionLabel, Slot::SelectionDefault, rows[0]),
+                    (Slot::HoverLabel, Slot::HoverDefault, rows[1]),
+                    (Slot::LangLabel, Slot::Language, rows[2]),
+                ] {
+                    slots.push((
+                        label_slot,
+                        RECT {
+                            left: 12,
+                            top: row,
+                            right: 12 + inner_width,
+                            bottom: row + 14,
+                        },
+                    ));
+                    slots.push((
+                        input_slot,
+                        RECT {
+                            left: 12,
+                            top: row + 16,
+                            right: 12 + inner_width,
+                            bottom: row + 44,
+                        },
+                    ));
+                }
+                slots.push((
+                    Slot::SaveSettings,
+                    RECT {
+                        left: 0,
+                        top: content_top + tops[2] + heights[2] + 10,
+                        right: 160,
+                        bottom: content_top + tops[2] + heights[2] + 46,
+                    },
+                ));
+            }
+            View::Prompts => {
+                // Meta row: ID fixed, Name flexes, the numeric group stays
+                // right-aligned; editors and the status row absorb the rest.
+                let meta_label = content_top + 4;
+                let meta_input = content_top + 20;
+                let name_right = (content_width - 560).max(170) + 160;
+                slots.push((
+                    Slot::PromptIdLabel,
+                    RECT {
+                        left: 0,
+                        top: meta_label,
+                        right: 150,
+                        bottom: meta_label + 14,
+                    },
+                ));
+                slots.push((
+                    Slot::PromptId,
+                    RECT {
+                        left: 0,
+                        top: meta_input,
+                        right: 150,
+                        bottom: meta_input + 28,
+                    },
+                ));
+                slots.push((
+                    Slot::PromptNameLabel,
+                    RECT {
+                        left: 160,
+                        top: meta_label,
+                        right: name_right,
+                        bottom: meta_label + 14,
+                    },
+                ));
+                slots.push((
+                    Slot::PromptName,
+                    RECT {
+                        left: 160,
+                        top: meta_input,
+                        right: name_right,
+                        bottom: meta_input + 28,
+                    },
+                ));
+                for (label_slot, input_slot, left, width) in [
+                    (
+                        Slot::PromptModelLabel,
+                        Slot::PromptModel,
+                        content_width - 350,
+                        150,
+                    ),
+                    (
+                        Slot::PromptTempLabel,
+                        Slot::PromptTemp,
+                        content_width - 190,
+                        90,
+                    ),
+                    (
+                        Slot::PromptTokensLabel,
+                        Slot::PromptTokens,
+                        content_width - 90,
+                        90,
+                    ),
+                ] {
+                    slots.push((
+                        label_slot,
+                        RECT {
+                            left,
+                            top: meta_label,
+                            right: left + width,
+                            bottom: meta_label + 14,
+                        },
+                    ));
+                    slots.push((
+                        input_slot,
+                        RECT {
+                            left,
+                            top: meta_input,
+                            right: left + width,
+                            bottom: meta_input + 28,
+                        },
+                    ));
+                }
+                slots.push((
+                    Slot::NewPrompt,
+                    RECT {
+                        left: content_width - 250,
+                        top: content_top + 56,
+                        right: content_width - 170,
+                        bottom: content_top + 92,
+                    },
+                ));
+                slots.push((
+                    Slot::SavePrompt,
+                    RECT {
+                        left: content_width - 160,
+                        top: content_top + 56,
+                        right: content_width,
+                        bottom: content_top + 92,
+                    },
+                ));
+                slots.push((
+                    Slot::PromptHint,
+                    RECT {
+                        left: 0,
+                        top: content_top + 100,
+                        right: content_width,
+                        bottom: content_top + 116,
+                    },
+                ));
+                let editor_bottom = content_height - 24;
+                let editor_mid = (content_width - 10) / 2;
+                cards.push((
+                    RECT {
+                        left: 0,
+                        top: content_top + 128,
+                        right: editor_mid,
+                        bottom: content_top + editor_bottom,
+                    },
+                    TextKey::SystemPrompt,
+                ));
+                cards.push((
+                    RECT {
+                        left: editor_mid + 10,
+                        top: content_top + 128,
+                        right: content_width,
+                        bottom: content_top + editor_bottom,
+                    },
+                    TextKey::UserTemplate,
+                ));
+                slots.push((
+                    Slot::SystemPrompt,
+                    RECT {
+                        left: 10,
+                        top: content_top + 158,
+                        right: editor_mid - 10,
+                        bottom: content_top + editor_bottom - 10,
+                    },
+                ));
+                slots.push((
+                    Slot::UserTemplate,
+                    RECT {
+                        left: editor_mid + 20,
+                        top: content_top + 158,
+                        right: content_width - 10,
+                        bottom: content_top + editor_bottom - 10,
+                    },
+                ));
+                slots.push((
+                    Slot::PromptStatus,
+                    RECT {
+                        left: 0,
+                        top: content_top + content_height - 18,
+                        right: content_width,
+                        bottom: content_top + content_height - 2,
+                    },
+                ));
+            }
+            View::History => {
+                // Search card.
+                cards.push((
+                    RECT {
+                        left: 0,
+                        top: content_top,
+                        right: content_width,
+                        bottom: content_top + 103,
+                    },
+                    TextKey::SearchCard,
+                ));
+                slots.push((
+                    Slot::HistorySearch,
+                    RECT {
+                        left: 12,
+                        top: content_top + 29,
+                        right: content_width - 232,
+                        bottom: content_top + 57,
+                    },
+                ));
+                slots.push((
+                    Slot::HistoryRefresh,
+                    RECT {
+                        left: content_width - 222,
+                        top: content_top + 29,
+                        right: content_width - 122,
+                        bottom: content_top + 57,
+                    },
+                ));
+                slots.push((
+                    Slot::HistoryCopy,
+                    RECT {
+                        left: content_width - 112,
+                        top: content_top + 29,
+                        right: content_width - 4,
+                        bottom: content_top + 57,
+                    },
+                ));
+                let filter_width = (content_width - 24 - 20) / 3;
+                for (index, slot) in [
+                    Slot::HistPromptFilter,
+                    Slot::HistSourceFilter,
+                    Slot::HistOrderFilter,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let left = 12 + index as i32 * (filter_width + 10);
+                    slots.push((
+                        slot,
+                        RECT {
+                            left,
+                            top: content_top + 63,
+                            right: left + filter_width,
+                            bottom: content_top + 91,
+                        },
+                    ));
+                }
+                // Entries card: the list/detail split absorbs the rest.
+                let card_top = content_top + 114;
+                let card_bottom = content_top + content_height - 64;
+                cards.push((
+                    RECT {
+                        left: 0,
+                        top: card_top,
+                        right: content_width,
+                        bottom: card_bottom,
+                    },
+                    TextKey::EntriesCard,
+                ));
+                let list_width = 300;
+                slots.push((
+                    Slot::HistoryList,
+                    RECT {
+                        left: 12,
+                        top: card_top + 25,
+                        right: 12 + list_width,
+                        bottom: card_bottom - 12,
+                    },
+                ));
+                let detail_left = 12 + list_width + 10;
+                let detail_right = content_width - 12;
+                wells.push(RECT {
+                    left: detail_left,
+                    top: card_top + 25,
+                    right: detail_right,
+                    bottom: card_top + 111,
+                });
+                slots.push((
+                    Slot::HistoryTarget,
+                    RECT {
+                        left: detail_left + 12,
+                        top: card_top + 49,
+                        right: detail_right - 12,
+                        bottom: card_top + 73,
+                    },
+                ));
+                slots.push((
+                    Slot::HistoryContext,
+                    RECT {
+                        left: detail_left + 12,
+                        top: card_top + 77,
+                        right: detail_right - 12,
+                        bottom: card_top + 101,
+                    },
+                ));
+                extra_caps.push((
+                    RECT {
+                        left: detail_left,
+                        top: card_top + 117,
+                        right: detail_right,
+                        bottom: card_top + 130,
+                    },
+                    TextKey::Output,
+                ));
+                wells.push(RECT {
+                    left: detail_left,
+                    top: card_top + 132,
+                    right: detail_right,
+                    bottom: card_bottom - 24,
+                });
+                slots.push((
+                    Slot::HistoryOutput,
+                    RECT {
+                        left: detail_left,
+                        top: card_top + 135,
+                        right: detail_right,
+                        bottom: card_bottom - 27,
+                    },
+                ));
+                slots.push((
+                    Slot::HistoryHint,
+                    RECT {
+                        left: detail_left,
+                        top: card_bottom - 22,
+                        right: detail_right,
+                        bottom: card_bottom - 8,
+                    },
+                ));
+                slots.push((
+                    Slot::HistoryMeta,
+                    RECT {
+                        left: 0,
+                        top: card_bottom + 4,
+                        right: 300,
+                        bottom: card_bottom + 24,
+                    },
+                ));
+                slots.push((
+                    Slot::HistoryDelete,
+                    RECT {
+                        left: content_width - 144,
+                        top: card_bottom + 2,
+                        right: content_width,
+                        bottom: card_bottom + 34,
+                    },
+                ));
+            }
+        }
+        PageGeometry {
+            cards,
+            wells,
+            extra_caps,
+            slots,
+        }
+    }
+
     fn apply_control_fonts(state: &ManagerState) {
         let body = state.theme.body_font;
+        let small = state.theme.small_font;
+        let note = state.theme.note_font;
+        let mono = state.theme.mono_font;
+        let set_font = |hwnd: HWND, font: HFONT| unsafe {
+            let _ = SendMessageW(
+                hwnd,
+                WM_SETFONT,
+                Some(WPARAM(font.0 as usize)),
+                Some(LPARAM(1)),
+            );
+        };
         for hwnd in [
             state.handles.settings_nav,
             state.handles.prompts_nav,
             state.handles.history_nav,
-            state.handles.close,
-            state.handles.status,
-        ]
-        .into_iter()
-        .chain(state.handles.placements.iter().map(|item| item.hwnd))
-        {
-            unsafe {
-                let _ = SendMessageW(
-                    hwnd,
-                    WM_SETFONT,
-                    Some(WPARAM(body.0 as usize)),
-                    Some(LPARAM(1)),
-                );
-            }
+        ] {
+            set_font(hwnd, body);
+        }
+        set_font(state.handles.status, note);
+        for placement in &state.handles.placements {
+            let font = match placement.slot {
+                Slot::SystemPrompt
+                | Slot::UserTemplate
+                | Slot::HistoryTarget
+                | Slot::HistoryOutput => mono,
+                Slot::CredentialHint
+                | Slot::PromptHint
+                | Slot::HistoryHint
+                | Slot::HistoryMeta
+                | Slot::CredentialStatus
+                | Slot::PromptStatus => note,
+                Slot::EndpointLabel
+                | Slot::ModelLabel
+                | Slot::CredentialTargetLabel
+                | Slot::ApiKeyLabel
+                | Slot::SelectionLabel
+                | Slot::HoverLabel
+                | Slot::LangLabel
+                | Slot::PromptIdLabel
+                | Slot::PromptNameLabel
+                | Slot::PromptModelLabel
+                | Slot::PromptTempLabel
+                | Slot::PromptTokensLabel => small,
+                _ => body,
+            };
+            set_font(placement.hwnd, font);
         }
     }
 
@@ -2233,7 +2619,6 @@ mod windows_app {
             state.handles.settings_nav,
             state.handles.prompts_nav,
             state.handles.history_nav,
-            state.handles.close,
             state.handles.status,
         ]
         .into_iter()
@@ -2249,6 +2634,7 @@ mod windows_app {
         // Windows builds.
         for combo in [
             state.handles.language,
+            state.handles.profile_id,
             state.handles.history_prompt,
             state.handles.history_source,
             state.handles.history_order,
@@ -2268,43 +2654,43 @@ mod windows_app {
             unsafe {
                 let _ = FillRect(hdc, &client, state.theme.background);
             }
+            // Tab bar: surface strip with a hairline bottom border; the live
+            // status dot precedes the status label on the right.
             let layout = ManagerLayout::for_client(client.right, client.bottom, state.dpi);
-            let nav = scaled_rect(layout.nav, state.dpi);
+            let tab_bar = scaled_rect(layout.tab_bar, state.dpi);
             unsafe {
-                let _ = FillRect(hdc, &nav, state.theme.nav);
-            }
-            let mut brand = scaled_rect(
-                RECT {
-                    left: 16,
-                    top: 18,
-                    right: NAV_WIDTH - 12,
-                    bottom: 48,
-                },
-                state.dpi,
-            );
-            let mut descriptor = scaled_rect(
-                RECT {
-                    left: 16,
-                    top: 50,
-                    right: NAV_WIDTH - 12,
-                    bottom: 69,
-                },
-                state.dpi,
-            );
-            let old_font = unsafe { SelectObject(hdc, HGDIOBJ(state.theme.label_font.0)) };
-            unsafe {
-                SetBkColor(hdc, NAV_BG);
-                SetTextColor(hdc, TEXT);
-                let mut text: Vec<u16> = ui_text(state.language(), TextKey::Brand)
-                    .encode_utf16()
-                    .collect();
-                let _ = DrawTextW(hdc, &mut text, &mut brand, DRAW_TEXT_FORMAT(0x0100));
-                SetTextColor(hdc, MUTED);
-                let mut text: Vec<u16> = ui_text(state.language(), TextKey::Manager)
-                    .encode_utf16()
-                    .collect();
-                let _ = DrawTextW(hdc, &mut text, &mut descriptor, DRAW_TEXT_FORMAT(0x0100));
-                let _ = SelectObject(hdc, old_font);
+                let _ = FillRect(hdc, &tab_bar, state.theme.surface);
+                let hairline = CreateSolidBrush(BORDER);
+                let _ = FillRect(
+                    hdc,
+                    &RECT {
+                        left: tab_bar.left,
+                        top: tab_bar.bottom - 1,
+                        right: tab_bar.right,
+                        bottom: tab_bar.bottom,
+                    },
+                    hairline,
+                );
+                let _ = DeleteObject(hairline.into());
+                // Live dot: 8px ok-green circle left of the status text.
+                let status = scaled_rect(layout.status, state.dpi);
+                let dot_radius = scale_for_dpi(4, state.dpi).max(2);
+                let dot_center_y = (status.top + status.bottom) / 2;
+                let brush = CreateSolidBrush(OK);
+                let pen = CreatePen(PS_NULL, 0, COLORREF(0));
+                let old_brush = SelectObject(hdc, HGDIOBJ(brush.0));
+                let old_pen = SelectObject(hdc, HGDIOBJ(pen.0));
+                let _ = Ellipse(
+                    hdc,
+                    status.left - dot_radius * 3,
+                    dot_center_y - dot_radius,
+                    status.left - dot_radius,
+                    dot_center_y + dot_radius,
+                );
+                let _ = SelectObject(hdc, old_brush);
+                let _ = SelectObject(hdc, old_pen);
+                let _ = DeleteObject(brush.into());
+                let _ = DeleteObject(pen.into());
             }
         }
         unsafe {
@@ -2340,36 +2726,50 @@ mod windows_app {
             unsafe {
                 let _ = FillRect(hdc, &client, state.theme.background);
             }
-            let (title_key, subtitle_key) = match page_identity(state, hwnd) {
-                Some(View::Settings) => (TextKey::Settings, TextKey::SettingsSubtitle),
-                Some(View::Prompts) => (TextKey::Prompts, TextKey::PromptsSubtitle),
-                Some(View::History) => (TextKey::History, TextKey::HistorySubtitle),
-                None => {
-                    return unsafe {
-                        let _ = EndPaint(hwnd, &paint);
-                    }
+            let Some(view) = page_identity(state, hwnd) else {
+                unsafe {
+                    let _ = EndPaint(hwnd, &paint);
                 }
+                return;
+            };
+            // Responsive geometry shared with apply_manager_layout.
+            let page_width = unscale_from_dpi(client.right, state.dpi);
+            let container_height = unscale_from_dpi(client.bottom, state.dpi);
+            let geometry = page_geometry(view, page_width, container_height);
+            // Slot rects are logical container coordinates with the content
+            // padding already accounted for; scale exactly once here.
+            let place = |rect: &RECT| {
+                scaled_rect(
+                    RECT {
+                        left: CONTENT_PADDING + rect.left,
+                        top: rect.top,
+                        right: CONTENT_PADDING + rect.right,
+                        bottom: rect.bottom,
+                    },
+                    state.dpi,
+                )
+            };
+            let (title_key, subtitle_key) = match view {
+                View::Settings => (TextKey::Settings, TextKey::SettingsSubtitle),
+                View::Prompts => (TextKey::Prompts, TextKey::PromptsSubtitle),
+                View::History => (TextKey::History, TextKey::HistorySubtitle),
             };
             let title = ui_text(state.language(), title_key);
             let subtitle = ui_text(state.language(), subtitle_key);
-            let mut title_rect = scaled_rect(
-                RECT {
-                    left: 28,
-                    top: 14,
-                    right: 748,
-                    bottom: 43,
-                },
-                state.dpi,
-            );
-            let mut subtitle_rect = scaled_rect(
-                RECT {
-                    left: 30,
-                    top: 43,
-                    right: 748,
-                    bottom: 64,
-                },
-                state.dpi,
-            );
+            // Title and subtitle live in the header band at the top of the
+            // page container; content coordinates start below it.
+            let mut title_rect = place(&RECT {
+                left: 0,
+                top: 4,
+                right: page_width - CONTENT_PADDING,
+                bottom: 38,
+            });
+            let mut subtitle_rect = place(&RECT {
+                left: 2,
+                top: 38,
+                right: page_width - CONTENT_PADDING,
+                bottom: 58,
+            });
             unsafe {
                 let old = SelectObject(hdc, HGDIOBJ(state.theme.title_font.0));
                 SetBkColor(hdc, MANAGER_BG);
@@ -2382,9 +2782,88 @@ mod windows_app {
                 let _ = DrawTextW(hdc, &mut text, &mut subtitle_rect, DRAW_TEXT_FORMAT(0x0100));
                 let _ = SelectObject(hdc, old);
             }
+
+            // Grouped cards: raised rounded rectangles behind each field group.
+            for (rect, cap_key) in &geometry.cards {
+                let card = place(rect);
+                paint_rounded_card(hdc, card, state.dpi);
+                let cap = ui_text(state.language(), *cap_key);
+                let mut cap_rect = place(&RECT {
+                    left: rect.left + 12,
+                    top: rect.top + 9,
+                    right: rect.right - 12,
+                    bottom: rect.top + 23,
+                });
+                unsafe {
+                    let old = SelectObject(hdc, HGDIOBJ(state.theme.caps_font.0));
+                    SetBkMode(hdc, TRANSPARENT);
+                    SetTextColor(hdc, MUTED);
+                    let mut text: Vec<u16> = cap.encode_utf16().collect();
+                    let _ = DrawTextW(hdc, &mut text, &mut cap_rect, DRAW_TEXT_FORMAT(0x0100));
+                    let _ = SelectObject(hdc, old);
+                }
+            }
+
+            // History detail wells: the Selection card and Output box sit on
+            // --void inside the raised Entries card, matching the mockup.
+            for well in &geometry.wells {
+                paint_well(hdc, place(well));
+            }
+            for (rect, cap_key) in &geometry.extra_caps {
+                let cap = ui_text(state.language(), *cap_key);
+                let mut cap_rect = place(rect);
+                unsafe {
+                    let old = SelectObject(hdc, HGDIOBJ(state.theme.caps_font.0));
+                    SetBkMode(hdc, TRANSPARENT);
+                    SetTextColor(hdc, MUTED);
+                    let mut text: Vec<u16> = cap.encode_utf16().collect();
+                    let _ = DrawTextW(hdc, &mut text, &mut cap_rect, DRAW_TEXT_FORMAT(0x0100));
+                    let _ = SelectObject(hdc, old);
+                }
+            }
         }
         unsafe {
             let _ = EndPaint(hwnd, &paint);
+        }
+    }
+
+    /// Raised card with hairline border, radius 10 (mockup `.mfield`).
+    fn paint_rounded_card(hdc: HDC, rect: RECT, dpi: u32) {
+        let radius = scale_for_dpi(10, dpi).max(4);
+        let fill = unsafe { CreateSolidBrush(SURFACE_BG) };
+        let border = unsafe { CreateSolidBrush(BORDER) };
+        let region = unsafe {
+            CreateRoundRectRgn(
+                rect.left,
+                rect.top,
+                rect.right + 1,
+                rect.bottom + 1,
+                radius,
+                radius,
+            )
+        };
+        unsafe {
+            if !region.0.is_null() {
+                let _ = FillRgn(hdc, region, fill);
+                let _ = FrameRgn(hdc, region, border, 1, 1);
+                let _ = DeleteObject(region.into());
+            } else {
+                let _ = FillRect(hdc, &rect, fill);
+            }
+            let _ = DeleteObject(fill.into());
+            let _ = DeleteObject(border.into());
+        }
+    }
+
+    /// Void well with hairline border (history Selection/Output areas).
+    fn paint_well(hdc: HDC, rect: RECT) {
+        let fill = unsafe { CreateSolidBrush(MANAGER_BG) };
+        let border = unsafe { CreateSolidBrush(BORDER) };
+        unsafe {
+            let _ = FillRect(hdc, &rect, fill);
+            let _ = FrameRect(hdc, &rect, border);
+            let _ = DeleteObject(fill.into());
+            let _ = DeleteObject(border.into());
         }
     }
 
@@ -2396,23 +2875,48 @@ mod windows_app {
     ) -> LRESULT {
         let hdc = windows::Win32::Graphics::Gdi::HDC(wparam.0 as *mut _);
         let child = HWND(lparam.0 as *mut c_void);
-        let in_navigation = child == state.handles.status;
-        let is_label = message == 0x0138;
-        let background = if in_navigation {
-            NAV_BG
-        } else if is_label {
-            MANAGER_BG
+        let is_static = message == 0x0138;
+        let on_void = child == state.handles.history_list
+            || child == state.handles.history_target
+            || child == state.handles.history_context
+            || child == state.handles.history_output
+            || child == state.handles.system_prompt
+            || child == state.handles.user_template;
+        // Settings-page static labels and notes sit on the raised card body;
+        // prompts/history statics sit on the page background.
+        let on_card = is_static
+            && !on_void
+            && state
+                .handles
+                .placements
+                .iter()
+                .any(|placement| placement.hwnd == child && placement.view == View::Settings);
+        let (background, foreground) = if child == state.handles.status {
+            (TAB_BG, MUTED)
+        } else if on_void {
+            (
+                MANAGER_BG,
+                if child == state.handles.history_context {
+                    MUTED
+                } else {
+                    TEXT
+                },
+            )
+        } else if on_card {
+            (SURFACE_BG, MUTED)
+        } else if is_static {
+            (MANAGER_BG, MUTED)
         } else {
-            SURFACE_BG
+            (SURFACE_BG, TEXT)
         };
         unsafe {
-            SetTextColor(hdc, if in_navigation { MUTED } else { TEXT });
+            SetTextColor(hdc, foreground);
             SetBkColor(hdc, background);
         }
-        LRESULT(if in_navigation {
-            state.theme.nav.0 as isize
-        } else if is_label {
+        LRESULT(if background == MANAGER_BG {
             state.theme.background.0 as isize
+        } else if background == SURFACE_BG {
+            state.theme.card.0 as isize
         } else {
             state.theme.surface.0 as isize
         })
@@ -2436,20 +2940,23 @@ mod windows_app {
             item.CtlID as usize,
             ID_SAVE_SETTINGS | ID_SAVE_KEY | ID_SAVE_PROMPT | ID_HISTORY_REFRESH
         );
-        let fill = if disabled {
-            MANAGER_BG
-        } else if pressed {
-            SURFACE_HOVER
-        } else if selected_nav || primary {
-            ACCENT
+        // Mockup treatments: tabs are accent-tinted when active; primary
+        // actions use the accent fill; destructive actions use the error
+        // wash; everything else is raised with a hairline border.
+        let (fill, border_color, text_color, _weight) = if selected_nav {
+            (TAB_HOT, TAB_HOT, ACCENT, 600)
+        } else if primary {
+            let fill = if disabled { SURFACE_HOVER } else { ACCENT };
+            (fill, fill, PRIMARY_INK, 600)
+        } else if destructive {
+            let border = if disabled { BORDER } else { DANGER_BORDER };
+            (DANGER_BG, border, DANGER, 500)
+        } else if disabled {
+            (MANAGER_BG, BORDER, MUTED, 500)
+        } else if pressed || focused {
+            (SURFACE_HOVER, BORDER, TEXT, 500)
         } else {
-            SURFACE_BG
-        };
-        let text_color = if destructive { DANGER } else { TEXT };
-        let border_color = if focused || selected_nav {
-            ACCENT
-        } else {
-            BORDER
+            (SURFACE_BG, BORDER, TEXT, 500)
         };
         let fill_brush = unsafe { CreateSolidBrush(fill) };
         let border_brush = unsafe { CreateSolidBrush(border_color) };
@@ -2468,7 +2975,9 @@ mod windows_app {
         unsafe {
             if !region.0.is_null() {
                 let _ = FillRgn(item.hDC, region, fill_brush);
-                let _ = FrameRgn(item.hDC, region, border_brush, 1, 1);
+                if border_color != fill {
+                    let _ = FrameRgn(item.hDC, region, border_brush, 1, 1);
+                }
                 let _ = DeleteObject(region.into());
             } else {
                 let _ = FillRect(item.hDC, &rect, fill_brush);
@@ -2484,14 +2993,14 @@ mod windows_app {
             } else {
                 None
             };
-            SetBkColor(item.hDC, fill);
+            SetBkMode(item.hDC, TRANSPARENT);
             SetTextColor(item.hDC, text_color);
             let drawn = written.min(text.len());
             let _ = DrawTextW(
                 item.hDC,
                 &mut text[..drawn],
                 &mut rect,
-                DRAW_TEXT_FORMAT(0x0001 | 0x0020 | 0x0100),
+                DRAW_TEXT_FORMAT(0x0001 | 0x0020 | 0x0100 | 0x0800),
             );
             if focused {
                 rect.left += scale_for_dpi(4, state.dpi);
@@ -2502,6 +3011,95 @@ mod windows_app {
             }
             if let Some(old) = old {
                 let _ = SelectObject(item.hDC, old);
+            }
+        }
+    }
+
+    /// Owner-draw row for the history list: target (mono), output preview,
+    /// and a `time · profile` meta line — the mockup's three-line item.
+    fn draw_history_list_item(item: &DRAWITEMSTRUCT, state: &ManagerState) {
+        if item.CtlType != ODT_LISTBOX {
+            return;
+        }
+        let selected = item.itemState.0 & 0x0001 != 0;
+        let background = if selected { TAB_HOT } else { MANAGER_BG };
+        let fill = unsafe { CreateSolidBrush(background) };
+        unsafe {
+            let _ = FillRect(item.hDC, &item.rcItem, fill);
+            let _ = DeleteObject(fill.into());
+            if (item.itemID as usize) >= state.history_entries.len() {
+                return;
+            }
+            let entry = &state.history_entries[item.itemID as usize];
+            let inset = scale_for_dpi(12, state.dpi);
+            let mut bounds = item.rcItem;
+            bounds.left += inset;
+            bounds.right -= inset;
+            let line_gap = scale_for_dpi(2, state.dpi);
+            let mut target_rect = bounds;
+            target_rect.top = bounds.top + scale_for_dpi(8, state.dpi);
+            target_rect.bottom = target_rect.top + scale_for_dpi(16, state.dpi);
+            let mut preview_rect = bounds;
+            preview_rect.top = target_rect.bottom + line_gap;
+            preview_rect.bottom = preview_rect.top + scale_for_dpi(15, state.dpi);
+            let mut meta_rect = bounds;
+            meta_rect.top = preview_rect.bottom + line_gap;
+            meta_rect.bottom = meta_rect.top + scale_for_dpi(13, state.dpi);
+            let old_bk = SetBkMode(item.hDC, TRANSPARENT);
+            // 1 · Target snippet, mono ink.
+            let mono_old = SelectObject(item.hDC, HGDIOBJ(state.theme.mono_font.0));
+            SetTextColor(item.hDC, TEXT);
+            let mut snippet: Vec<u16> = single_line(&entry.target).encode_utf16().collect();
+            let _ = DrawTextW(
+                item.hDC,
+                &mut snippet,
+                &mut target_rect,
+                DRAW_TEXT_FORMAT(0x0100 | 0x0800 | 0x2000),
+            );
+            // 2 · Output preview, muted body face.
+            SelectObject(item.hDC, HGDIOBJ(state.theme.note_font.0));
+            SetTextColor(item.hDC, MUTED);
+            let mut preview: Vec<u16> = single_line(&entry.output).encode_utf16().collect();
+            let _ = DrawTextW(
+                item.hDC,
+                &mut preview,
+                &mut preview_rect,
+                DRAW_TEXT_FORMAT(0x0100 | 0x0800 | 0x2000),
+            );
+            // 3 · `HH:MM · profile` meta line; the profile id takes accent.
+            let mono_old2 = SelectObject(item.hDC, HGDIOBJ(state.theme.mono_font.0));
+            SetTextColor(item.hDC, MUTED);
+            let time = entry
+                .created_at_utc
+                .get(11..16)
+                .unwrap_or_default()
+                .to_owned();
+            let mut meta_text: Vec<u16> = format!("{time} · ").encode_utf16().collect();
+            let _ = DrawTextW(
+                item.hDC,
+                &mut meta_text,
+                &mut meta_rect,
+                DRAW_TEXT_FORMAT(0x0100 | 0x0800),
+            );
+            let prefix_width = {
+                let mut size = windows::Win32::Foundation::SIZE::default();
+                let _ = GetTextExtentPoint32W(item.hDC, &meta_text, &mut size);
+                size.cx
+            };
+            meta_rect.left += prefix_width;
+            SetTextColor(item.hDC, ACCENT);
+            let mut profile_text: Vec<u16> = single_line(&entry.prompt_id).encode_utf16().collect();
+            let _ = DrawTextW(
+                item.hDC,
+                &mut profile_text,
+                &mut meta_rect,
+                DRAW_TEXT_FORMAT(0x0100 | 0x0800 | 0x2000),
+            );
+            let _ = SelectObject(item.hDC, mono_old);
+            let _ = SelectObject(item.hDC, mono_old2);
+            SetBkMode(item.hDC, BACKGROUND_MODE(old_bk as u32));
+            if selected && (item.itemState.0 & 0x0010 == 0) {
+                let _ = DrawFocusRect(item.hDC, &item.rcItem);
             }
         }
     }
@@ -2531,6 +3129,11 @@ mod windows_app {
             save_manager_language(hwnd, state);
             return LRESULT(0);
         }
+        if id == ID_PROMPT_ID && notification == CBN_SELCHANGE {
+            // The ID dropdown lists every profile; picking one loads it.
+            load_profile_from_dropdown(state);
+            return LRESULT(0);
+        }
         match id {
             ID_SETTINGS_TAB => switch_view(hwnd, state, View::Settings),
             ID_PROMPTS_TAB => switch_view(hwnd, state, View::Prompts),
@@ -2543,8 +3146,6 @@ mod windows_app {
             ID_DELETE_KEY => delete_key(state),
             ID_SAVE_PROMPT => save_prompt(state),
             ID_NEW_PROMPT => new_prompt(state),
-            ID_PREVIOUS_PROMPT => previous_prompt(state),
-            ID_NEXT_PROMPT => next_prompt(state),
             ID_HISTORY_REFRESH => refresh_history(state),
             ID_HISTORY_COPY => copy_history_output(hwnd, state),
             ID_HISTORY_DELETE => delete_history(hwnd, state),
@@ -2558,6 +3159,9 @@ mod windows_app {
         }
         state.view = view;
         show_view(hwnd, state);
+        // Re-run the responsive layout: page slots are positioned for the
+        // active view only, so a newly shown page needs its geometry applied.
+        apply_manager_layout(hwnd, state);
         if view == View::Settings {
             refresh_settings_form(state);
             update_credential_status(state);
@@ -2627,6 +3231,7 @@ mod windows_app {
                 let _ = InvalidateRect(Some(control.hwnd), None, true);
             }
         }
+        apply_search_placeholder(state);
         populate_language_selector(state);
         populate_history_filters(state);
         unsafe {
@@ -2638,6 +3243,21 @@ mod windows_app {
             ] {
                 let _ = InvalidateRect(Some(page), None, true);
             }
+        }
+    }
+
+    /// Muted in-field hint for the empty history search box (mockup shows
+    /// the placeholder inside the input).
+    fn apply_search_placeholder(state: &ManagerState) {
+        const EM_SETCUEBANNER: u32 = 0x1501;
+        let text = wide(ui_text(state.language(), TextKey::SearchTargetOutput));
+        unsafe {
+            let _ = SendMessageW(
+                state.handles.history_search,
+                EM_SETCUEBANNER,
+                Some(WPARAM(1)),
+                Some(LPARAM(text.as_ptr() as isize)),
+            );
         }
     }
 
@@ -2674,7 +3294,6 @@ mod windows_app {
 
         state.config = next;
         apply_static_localization(hwnd, state);
-        refresh_profile_number(state);
         relabel_credential_status(state);
         if selected_history_index(state.handles.history_list, state.history_entries.len()).is_some()
         {
@@ -3369,18 +3988,14 @@ mod windows_app {
         };
         let was_draft = state.draft_prompt.is_some();
         let old_id = (!was_draft).then(|| state.config.profiles[state.profile_index].id.clone());
-        let mut next = apply_prompt(
+        // Global defaults belong to the Settings page; prompt saves leave
+        // them untouched.
+        let next = apply_prompt(
             &state.config,
             (!was_draft).then_some(state.profile_index),
             old_id.as_deref(),
             prompt,
         );
-        next.defaults.selection = read_text(state.handles.prompt_selection_default)
-            .trim()
-            .to_owned();
-        next.defaults.hover = read_text(state.handles.prompt_hover_default)
-            .trim()
-            .to_owned();
         if let Err(error) = next.validate() {
             set_text(
                 state.handles.prompt_status,
@@ -3431,22 +4046,22 @@ mod windows_app {
             &status_text(state.language(), StatusEvent::NewPromptUnsaved),
         );
     }
-    fn previous_prompt(state: &mut ManagerState) {
-        discard_draft(state);
-        if !state.config.profiles.is_empty() {
-            state.profile_index = state.profile_index.saturating_sub(1);
-            refresh_prompt_form(state);
+    /// Load the profile chosen in the ID dropdown (mockup: "ID dropdown
+    /// lists all profiles — switch to load another prompt").
+    fn load_profile_from_dropdown(state: &mut ManagerState) {
+        let Some(index) = combo_selection(state.handles.profile_id) else {
+            return;
+        };
+        if index >= state.config.profiles.len() || state.draft_prompt.is_some() {
+            return;
         }
-    }
-    fn next_prompt(state: &mut ManagerState) {
-        discard_draft(state);
-        if !state.config.profiles.is_empty() {
-            state.profile_index = (state.profile_index + 1) % state.config.profiles.len();
+        if index != state.profile_index {
+            state.profile_index = index;
             refresh_prompt_form(state);
         }
     }
     fn refresh_prompt_form(state: &mut ManagerState) {
-        refresh_profile_number(state);
+        refresh_profile_dropdown(state);
         if let Some(prompt) = state
             .draft_prompt
             .as_ref()
@@ -3472,30 +4087,20 @@ mod windows_app {
                     .max_output_tokens
                     .map_or_else(String::new, |v| v.to_string()),
             );
-            set_text(
-                state.handles.prompt_selection_default,
-                &state.config.defaults.selection,
-            );
-            set_text(
-                state.handles.prompt_hover_default,
-                &state.config.defaults.hover,
-            );
         }
     }
 
-    fn refresh_profile_number(state: &ManagerState) {
-        let number = if state.draft_prompt.is_some() {
-            status_text(state.language(), StatusEvent::NewDraft)
-        } else {
-            status_text(
-                state.language(),
-                StatusEvent::ProfilePosition {
-                    current: state.profile_index.saturating_add(1),
-                    total: state.config.profiles.len(),
-                },
-            )
-        };
-        set_text(state.handles.profile_number, &number);
+    /// Sync the ID dropdown with the configured profiles. Selecting an
+    /// option switches profiles; the edit half stays free for renaming or
+    /// draft ids.
+    fn refresh_profile_dropdown(state: &mut ManagerState) {
+        reset_combo(state.handles.profile_id);
+        for profile in &state.config.profiles {
+            add_combo_string(state.handles.profile_id, &profile_option_label(profile));
+        }
+        if state.draft_prompt.is_none() {
+            set_combo_selection(state.handles.profile_id, state.profile_index);
+        }
     }
 
     fn discard_draft(state: &mut ManagerState) {
@@ -3701,30 +4306,92 @@ mod windows_app {
         }
 
         #[test]
-        fn manager_layout_keeps_navigation_and_page_disjoint_at_supported_dpi() {
+        fn manager_layout_keeps_tab_bar_page_disjoint_at_supported_dpi() {
             for dpi in [96, 144, 192] {
                 let width = super::scale_for_dpi(980, dpi);
-                let height = super::scale_for_dpi(680, dpi);
+                let height = super::scale_for_dpi(760, dpi);
                 let layout = ManagerLayout::for_client(width, height, dpi);
-                assert_eq!(layout.nav.left, 0);
-                assert_eq!(layout.nav.right, layout.page.left);
+                assert_eq!(layout.tab_bar.left, 0);
+                assert_eq!(layout.tab_bar.bottom, layout.page.top);
                 assert_eq!(layout.page.right, 980);
-                assert_eq!(layout.page.bottom, 680);
-                assert!(layout.status.bottom <= layout.nav_buttons[3].top - 12);
-                for pair in layout.nav_buttons[..3].windows(2) {
-                    assert!(pair[0].bottom < pair[1].top);
+                assert_eq!(layout.page.top, super::TAB_BAR_HEIGHT);
+                assert_eq!(layout.page.bottom, 760);
+                // Status sits inside the tab bar, right of the three tabs.
+                assert!(layout.status.left > layout.tabs[2].right);
+                assert!(layout.status.top >= layout.tab_bar.top);
+                assert!(layout.status.bottom <= layout.tab_bar.bottom);
+                for pair in layout.tabs.windows(2) {
+                    assert!(pair[0].right < pair[1].left);
                 }
             }
         }
 
         #[test]
-        fn manager_layout_uses_extra_width_without_moving_fixed_navigation() {
-            let compact = ManagerLayout::for_client(980, 680, 96);
-            let wide = ManagerLayout::for_client(1240, 760, 96);
-            assert_eq!(compact.nav.right, wide.nav.right);
+        fn manager_layout_tabs_stay_fixed_and_content_fills_page() {
+            let compact = ManagerLayout::for_client(980, 760, 96);
+            let wide = ManagerLayout::for_client(1240, 820, 96);
+            assert_eq!(compact.tabs, wide.tabs);
             assert_eq!(compact.page.left, wide.page.left);
             assert!(wide.page.right > compact.page.right);
-            assert!(wide.nav_buttons[3].top > compact.nav_buttons[3].top);
+            // Content starts at the fixed padding and spans the page.
+            let geometry =
+                super::page_geometry(super::View::Settings, 1240, 820 - super::TAB_BAR_HEIGHT);
+            let card = &geometry.cards[0];
+            assert_eq!(card.0.left, 0);
+            assert_eq!(card.0.right, 1240 - 2 * super::CONTENT_PADDING);
+            // Cards stretch to absorb vertical extra space.
+            let compact_geometry =
+                super::page_geometry(super::View::Settings, 980, 760 - super::TAB_BAR_HEIGHT);
+            let wide_card = &geometry.cards[0];
+            let compact_card = &compact_geometry.cards[0];
+            assert!(
+                wide_card.0.bottom - wide_card.0.top > compact_card.0.bottom - compact_card.0.top
+            );
+        }
+
+        #[test]
+        fn settings_geometry_matches_hand_computed_default_layout() {
+            // 980-wide window: content spans the page minus padding; the
+            // three cards share the vertical slack by field count; fields
+            // distribute evenly inside each card.
+            let geometry = super::page_geometry(super::View::Settings, 980, 664);
+            let tops = [64, 258, 408];
+            for (card, top) in geometry.cards.iter().zip(tops) {
+                assert_eq!(card.0.left, 0);
+                assert_eq!(card.0.right, 916);
+                assert_eq!(card.0.top, top);
+            }
+            assert_eq!(geometry.cards[0].0.bottom, 248);
+            assert_eq!(geometry.cards[1].0.bottom, 398);
+            assert_eq!(geometry.cards[2].0.bottom, 592);
+            let slot = |slot: super::Slot| {
+                geometry
+                    .slots
+                    .iter()
+                    .find(|(candidate, _)| *candidate == slot)
+                    .map(|(_, rect)| *rect)
+                    .expect("slot present")
+            };
+            let endpoint = slot(super::Slot::Endpoint);
+            // Slot rects are card-relative; placement adds CONTENT_PADDING.
+            assert_eq!(endpoint.left, 12);
+            assert_eq!(endpoint.right, 916 - 12);
+            assert_eq!(endpoint.top, 64 + 31 + 16);
+            assert_eq!(endpoint.bottom, endpoint.top + 28);
+            let save = slot(super::Slot::SaveSettings);
+            assert_eq!(save.left, 0);
+            assert_eq!(save.top, 408 + 184 + 10);
+            // History geometry: the entries split absorbs the remaining height.
+            let history = super::page_geometry(super::View::History, 980, 664);
+            let list = history
+                .slots
+                .iter()
+                .find(|(candidate, _)| *candidate == super::Slot::HistoryList)
+                .map(|(_, rect)| *rect)
+                .expect("list slot");
+            assert_eq!(list.left, 12);
+            assert_eq!(list.right - list.left, 300);
+            assert_eq!(list.bottom, 64 + 576 - 64 - 12);
         }
 
         #[test]
@@ -3827,7 +4494,6 @@ mod windows_app {
                     detail: "opaque-error",
                 },
                 StatusEvent::NewPromptUnsaved,
-                StatusEvent::NewDraft,
                 StatusEvent::UnsavedPromptDiscarded,
                 StatusEvent::PromptInvalid {
                     detail: "opaque-error",
@@ -3841,10 +4507,6 @@ mod windows_app {
                     detail: "opaque-error",
                 },
                 StatusEvent::HistoryCount { count: 2 },
-                StatusEvent::ProfilePosition {
-                    current: 1,
-                    total: 2,
-                },
             ];
             assert!(events.len() >= 50);
             for event in events {

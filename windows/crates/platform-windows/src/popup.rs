@@ -89,50 +89,58 @@ mod windows_impl {
         CFE_BOLD, CFE_EFFECTS, CFE_ITALIC, CFE_STRIKEOUT, CFM_BOLD, CFM_CHARSET, CFM_COLOR,
         CFM_FACE, CFM_ITALIC, CFM_SIZE, CFM_STRIKEOUT, CHARFORMATW,
     };
-    use windows::Win32::UI::Controls::{SetWindowTheme, DRAWITEMSTRUCT, ODT_BUTTON};
+    use windows::Win32::UI::Controls::{
+        SetWindowTheme, DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_MENU,
+    };
     use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetFocus, VK_ESCAPE};
     use windows::Win32::UI::WindowsAndMessaging::{
         AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
         GetAncestor, GetClassNameW, GetClientRect, GetParent, GetWindow, GetWindowLongPtrW,
-        GetWindowRect, GetWindowTextW, IsWindow, IsWindowVisible, MoveWindow, PostMessageW,
-        RegisterClassW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
-        SetWindowTextW, ShowWindow, TrackPopupMenu, WindowFromPoint, BS_PUSHBUTTON, CS_DROPSHADOW,
-        CS_HREDRAW, CS_VREDRAW, ES_AUTOVSCROLL, ES_MULTILINE, ES_NOHIDESEL, ES_READONLY, GA_ROOT,
-        GWLP_USERDATA, GWL_EXSTYLE, GW_OWNER, HMENU, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT,
-        HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HWND_TOPMOST, MA_NOACTIVATE,
-        MF_STRING, MINMAXINFO, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE,
-        SW_SHOWNOACTIVATE, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_TOPALIGN, WINDOW_STYLE, WM_APP,
-        WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE,
-        WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDOWN,
-        WM_MOUSEACTIVATE, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT,
-        WM_SETREDRAW, WM_SIZE, WM_TIMER, WNDCLASSW, WS_CHILD, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-        WS_EX_TOPMOST, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+        GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible, MoveWindow,
+        PostMessageW, RegisterClassW, SendMessageW, SetForegroundWindow, SetMenuInfo,
+        SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, TrackPopupMenu,
+        WindowFromPoint, BS_PUSHBUTTON, CS_DROPSHADOW, CS_HREDRAW, CS_VREDRAW, ES_AUTOVSCROLL,
+        ES_MULTILINE, ES_NOHIDESEL, ES_READONLY, GA_ROOT, GWLP_USERDATA, GWL_EXSTYLE, GW_OWNER,
+        HMENU, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT,
+        HTTOPRIGHT, HWND_TOPMOST, MA_NOACTIVATE, MENUINFO, MF_OWNERDRAW, MF_STRING,
+        MIM_APPLYTOSUBMENUS, MIM_BACKGROUND, MINMAXINFO, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+        SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_TOPALIGN,
+        WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DPICHANGED,
+        WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO,
+        WM_KEYDOWN, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOUSEACTIVATE, WM_NCCREATE, WM_NCDESTROY,
+        WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETREDRAW, WM_SIZE, WM_TIMER, WNDCLASSW,
+        WS_CHILD, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_TABSTOP,
+        WS_VISIBLE, WS_VSCROLL,
     };
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslatePopup");
-    // Geometry from the egui mockup, scaled to 1x (egui values are ~2x).
-    const WIDTH: i32 = 660;
-    const HEIGHT: i32 = 470;
-    const MIN_WIDTH: i32 = 480;
+    // Geometry from the redesign mockup (selection-translate-redesign).
+    // Popup: 440 logical px wide, compact header, integrated Selection card,
+    // Result card, and a left-aligned action footer.
+    const WIDTH: i32 = 440;
+    const HEIGHT: i32 = 480;
+    const MIN_WIDTH: i32 = 420;
     const MIN_HEIGHT: i32 = 360;
-    const MARGIN: i32 = 15;
-    const TARGET_HEIGHT: i32 = 28;
-    const CONTEXT_HEIGHT: i32 = 56;
-    const LABEL_HEIGHT: i32 = 14;
-    const SECTION_GAP: i32 = 8;
-    const CONTENT_GAP: i32 = 10;
-    const BUTTON_HEIGHT: i32 = 35;
-    const BUTTON_GAP: i32 = 9;
-    const BUTTON_BOTTOM_GAP: i32 = 12;
-    const CARD_PAD: i32 = 13;
-    const HEADER_HEIGHT: i32 = 56;
-    const DRAG_BAND_HEIGHT: i32 = 24;
-    const CHOOSER_HEIGHT: i32 = 38;
+    const MARGIN: i32 = 14;
+    const HEADER_HEIGHT: i32 = 52;
+    const DRAG_BAND_HEIGHT: i32 = HEADER_HEIGHT;
+    const CARD_GAP: i32 = 10;
+    const CAP_HEIGHT: i32 = 13;
+    const TARGET_HEIGHT: i32 = 44;
+    const CONTEXT_HEIGHT: i32 = 30;
+    const FOOT_HEIGHT: i32 = 60;
+    const BUTTON_HEIGHT: i32 = 36;
+    const BUTTON_GAP: i32 = 8;
+    const MARK_SIZE: i32 = 28;
+    const ICON_SIZE: i32 = 28;
+    const CHOOSER_HEIGHT: i32 = 44;
     const CHOOSER_MARGIN: i32 = 4;
     const CHOOSER_BUTTON_GAP: i32 = 4;
     const CHOOSER_POINTER_GAP: i32 = 8;
-    const CHOOSER_MIN_BUTTON_WIDTH: i32 = 48;
-    const CHOOSER_MAX_BUTTON_WIDTH: i32 = 140;
+    const CHOOSER_MIN_BUTTON_WIDTH: i32 = 56;
+    const CHOOSER_MAX_BUTTON_WIDTH: i32 = 160;
+    const MENU_WIDTH: i32 = 200;
+    const MENU_ITEM_HEIGHT: i32 = 34;
     /// Invisible edge used for custom resize. Frameless so the OS does not
     /// paint a light non-client border over the dark popup.
     const RESIZE_BORDER: i32 = 6;
@@ -145,48 +153,40 @@ mod windows_impl {
     const EM_SETMARGINS: u32 = 0x00d3;
     const EM_SETCHARFORMAT: u32 = 0x0444;
     const SCF_SELECTION: usize = 0x0001;
-    const BASE_FONT_HEIGHT_TWIPS: i32 = 200;
+    // 14px body text (10.5pt) per the mockup result ramp.
+    const BASE_FONT_HEIGHT_TWIPS: i32 = 210;
     pub(super) const RICH_EDIT_CLASS: PCWSTR = w!("RICHEDIT50W");
     const REQUIRED_POPUP_EX_STYLE: u32 = WS_EX_TOPMOST.0 | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0;
 
     // One palette is shared by the parent, text controls, and owner-drawn
     // buttons so the popup reads as a single surface during every state.
     // COLORREF is 0x00BBGGRR.
-    // Exact RGB tokens from the egui mockup (COLORREF is 0x00BBGGRR).
-    // Outer: rgb(17,29,49) · border rgb(48,72,106)
-    pub(super) const POPUP_BG: COLORREF = COLORREF(0x00311d11);
-    const POPUP_BORDER: COLORREF = COLORREF(0x006a4830);
-    // Input card: rgb(25,40,65) · border rgb(37,57,85)
-    const POPUP_SECTION_BG: COLORREF = COLORREF(0x00412819);
-    const POPUP_CARD_BORDER: COLORREF = COLORREF(0x00553925);
-    // Result card: rgb(24,39,63) · border rgb(38,59,88)
-    const POPUP_HEADER_BG: COLORREF = COLORREF(0x003f2718);
-    const POPUP_RESULT_BORDER: COLORREF = COLORREF(0x00583b26);
-    // Field well: rgb(26,43,69) · stroke rgb(65,91,128)
-    const POPUP_FIELD_BG: COLORREF = COLORREF(0x00452b1a);
-    const POPUP_FIELD_BORDER: COLORREF = COLORREF(0x00805b41);
+    // Tokens from the redesign mockup: --surface #12171F panel, --raised
+    // #1A2230 cards, --line #2C3646 hairlines, --ink #F0F4FA text,
+    // --muted #8B97A8 captions, --accent #8BACFF interactive,
+    // --lex-gold #D4B56A code emphasis, --void #0B0E13 deep wells.
+    pub(super) const POPUP_BG: COLORREF = COLORREF(0x001F1712); // surface #12171F
+    const POPUP_BORDER: COLORREF = COLORREF(0x0046362C); // line #2C3646
+                                                         // Cards (Selection + Result): --raised #1A2230 with --line border.
+    const POPUP_SECTION_BG: COLORREF = COLORREF(0x0030221A);
+    const POPUP_CARD_BORDER: COLORREF = COLORREF(0x0046362C);
     // Text
-    pub(super) const POPUP_TEXT: COLORREF = COLORREF(0x00fcf7f5); // rgb(245,247,252)
-    const POPUP_TITLE: COLORREF = COLORREF(0x00fff5f0); // rgb(240,245,255)
-    const POPUP_MUTED: COLORREF = COLORREF(0x00cda991); // rgb(145,169,205)
-    const POPUP_LABEL: COLORREF = COLORREF(0x00e5bb9e); // rgb(158,187,229)
-    #[allow(dead_code)]
-    const POPUP_ICON: COLORREF = COLORREF(0x00ffe1cd); // rgb(205,225,255)
-    const POPUP_RESULT_ICON: COLORREF = COLORREF(0x00ffa969); // rgb(105,169,255)
-    #[allow(dead_code)]
-    const POPUP_RESULT_TEXT: COLORREF = COLORREF(0x00fdf9f8); // rgb(248,249,253)
-    #[allow(dead_code)]
-    const POPUP_CLOSE: COLORREF = COLORREF(0x00f0d2be); // rgb(190,210,240)
-                                                        // Logo chip
-    pub(super) const POPUP_ACCENT: COLORREF = COLORREF(0x00f4a65b); // rgb(91,166,244)
-    const POPUP_LOGO_INK: COLORREF = COLORREF(0x003c2314); // rgb(20,35,60)
-                                                           // Buttons
-    pub(super) const POPUP_ACCENT_DIM: COLORREF = COLORREF(0x00f4914b); // rgb(75,145,244)
-    pub(super) const POPUP_BUTTON_BG: COLORREF = COLORREF(0x00452b1b); // rgb(27,43,69)
-    const POPUP_BUTTON_STROKE: COLORREF = COLORREF(0x0077523a); // rgb(58,82,119)
-    const POPUP_BUTTON_HOVER: COLORREF = COLORREF(0x005a3c24); // hover fill
-    const POPUP_BUTTON_DISABLED: COLORREF = COLORREF(0x003a2819);
-    const POPUP_BUTTON_TEXT: COLORREF = COLORREF(0x00fff2eb); // rgb(235,242,255)
+    pub(super) const POPUP_TEXT: COLORREF = COLORREF(0x00FAF4F0); // ink #F0F4FA
+    const POPUP_TITLE: COLORREF = COLORREF(0x00FAF4F0); // ink
+    const POPUP_MUTED: COLORREF = COLORREF(0x00A8978B); // muted #8B97A8
+    const POPUP_LABEL: COLORREF = COLORREF(0x00A8978B); // caps use muted
+    const POPUP_RESULT_ICON: COLORREF = COLORREF(0x00A8978B);
+    // Logo chip: accent fill with void ink.
+    pub(super) const POPUP_ACCENT: COLORREF = COLORREF(0x00FFAC8B); // accent #8BACFF
+    pub(super) const POPUP_GOLD: COLORREF = COLORREF(0x006AB5D4); // lex-gold #D4B56A
+    const POPUP_LOGO_INK: COLORREF = COLORREF(0x00130E0B); // void #0B0E13
+                                                           // Buttons: raised fill with a hairline stroke; primary uses accent fill.
+    pub(super) const POPUP_ACCENT_DIM: COLORREF = COLORREF(0x003E2C23); // accent 14% over surface
+    pub(super) const POPUP_BUTTON_BG: COLORREF = COLORREF(0x0030221A); // raised #1A2230
+    const POPUP_BUTTON_STROKE: COLORREF = COLORREF(0x0046362C); // line
+    pub(super) const POPUP_BUTTON_HOVER: COLORREF = COLORREF(0x003F2D23); // raised hover #232D3F
+    const POPUP_BUTTON_DISABLED: COLORREF = COLORREF(0x00241B16);
+    const POPUP_BUTTON_TEXT: COLORREF = COLORREF(0x00FAF4F0); // ink
     pub(super) const OWNER_DRAW_BUTTON_STYLE: u32 = BS_PUSHBUTTON as u32 | 0x0000000b;
 
     pub const MAX_OUTPUT_CHARS: usize = 64 * 1024;
@@ -200,11 +200,13 @@ mod windows_impl {
     const PIN_ID: usize = 5;
     const CLOSE_ID: usize = 6;
     const INPUT_ID: usize = 7;
+    const PIN_ICON_ID: usize = 8;
+    const CLOSE_ICON_ID: usize = 9;
     const PROFILE_CHOICE_ID_START: usize = 1000;
     const PROFILE_MORE_ID: usize = 900;
     const RENDER_TIMER_ID: usize = 1;
     const RENDER_TIMER_MS: u32 = 40;
-    const INLINE_PROFILE_LIMIT: usize = 3;
+    const INLINE_PROFILE_LIMIT: usize = 4;
     pub const POPUP_DISMISSED: u32 = WM_APP + 8;
     pub const POPUP_RETRY: u32 = WM_APP + 9;
     pub const POPUP_PROMPT: u32 = WM_APP + 10;
@@ -300,9 +302,16 @@ mod windows_impl {
         output: HWND,
         rich_edit_module: windows::Win32::Foundation::HMODULE,
         buttons: [HWND; 5],
+        /// Header chrome icons (pin ⌖ and close ✕) mirroring the footer
+        /// Pin/Close actions per the mockup top bar.
+        pin_icon: HWND,
+        close_icon: HWND,
         profile_buttons: Vec<HWND>,
         profile_button_widths: Vec<i32>,
         profile_labels: Vec<String>,
+        /// Index (into profile_labels) of the profile that would run without
+        /// an explicit choice; rendered as the accent-filled rail pill.
+        profile_default: Option<usize>,
         choosing_profile: bool,
         /// Only a user close should notify the resident. Replacement and
         /// cancellation destroy the window silently.
@@ -319,7 +328,7 @@ mod windows_impl {
         /// default). Present/reanchor paths reuse this instead of snapping
         /// back to the default geometry.
         window_size: Option<(i32, i32)>,
-        fonts: [HFONT; 2],
+        fonts: [HFONT; 5],
     }
 
     pub struct Popup {
@@ -358,16 +367,19 @@ mod windows_impl {
                 output: HWND::default(),
                 rich_edit_module: windows::Win32::Foundation::HMODULE::default(),
                 buttons: [HWND::default(); 5],
+                pin_icon: HWND::default(),
+                close_icon: HWND::default(),
                 profile_buttons: Vec::new(),
                 profile_button_widths: Vec::new(),
                 profile_labels: Vec::new(),
+                profile_default: None,
                 choosing_profile: false,
                 notify_owner: true,
                 in_native_move: false,
                 render_pending: false,
                 render_timer_armed: false,
                 window_size: None,
-                fonts: [HFONT::default(); 2],
+                fonts: [HFONT::default(); 5],
             });
             let data_ptr = Box::into_raw(data);
             let result = unsafe {
@@ -571,9 +583,10 @@ mod windows_impl {
             }
         }
 
-        /// Replace the result surface with a names-only profile chooser.
-        /// No selected text or prompt content is placed in these controls.
-        pub fn show_profile_choices(&mut self, names: &[String]) -> bool {
+        /// Replace the result surface with the standalone profile rail: a
+        /// compact pill strip where the default profile is highlighted. No
+        /// selected text or prompt content is placed in these controls.
+        pub fn show_profile_choices(&mut self, names: &[String], highlight: Option<usize>) -> bool {
             let Some(data) = data_mut(self.hwnd) else {
                 return false;
             };
@@ -585,6 +598,7 @@ mod windows_impl {
                 .iter()
                 .map(|name| compact_profile_label(name))
                 .collect();
+            data.profile_default = highlight.filter(|index| *index < data.profile_labels.len());
             set_standard_controls_visible(data, false);
             let Ok(instance) =
                 (unsafe { windows::Win32::System::LibraryLoader::GetModuleHandleW(None) })
@@ -954,6 +968,7 @@ mod windows_impl {
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) enum ButtonVisualState {
         Normal,
         Pressed,
@@ -961,10 +976,11 @@ mod windows_impl {
         Focused,
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn button_fill(state: ButtonVisualState) -> COLORREF {
         match state {
             ButtonVisualState::Normal => POPUP_BUTTON_BG,
-            ButtonVisualState::Pressed => POPUP_ACCENT_DIM,
+            ButtonVisualState::Pressed => POPUP_BUTTON_HOVER,
             ButtonVisualState::Disabled => POPUP_BUTTON_DISABLED,
             ButtonVisualState::Focused => POPUP_BUTTON_HOVER,
         }
@@ -1021,7 +1037,7 @@ mod windows_impl {
     }
 
     pub(super) fn chooser_button_width(label: &str) -> i32 {
-        ((label.chars().count() as i32).saturating_mul(8) + 20)
+        ((label.chars().count() as i32).saturating_mul(8) + 28)
             .clamp(CHOOSER_MIN_BUTTON_WIDTH, CHOOSER_MAX_BUTTON_WIDTH)
     }
 
@@ -1103,7 +1119,14 @@ mod windows_impl {
     }
 
     fn apply_round_region(hwnd: HWND, size: (i32, i32), dpi: u32) {
-        let radius = popup_corner_radius(dpi);
+        // The profile rail is a fully-rounded pill strip; the result popup
+        // keeps the mockup's 12px card corners.
+        let choosing = data_mut(hwnd).is_some_and(|data| data.choosing_profile);
+        let radius = if choosing {
+            (size.1 / 2).max(8)
+        } else {
+            popup_corner_radius(dpi)
+        };
         let region: HRGN =
             unsafe { CreateRoundRectRgn(0, 0, size.0 + 1, size.1 + 1, radius, radius) };
         if !region.0.is_null() {
@@ -1154,31 +1177,31 @@ mod windows_impl {
 
     /// Shared geometry for child controls and parent paint. Every metric is
     /// derived from the current client size so a resize updates the whole
-    /// popup, not only the result pane.
+    /// popup, not only the result pane. Mirrors the mockup stack: header,
+    /// integrated Selection card (target + context), Result card, footer.
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub(super) struct PopupLayout {
         pub(super) content_width: i32,
         pub(super) margin: i32,
-        pub(super) drag_band: i32,
-        pub(super) label_height: i32,
-        pub(super) target_label_top: i32,
+        pub(super) header_height: i32,
+        pub(super) cap_height: i32,
+        pub(super) sel_card_top: i32,
+        pub(super) sel_card_bottom: i32,
         pub(super) target_top: i32,
         pub(super) target_height: i32,
-        pub(super) context_label_top: i32,
         pub(super) context_top: i32,
         pub(super) context_height: i32,
-        pub(super) output_label_top: i32,
+        pub(super) result_card_top: i32,
+        pub(super) result_card_bottom: i32,
         pub(super) output_top: i32,
         pub(super) output_height: i32,
+        pub(super) foot_top: i32,
         pub(super) button_top: i32,
         pub(super) button_height: i32,
-        pub(super) button_width: i32,
-        pub(super) button_gap: i32,
-        pub(super) header_height: i32,
-        pub(super) input_card_top: i32,
-        pub(super) input_card_bottom: i32,
-        pub(super) output_card_top: i32,
-        pub(super) output_card_bottom: i32,
+        pub(super) icon_top: i32,
+        pub(super) pin_x: i32,
+        pub(super) close_x: i32,
+        pub(super) icon_size: i32,
     }
 
     pub(super) fn compute_layout(
@@ -1189,60 +1212,65 @@ mod windows_impl {
     ) -> PopupLayout {
         let margin = scale(MARGIN, dpi);
         let header = scale(HEADER_HEIGHT, dpi);
-        let label_height = scale(LABEL_HEIGHT, dpi);
-        let section_gap = scale(SECTION_GAP, dpi);
-        let content_gap = scale(CONTENT_GAP, dpi);
-        let card_pad = scale(CARD_PAD, dpi);
-        let button_height = scale(BUTTON_HEIGHT, dpi);
-        let button_gap = scale(BUTTON_GAP, dpi);
-        let button_bottom_gap = scale(BUTTON_BOTTOM_GAP, dpi);
+        let cap_height = scale(CAP_HEIGHT, dpi);
+        let card_gap = scale(CARD_GAP, dpi);
         let preferred_target = scale(TARGET_HEIGHT, dpi).max(1);
         let preferred_context = scale(CONTEXT_HEIGHT, dpi).max(1);
+        let button_height = scale(BUTTON_HEIGHT, dpi);
+        let foot_height = scale(FOOT_HEIGHT, dpi);
+        let icon_size = scale(ICON_SIZE, dpi);
         let content_width = (client_width - margin * 2).max(1);
-        let button_count = button_count.max(1);
-        let button_width =
-            ((content_width - button_gap * (button_count - 1)) / button_count).max(1);
+        // Header chrome: mark + titles on the left, pin/close icons on the
+        // right edge with a 4px gap between the two icons.
+        let icon_top = scale(12, dpi);
+        let close_x = (client_width - margin - icon_size).max(0);
+        let pin_x = (close_x - scale(4, dpi) - icon_size).max(0);
+        let _ = button_count;
 
-        let button_top = (client_height - button_height - button_bottom_gap).max(header + margin);
-        let output_card_bottom = (button_top - content_gap).max(header + margin);
+        // Footer owns the bottom strip; the result card absorbs the rest.
+        let foot_top = (client_height - foot_height).max(header);
+        let button_top = foot_top + scale(12, dpi);
 
-        // Input card holds Target + Context; result card holds Result.
-        let target_label_top = header + scale(8, dpi);
-        let target_top = target_label_top + label_height + scale(4, dpi);
-        let context_label_top = target_top + preferred_target + section_gap;
-        let context_top = context_label_top + label_height + scale(4, dpi);
-        let input_card_bottom = context_top + preferred_context + card_pad;
-        let input_card_top = header + scale(4, dpi);
+        // Selection card: cap, target, context share one raised card.
+        let sel_card_top = (header + scale(12, dpi)).max(header);
+        let target_top = sel_card_top + scale(8, dpi) + cap_height + scale(6, dpi);
+        let context_top = target_top + preferred_target + scale(8, dpi);
+        let sel_card_bottom = context_top + preferred_context + scale(10, dpi);
 
-        let output_card_top = input_card_bottom + content_gap;
-        let output_label_top = output_card_top + card_pad;
-        let output_top = output_label_top + label_height + scale(4, dpi);
-        let output_height = (output_card_bottom - output_top - card_pad).max(scale(48, dpi));
+        let result_card_top = (sel_card_bottom + card_gap).max(sel_card_top + scale(48, dpi));
+        let output_top = result_card_top + scale(8, dpi) + cap_height + scale(6, dpi);
+        let result_card_bottom = (foot_top - scale(12, dpi)).max(output_top + scale(48, dpi));
+        let output_height = (result_card_bottom - output_top - scale(10, dpi)).max(scale(48, dpi));
 
         PopupLayout {
             content_width,
             margin,
-            drag_band: header,
-            label_height,
-            target_label_top,
+            header_height: header,
+            cap_height,
+            sel_card_top,
+            sel_card_bottom,
             target_top,
             target_height: preferred_target,
-            context_label_top,
             context_top,
             context_height: preferred_context,
-            output_label_top,
+            result_card_top,
+            result_card_bottom,
             output_top,
             output_height,
+            foot_top,
             button_top,
             button_height,
-            button_width,
-            button_gap,
-            header_height: header,
-            input_card_top,
-            input_card_bottom,
-            output_card_top,
-            output_card_bottom,
+            icon_top,
+            pin_x,
+            close_x,
+            icon_size,
         }
+    }
+
+    /// Left-aligned footer action widths derived from the current label so
+    /// Copy/Retry/Prompt/Pin/Close size to their text like the mockup row.
+    pub(super) fn footer_button_width(label: &str) -> i32 {
+        ((label.chars().count() as i32).saturating_mul(8) + 26).clamp(44, 150)
     }
 
     /// Compact chooser strip: fixed short height, vertically centered, with
@@ -1299,35 +1327,60 @@ mod windows_impl {
         let layout = compute_layout(client.right, client.bottom, dpi, data.buttons.len() as i32);
         move_child(
             data.input,
-            layout.margin,
+            layout.margin + scale(12, dpi),
             layout.target_top,
-            layout.content_width,
+            layout.content_width - scale(24, dpi),
             layout.target_height,
         );
         move_child(
             data.context_input,
-            layout.margin,
+            layout.margin + scale(12, dpi),
             layout.context_top,
-            layout.content_width,
+            layout.content_width - scale(24, dpi),
             layout.context_height,
         );
         move_child(
             data.output,
-            layout.margin,
+            layout.margin + scale(12, dpi),
             layout.output_top,
-            layout.content_width,
+            layout.content_width - scale(24, dpi),
             layout.output_height,
         );
-        for (index, button) in data.buttons.iter().enumerate() {
-            let x = layout.margin + index as i32 * (layout.button_width + layout.button_gap);
-            move_child(
-                *button,
-                x,
-                layout.button_top,
-                layout.button_width,
-                layout.button_height,
-            );
+        // Footer actions: left-aligned with per-label widths, ghost Pin/Close
+        // trailing the raised actions exactly like the mockup row.
+        let mut x = layout.margin;
+        for button in data.buttons.iter() {
+            let width = button_label_width(*button, dpi);
+            move_child(*button, x, layout.button_top, width, layout.button_height);
+            x += width + scale(BUTTON_GAP, dpi);
         }
+        move_child(
+            data.pin_icon,
+            layout.pin_x,
+            layout.icon_top,
+            layout.icon_size,
+            layout.icon_size,
+        );
+        move_child(
+            data.close_icon,
+            layout.close_x,
+            layout.icon_top,
+            layout.icon_size,
+            layout.icon_size,
+        );
+    }
+
+    /// Physical width for a footer button from its current window text so
+    /// localization changes reflow the action row without extra state.
+    fn button_label_width(hwnd: HWND, dpi: u32) -> i32 {
+        if hwnd.0.is_null() {
+            return scale(56, dpi);
+        }
+        let length = unsafe { GetWindowTextLengthW(hwnd) };
+        let mut buffer = vec![0u16; (length.max(0) + 1) as usize];
+        let written = unsafe { GetWindowTextW(hwnd, &mut buffer) };
+        let label = String::from_utf16_lossy(&buffer[..written.max(0) as usize]);
+        scale(footer_button_width(&label), dpi)
     }
 
     fn bounded_string(text: &str) -> String {
@@ -1489,20 +1542,34 @@ mod windows_impl {
     }
 
     fn set_rich_format(hwnd: HWND, span: FormatSpan) {
-        let (mask, effects, height) = match span.style {
-            MarkdownStyle::Bold => (CFM_BOLD, CFE_BOLD, 0),
-            MarkdownStyle::Italic => (CFM_ITALIC, CFE_ITALIC, 0),
-            MarkdownStyle::Strike => (CFM_STRIKEOUT, CFE_STRIKEOUT, 0),
-            MarkdownStyle::Code => (CFM_SIZE, CFE_EFFECTS(0), 190),
-            MarkdownStyle::Heading(level) => (CFM_SIZE, CFE_EFFECTS(0), 280 - (level as i32 * 20)),
+        // Mockup ramp: headings are bold 14px ink, code is 12px gold mono.
+        let (mask, effects, height, color, mono) = match span.style {
+            MarkdownStyle::Bold => (CFM_BOLD, CFE_BOLD, 0, None, false),
+            MarkdownStyle::Italic => (CFM_ITALIC, CFE_ITALIC, 0, None, false),
+            MarkdownStyle::Strike => (CFM_STRIKEOUT, CFE_STRIKEOUT, 0, None, false),
+            MarkdownStyle::Code => (
+                CFM_SIZE | CFM_COLOR | CFM_FACE | CFM_CHARSET,
+                CFE_EFFECTS(0),
+                180,
+                Some(POPUP_GOLD),
+                true,
+            ),
+            MarkdownStyle::Heading(_) => (CFM_BOLD, CFE_BOLD, 210, None, false),
         };
-        let format = CHARFORMATW {
+        let mut format = CHARFORMATW {
             cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
             dwMask: mask,
             dwEffects: effects,
             yHeight: height,
             ..Default::default()
         };
+        if let Some(color) = color {
+            format.crTextColor = color;
+        }
+        if mono {
+            let face: Vec<u16> = "Consolas".encode_utf16().collect();
+            format.szFaceName[..face.len()].copy_from_slice(&face);
+        }
         unsafe {
             let _ = SendMessageW(
                 hwnd,
@@ -1749,6 +1816,7 @@ mod windows_impl {
         }
         clear_profile_buttons(data);
         data.profile_labels.clear();
+        data.profile_default = None;
         set_standard_controls_visible(data, true);
     }
 
@@ -1778,47 +1846,34 @@ mod windows_impl {
         let Some(data) = data_mut(hwnd) else { return };
         {
             data.dpi = dpi;
-            let body_height = -scale(13, dpi);
-            // Buttons need a readable face for CJK labels; 9pt was too tight.
-            let label_height = -scale(12, dpi);
+            // Type ramp from the mockup: body 13, medium button text, small
+            // caps eyebrows, mono target text, and a semibold title.
             let face = w!("Segoe UI");
+            let mono_face = w!("Consolas");
+            let font = |height: i32, weight: i32, face: PCWSTR| unsafe {
+                CreateFontW(
+                    -scale(height, dpi),
+                    0,
+                    0,
+                    0,
+                    weight,
+                    0,
+                    0,
+                    0,
+                    FONT_CHARSET(1),
+                    FONT_OUTPUT_PRECISION(0),
+                    FONT_CLIP_PRECISION(0),
+                    FONT_QUALITY(5),
+                    0,
+                    face,
+                )
+            };
             data.fonts = [
-                unsafe {
-                    CreateFontW(
-                        body_height,
-                        0,
-                        0,
-                        0,
-                        400,
-                        0,
-                        0,
-                        0,
-                        FONT_CHARSET(1),
-                        FONT_OUTPUT_PRECISION(0),
-                        FONT_CLIP_PRECISION(0),
-                        FONT_QUALITY(5),
-                        0,
-                        face,
-                    )
-                },
-                unsafe {
-                    CreateFontW(
-                        label_height,
-                        0,
-                        0,
-                        0,
-                        600,
-                        0,
-                        0,
-                        0,
-                        FONT_CHARSET(1),
-                        FONT_OUTPUT_PRECISION(0),
-                        FONT_CLIP_PRECISION(0),
-                        FONT_QUALITY(5),
-                        0,
-                        face,
-                    )
-                },
+                font(13, 400, face),      // body
+                font(13, 500, face),      // medium (buttons, pills)
+                font(10, 600, face),      // caps eyebrows
+                font(13, 400, mono_face), // mono target text
+                font(13, 600, face),      // semibold title
             ];
             let edit_style = WS_CHILD
                 | WS_VISIBLE
@@ -1914,12 +1969,12 @@ mod windows_impl {
                 unsafe {
                     // RichEdit does not consistently honor CTLCOLOR for its own
                     // document background, so set it once before the popup is
-                    // presented. The fallback EDIT safely ignores this message.
+                    // presented. The result card body is the raised surface.
                     let _ = SendMessageW(
                         data.output,
                         EM_SETBKGNDCOLOR,
                         Some(WPARAM(0)),
-                        Some(LPARAM(POPUP_BG.0 as isize)),
+                        Some(LPARAM(POPUP_SECTION_BG.0 as isize)),
                     );
                 }
             }
@@ -1933,7 +1988,7 @@ mod windows_impl {
                             Some(LPARAM(POPUP_SECTION_BG.0 as isize)),
                         );
                         // 2px side margins keep the pane tight around the text
-                        // without changing the 12pt font.
+                        // without changing the 13px font.
                         let _ = SendMessageW(
                             control,
                             EM_SETMARGINS,
@@ -1947,7 +2002,7 @@ mod windows_impl {
             apply_dark_scrollbar_theme(data.context_input);
             apply_dark_scrollbar_theme(data.output);
 
-            let labels = ["▣  Copy", "↻  Retry", "☵  Prompt", "⌖  Pin", "×  Close"];
+            let labels = ["Copy", "Retry", "Prompt", "Pin", "Close"];
             let ids = [COPY_ID, RETRY_ID, PROMPT_ID, PIN_ID, CLOSE_ID];
             for ((button, label), id) in data.buttons.iter_mut().zip(labels).zip(ids) {
                 let mut value: Vec<u16> = label.encode_utf16().chain(std::iter::once(0)).collect();
@@ -1969,7 +2024,46 @@ mod windows_impl {
                 }
                 .unwrap_or_default();
             }
-            for control in [data.input, data.context_input, data.output] {
+            // Header chrome icons: pin ⌖ and close ✕, duplicating the footer
+            // actions as in the mockup top bar.
+            for (icon_id, glyph) in [(PIN_ICON_ID, "⌖"), (CLOSE_ICON_ID, "✕")] {
+                let mut value: Vec<u16> = glyph.encode_utf16().chain(std::iter::once(0)).collect();
+                let icon = unsafe {
+                    CreateWindowExW(
+                        Default::default(),
+                        w!("BUTTON"),
+                        PCWSTR(value.as_mut_ptr()),
+                        WS_CHILD | WS_VISIBLE | WINDOW_STYLE(OWNER_DRAW_BUTTON_STYLE),
+                        0,
+                        0,
+                        1,
+                        1,
+                        Some(hwnd),
+                        Some(child_menu(icon_id)),
+                        Some(HINSTANCE(instance.0)),
+                        None,
+                    )
+                }
+                .unwrap_or_default();
+                if icon_id == PIN_ICON_ID {
+                    data.pin_icon = icon;
+                } else {
+                    data.close_icon = icon;
+                }
+            }
+            // Target text leans mono like the mockup Selection card; context
+            // and result use the body face.
+            if !data.input.0.is_null() && !data.fonts[3].0.is_null() {
+                unsafe {
+                    let _ = SendMessageW(
+                        data.input,
+                        0x0030,
+                        Some(WPARAM(data.fonts[3].0 as usize)),
+                        Some(LPARAM(1)),
+                    );
+                }
+            }
+            for control in [data.context_input, data.output] {
                 if !control.0.is_null() && !data.fonts[0].0.is_null() {
                     unsafe {
                         let _ = SendMessageW(
@@ -1981,7 +2075,12 @@ mod windows_impl {
                     }
                 }
             }
-            for button in data.buttons {
+            for button in data
+                .buttons
+                .iter()
+                .copied()
+                .chain([data.pin_icon, data.close_icon])
+            {
                 if !button.0.is_null() && !data.fonts[1].0.is_null() {
                     unsafe {
                         let _ = SendMessageW(
@@ -2016,69 +2115,157 @@ mod windows_impl {
         HBRUSH(raw as *mut core::ffi::c_void)
     }
 
-    fn draw_button(item: &DRAWITEMSTRUCT) {
+    /// Visual style resolved from the control id so footer actions, header
+    /// icons, and chooser pills each follow their mockup treatment.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum ButtonStyle {
+        Primary,
+        Raised,
+        Ghost,
+        Icon { pinned: bool },
+        RailPill { active: bool },
+        RailMore,
+    }
+
+    fn button_style_for(
+        item: &DRAWITEMSTRUCT,
+        profile_default: Option<usize>,
+        pinned: bool,
+    ) -> ButtonStyle {
+        match item.CtlID as usize {
+            COPY_ID => ButtonStyle::Primary,
+            RETRY_ID | PROMPT_ID => ButtonStyle::Raised,
+            PIN_ID | CLOSE_ID => ButtonStyle::Ghost,
+            PIN_ICON_ID => ButtonStyle::Icon { pinned },
+            CLOSE_ICON_ID => ButtonStyle::Icon { pinned: false },
+            PROFILE_MORE_ID => ButtonStyle::RailMore,
+            id if id >= PROFILE_CHOICE_ID_START => ButtonStyle::RailPill {
+                active: profile_default == Some(id - PROFILE_CHOICE_ID_START),
+            },
+            _ => ButtonStyle::Raised,
+        }
+    }
+
+    fn draw_button(item: &DRAWITEMSTRUCT, profile_default: Option<usize>, pinned: bool) {
         if item.CtlType != ODT_BUTTON {
             return;
         }
         let selected = item.itemState.0 & 0x0001 != 0; // ODS_SELECTED
         let disabled = item.itemState.0 & 0x0004 != 0; // ODS_DISABLED
         let focused = item.itemState.0 & 0x0010 != 0; // ODS_FOCUS
-        let state = if disabled {
-            ButtonVisualState::Disabled
-        } else if selected {
-            ButtonVisualState::Pressed
-        } else if focused {
-            ButtonVisualState::Focused
-        } else {
-            ButtonVisualState::Normal
-        };
-        // Primary action (Copy) uses the accent fill so the action row has
-        // hierarchy instead of five identical grey pills.
-        let mut primary_label = [0u16; 16];
-        let primary_len = unsafe { GetWindowTextW(item.hwndItem, &mut primary_label) } as usize;
-        let is_primary = String::from_utf16_lossy(&primary_label[..primary_len]).contains("Copy");
-        let fill = if is_primary {
-            match state {
-                ButtonVisualState::Normal | ButtonVisualState::Focused => POPUP_ACCENT_DIM,
-                ButtonVisualState::Pressed => POPUP_ACCENT,
-                ButtonVisualState::Disabled => POPUP_BUTTON_DISABLED,
+        let style = button_style_for(item, profile_default, pinned);
+        let (fill, border, text, _weight) = match style {
+            ButtonStyle::Primary => {
+                let fill = if disabled {
+                    POPUP_BUTTON_DISABLED
+                } else if selected {
+                    POPUP_ACCENT_DIM
+                } else {
+                    POPUP_ACCENT
+                };
+                (fill, fill, POPUP_LOGO_INK, 600)
             }
-        } else {
-            button_fill(state)
+            ButtonStyle::Raised => {
+                let fill = if disabled {
+                    POPUP_BUTTON_DISABLED
+                } else if selected || focused {
+                    POPUP_BUTTON_HOVER
+                } else {
+                    POPUP_BUTTON_BG
+                };
+                let border = if focused {
+                    POPUP_ACCENT
+                } else {
+                    POPUP_BUTTON_STROKE
+                };
+                (fill, border, POPUP_BUTTON_TEXT, 500)
+            }
+            ButtonStyle::Ghost => {
+                let fill = if selected || focused {
+                    POPUP_BUTTON_HOVER
+                } else {
+                    POPUP_BG
+                };
+                let border = if focused {
+                    POPUP_ACCENT
+                } else {
+                    POPUP_BUTTON_STROKE
+                };
+                (fill, border, POPUP_BUTTON_TEXT, 500)
+            }
+            ButtonStyle::Icon { pinned } => {
+                let text = if pinned {
+                    POPUP_ACCENT
+                } else if selected {
+                    POPUP_TEXT
+                } else {
+                    POPUP_MUTED
+                };
+                (POPUP_BG, POPUP_BG, text, 400)
+            }
+            ButtonStyle::RailPill { active } => {
+                if active {
+                    let fill = if selected {
+                        POPUP_ACCENT_DIM
+                    } else {
+                        POPUP_ACCENT
+                    };
+                    (fill, fill, POPUP_LOGO_INK, 600)
+                } else if selected || focused {
+                    (POPUP_BUTTON_BG, POPUP_ACCENT, POPUP_TEXT, 500)
+                } else {
+                    (POPUP_BG, POPUP_BG, POPUP_MUTED, 500)
+                }
+            }
+            ButtonStyle::RailMore => {
+                let fill = if selected || focused {
+                    POPUP_BUTTON_HOVER
+                } else {
+                    POPUP_BUTTON_BG
+                };
+                (fill, POPUP_BUTTON_STROKE, POPUP_TEXT, 500)
+            }
         };
         let brush = popup_brush(fill);
-        let border = popup_brush(if is_primary {
-            fill
-        } else if focused {
-            POPUP_ACCENT
-        } else {
-            POPUP_BUTTON_STROKE
-        });
+        let border_brush = popup_brush(border);
         let mut rect = item.rcItem;
-        let radius = ((rect.bottom - rect.top) / 2).clamp(6, 10);
-        let region = unsafe {
-            CreateRoundRectRgn(
-                rect.left,
-                rect.top,
-                rect.right + 1,
-                rect.bottom + 1,
-                radius,
-                radius,
-            )
+        // Pills wrap the rail height fully; footer actions use the mockup's
+        // 8px corner radius; icon chrome stays square-transparent.
+        let pill = matches!(style, ButtonStyle::RailPill { .. } | ButtonStyle::RailMore);
+        let radius = if pill {
+            ((rect.bottom - rect.top) / 2).max(2)
+        } else if matches!(style, ButtonStyle::Icon { .. }) {
+            0
+        } else {
+            let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(item.hwndItem) };
+            scale(8, if dpi == 0 { 96 } else { dpi }).clamp(4, 12)
         };
         unsafe {
-            if !region.0.is_null() {
-                let _ = FillRgn(item.hDC, region, brush);
-                let _ = FrameRgn(item.hDC, region, border, 1, 1);
-                let _ = DeleteObject(region.into());
+            if radius > 0 {
+                let region = CreateRoundRectRgn(
+                    rect.left,
+                    rect.top,
+                    rect.right + 1,
+                    rect.bottom + 1,
+                    radius,
+                    radius,
+                );
+                if !region.0.is_null() {
+                    let _ = FillRgn(item.hDC, region, brush);
+                    if border != fill {
+                        let _ = FrameRgn(item.hDC, region, border_brush, 1, 1);
+                    }
+                    let _ = DeleteObject(region.into());
+                } else {
+                    let _ = FillRect(item.hDC, &rect, brush);
+                }
             } else {
                 let _ = FillRect(item.hDC, &rect, brush);
-                let _ = FrameRect(item.hDC, &rect, border);
             }
             let _ = DeleteObject(brush.into());
-            let _ = DeleteObject(border.into());
-            let mut text = [0u16; 128];
-            let length = GetWindowTextW(item.hwndItem, &mut text) as i32;
+            let _ = DeleteObject(border_brush.into());
+            let mut text_buffer = [0u16; 128];
+            let length = GetWindowTextW(item.hwndItem, &mut text_buffer) as i32;
             let font = SendMessageW(item.hwndItem, 0x0031, Some(WPARAM(0)), Some(LPARAM(0)));
             let old_font = if font.0 != 0 {
                 Some(SelectObject(item.hDC, HGDIOBJ(font.0 as *mut _)))
@@ -2088,7 +2275,7 @@ mod windows_impl {
             // Transparent bk keeps glyph edges clean; opaque fill was showing
             // as a misaligned slab around CJK text.
             let old_bk = SetBkMode(item.hDC, TRANSPARENT);
-            SetTextColor(item.hDC, POPUP_BUTTON_TEXT);
+            SetTextColor(item.hDC, text);
             // Inset the text rect so DrawText centers the face, not the
             // full owner-rect including the 1px frame.
             let mut text_rect = rect;
@@ -2096,13 +2283,13 @@ mod windows_impl {
             text_rect.right -= 2;
             let _ = DrawTextW(
                 item.hDC,
-                &mut text[..length.max(0) as usize],
+                &mut text_buffer[..length.max(0) as usize],
                 &mut text_rect,
                 // DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX
                 DRAW_TEXT_FORMAT(0x0001 | 0x0020 | 0x0100 | 0x0800),
             );
             let _ = SetBkMode(item.hDC, BACKGROUND_MODE(old_bk as u32));
-            if focused {
+            if focused && !matches!(style, ButtonStyle::Icon { .. }) {
                 rect.left += 4;
                 rect.top += 4;
                 rect.right -= 4;
@@ -2112,6 +2299,47 @@ mod windows_impl {
             if let Some(old_font) = old_font {
                 let _ = SelectObject(item.hDC, old_font);
             }
+        }
+    }
+
+    /// One dark command-menu item: raised body, accent-tinted hot state,
+    /// ink/accent text — never the native light menu surface.
+    fn draw_menu_item(item: &DRAWITEMSTRUCT) {
+        if item.CtlType != ODT_MENU {
+            return;
+        }
+        let hot = item.itemState.0 & 0x0002 != 0; // ODS_SELECTED
+        let fill = if hot {
+            POPUP_ACCENT_DIM
+        } else {
+            POPUP_SECTION_BG
+        };
+        let text = if hot { POPUP_ACCENT } else { POPUP_TEXT };
+        let brush = popup_brush(fill);
+        unsafe {
+            let _ = FillRect(item.hDC, &item.rcItem, brush);
+            let _ = DeleteObject(brush.into());
+            let old_bk = SetBkMode(item.hDC, TRANSPARENT);
+            SetTextColor(item.hDC, text);
+            let mut text_rect = item.rcItem;
+            text_rect.left += scale(10, 96);
+            text_rect.right -= scale(10, 96);
+            let text_pointer = (item.itemData as *const u16).cast::<u16>();
+            if !text_pointer.is_null() {
+                let mut length = 0usize;
+                while *text_pointer.add(length) != 0 && length < 256 {
+                    length += 1;
+                }
+                let slice = std::slice::from_raw_parts(text_pointer, length);
+                let _ = DrawTextW(
+                    item.hDC,
+                    &mut slice.to_vec(),
+                    &mut text_rect,
+                    // DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX
+                    DRAW_TEXT_FORMAT(0x0020 | 0x0100 | 0x0800),
+                );
+            }
+            let _ = SetBkMode(item.hDC, BACKGROUND_MODE(old_bk as u32));
         }
     }
 
@@ -2193,160 +2421,147 @@ mod windows_impl {
             let _ = FrameRect(hdc, &client, border);
             let _ = DeleteObject(border.into());
         }
+        let choosing = data_mut(hwnd).is_some_and(|data| data.choosing_profile);
+        if choosing {
+            // The standalone profile rail paints no body chrome; the pills are
+            // owner-drawn buttons on the surface background.
+            return;
+        }
         let layout = compute_layout(client.right, client.bottom, dpi, 5);
-        let radius = popup_corner_radius(dpi).max(12);
+        let card_radius = scale(10, dpi).max(6);
         let left = layout.margin;
         let right = client.right - layout.margin;
-        let label_font = data_mut(hwnd)
-            .map(|data| data.fonts[1])
+        let caps_font = data_mut(hwnd)
+            .map(|data| data.fonts[2])
+            .filter(|font| !font.0.is_null());
+        let title_font = data_mut(hwnd)
+            .map(|data| data.fonts[4])
             .filter(|font| !font.0.is_null());
 
-        // Header band with icon chip, title, subtitle.
-        paint_round_rect(
-            hdc,
-            RECT {
-                left: 0,
-                top: 0,
-                right: client.right,
-                bottom: layout.header_height,
-            },
-            0,
-            POPUP_HEADER_BG,
-            None,
-        );
+        // Header chrome: accent mark, product name, resident hint, and a
+        // single hairline separating it from the body.
         paint_round_rect(
             hdc,
             RECT {
                 left,
-                top: scale(18, dpi),
-                right: left + scale(36, dpi),
-                bottom: scale(54, dpi),
+                top: layout.icon_top,
+                right: left + scale(MARK_SIZE, dpi),
+                bottom: layout.icon_top + scale(MARK_SIZE, dpi),
             },
-            scale(10, dpi),
+            scale(8, dpi),
             POPUP_ACCENT,
             None,
         );
         paint_section_label(
             hdc,
-            label_font,
+            title_font,
             "文",
             RECT {
                 left,
-                top: scale(14, dpi),
-                right: left + scale(36, dpi),
-                bottom: scale(50, dpi),
+                top: layout.icon_top,
+                right: left + scale(MARK_SIZE, dpi),
+                bottom: layout.icon_top + scale(MARK_SIZE, dpi),
             },
             POPUP_LOGO_INK,
         );
+        let title_left = left + scale(MARK_SIZE, dpi) + scale(10, dpi);
         paint_section_label(
             hdc,
-            label_font,
+            title_font,
             "Selection Translate",
             RECT {
-                left: left + scale(48, dpi),
-                top: scale(12, dpi),
-                right,
-                bottom: scale(36, dpi),
+                left: title_left,
+                top: layout.icon_top - scale(1, dpi),
+                right: layout.pin_x,
+                bottom: layout.icon_top + scale(15, dpi),
             },
             POPUP_TITLE,
         );
         paint_section_label(
             hdc,
-            label_font,
-            "Translate your selection with context",
+            caps_font,
+            "Resident",
             RECT {
-                left: left + scale(48, dpi),
-                top: scale(36, dpi),
-                right,
-                bottom: scale(54, dpi),
+                left: title_left,
+                top: layout.icon_top + scale(16, dpi),
+                right: layout.pin_x,
+                bottom: layout.icon_top + scale(28, dpi),
             },
             POPUP_MUTED,
         );
+        let hairline = popup_brush(POPUP_BORDER);
+        unsafe {
+            let _ = FillRect(
+                hdc,
+                &RECT {
+                    left: 0,
+                    top: layout.header_height - 1,
+                    right: client.right,
+                    bottom: layout.header_height,
+                },
+                hairline,
+            );
+            let _ = FillRect(
+                hdc,
+                &RECT {
+                    left: 0,
+                    top: layout.foot_top,
+                    right: client.right,
+                    bottom: layout.foot_top + 1,
+                },
+                hairline,
+            );
+            let _ = DeleteObject(hairline.into());
+        }
 
-        // Input card (Target + Context) and Result card.
+        // Selection card: target and context share one raised card.
         paint_round_rect(
             hdc,
             RECT {
                 left,
-                top: layout.input_card_top,
+                top: layout.sel_card_top,
                 right,
-                bottom: layout.input_card_bottom,
+                bottom: layout.sel_card_bottom,
             },
-            radius,
+            card_radius,
             POPUP_SECTION_BG,
             Some(POPUP_CARD_BORDER),
         );
+        paint_section_label(
+            hdc,
+            caps_font,
+            "SELECTION",
+            RECT {
+                left: left + scale(12, dpi),
+                top: layout.sel_card_top + scale(8, dpi),
+                right,
+                bottom: layout.sel_card_top + scale(8, dpi) + layout.cap_height,
+            },
+            POPUP_LABEL,
+        );
+
+        // Result card.
         paint_round_rect(
             hdc,
             RECT {
                 left,
-                top: layout.output_card_top,
+                top: layout.result_card_top,
                 right,
-                bottom: layout.output_card_bottom,
+                bottom: layout.result_card_bottom,
             },
-            radius,
-            POPUP_HEADER_BG,
-            Some(POPUP_RESULT_BORDER),
-        );
-        let inset = scale(4, dpi);
-        paint_round_rect(
-            hdc,
-            RECT {
-                left: left + inset,
-                top: layout.target_top - inset,
-                right: right - inset,
-                bottom: layout.target_top + layout.target_height + inset,
-            },
-            scale(9, dpi),
-            POPUP_FIELD_BG,
-            Some(POPUP_FIELD_BORDER),
-        );
-        paint_round_rect(
-            hdc,
-            RECT {
-                left: left + inset,
-                top: layout.context_top - inset,
-                right: right - inset,
-                bottom: layout.context_top + layout.context_height + inset,
-            },
-            scale(9, dpi),
-            POPUP_FIELD_BG,
-            Some(POPUP_FIELD_BORDER),
-        );
-
-        paint_section_label(
-            hdc,
-            label_font,
-            "◎  Target",
-            RECT {
-                left: left + scale(12, dpi),
-                top: layout.target_label_top,
-                right,
-                bottom: layout.target_label_top + layout.label_height,
-            },
-            POPUP_LABEL,
+            card_radius,
+            POPUP_SECTION_BG,
+            Some(POPUP_CARD_BORDER),
         );
         paint_section_label(
             hdc,
-            label_font,
-            "▤  Context",
+            caps_font,
+            "RESULT",
             RECT {
                 left: left + scale(12, dpi),
-                top: layout.context_label_top,
+                top: layout.result_card_top + scale(8, dpi),
                 right,
-                bottom: layout.context_label_top + layout.label_height,
-            },
-            POPUP_LABEL,
-        );
-        paint_section_label(
-            hdc,
-            label_font,
-            "✦  Result",
-            RECT {
-                left: left + scale(12, dpi),
-                top: layout.output_label_top,
-                right,
-                bottom: layout.output_label_top + layout.label_height,
+                bottom: layout.result_card_top + scale(8, dpi) + layout.cap_height,
             },
             POPUP_RESULT_ICON,
         );
@@ -2447,8 +2662,18 @@ mod windows_impl {
                 };
                 if let Some((button, label)) = button {
                     set_control_text(button, label);
+                    // Refresh the header icon treatment and footer width.
+                    if let Some(data) = data_mut(hwnd) {
+                        let dpi = data.dpi;
+                        unsafe {
+                            let _ = InvalidateRect(Some(hwnd), None, false);
+                        }
+                        layout_children(hwnd, dpi);
+                    }
                 }
             }
+            PIN_ICON_ID => handle_command(hwnd, PIN_ID),
+            CLOSE_ICON_ID => close_by_user(hwnd),
             CLOSE_ID => close_by_user(hwnd),
             _ => {}
         }
@@ -2464,15 +2689,23 @@ mod windows_impl {
         let Ok(menu) = (unsafe { CreatePopupMenu() }) else {
             return;
         };
+        // Owner-draw items keep the command menu on the popup's dark surface:
+        // raised body, accent hot state. The UTF-16 labels live in this stack
+        // frame for the whole modal TrackPopupMenu call.
+        let item_text: Vec<Vec<u16>> = labels
+            .iter()
+            .skip(INLINE_PROFILE_LIMIT)
+            .map(|label| label.encode_utf16().chain(std::iter::once(0)).collect())
+            .collect();
         let mut appended = true;
-        for (index, label) in labels.iter().enumerate().skip(INLINE_PROFILE_LIMIT) {
-            let mut value: Vec<u16> = label.encode_utf16().chain(std::iter::once(0)).collect();
+        for (offset, text) in item_text.iter().enumerate() {
+            let index = INLINE_PROFILE_LIMIT + offset;
             if unsafe {
                 AppendMenuW(
                     menu,
-                    MF_STRING,
+                    MF_STRING | MF_OWNERDRAW,
                     PROFILE_CHOICE_ID_START + index,
-                    PCWSTR(value.as_mut_ptr()),
+                    PCWSTR(text.as_ptr()),
                 )
             }
             .is_err()
@@ -2482,15 +2715,48 @@ mod windows_impl {
             }
         }
         if appended {
-            let mut rect = RECT::default();
-            if unsafe { GetWindowRect(hwnd, &mut rect) }.is_ok() {
-                unsafe {
+            unsafe {
+                // Dark menu background for any frame margins around the
+                // owner-drawn items. The process-lifetime brush stays valid
+                // while the modal menu is open.
+                let info = MENUINFO {
+                    cbSize: std::mem::size_of::<MENUINFO>() as u32,
+                    fMask: MIM_BACKGROUND | MIM_APPLYTOSUBMENUS,
+                    hbrBack: popup_section_brush(),
+                    ..Default::default()
+                };
+                let _ = SetMenuInfo(menu, &info);
+            }
+            // Anchor the menu under the More… pill (last rail slot).
+            let mut anchor_x = 0;
+            unsafe {
+                let mut rect = RECT::default();
+                if GetWindowRect(hwnd, &mut rect).is_ok() {
+                    let dpi = data_mut(hwnd).map(|data| data.dpi).unwrap_or(DEFAULT_DPI);
+                    let mut client = RECT::default();
+                    if GetClientRect(hwnd, &mut client).is_ok() {
+                        let natural: Vec<i32> = data_mut(hwnd)
+                            .map(|data| {
+                                data.profile_button_widths
+                                    .iter()
+                                    .map(|width| scale(*width, dpi).max(1))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let (_, _, rects) =
+                            chooser_strip_layout(client.right, client.bottom, &natural, dpi);
+                        if let Some((x, width)) = rects.last().copied() {
+                            anchor_x = (rect.left + x + width / 2 - scale(MENU_WIDTH, dpi) / 2)
+                                .max(rect.left);
+                        }
+                    }
+                    let anchor_y = rect.bottom + scale(2, dpi);
                     let _ = SetForegroundWindow(hwnd);
                     let command = TrackPopupMenu(
                         menu,
                         TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RETURNCMD,
-                        rect.left,
-                        rect.bottom,
+                        anchor_x,
+                        anchor_y,
                         Some(0),
                         hwnd,
                         None,
@@ -2538,20 +2804,37 @@ mod windows_impl {
             }
             WM_DRAWITEM => {
                 if lparam.0 != 0 {
-                    draw_button(&*(lparam.0 as *const DRAWITEMSTRUCT));
+                    let item = &*(lparam.0 as *const DRAWITEMSTRUCT);
+                    if item.CtlType == ODT_MENU {
+                        draw_menu_item(item);
+                    } else {
+                        let (profile_default, pinned) = data_mut(hwnd)
+                            .map(|data| (data.profile_default, data.pinned))
+                            .unwrap_or((None, false));
+                        draw_button(item, profile_default, pinned);
+                    }
                 }
                 return LRESULT(1);
             }
+            WM_MEASUREITEM => {
+                if lparam.0 != 0 {
+                    let measure = &mut *(lparam.0 as *mut MEASUREITEMSTRUCT);
+                    if measure.CtlType == ODT_MENU {
+                        measure.itemWidth = scale(MENU_WIDTH, 96).max(0) as u32;
+                        measure.itemHeight = scale(MENU_ITEM_HEIGHT, 96).max(0) as u32;
+                        return LRESULT(1);
+                    }
+                }
+            }
             // EDIT/RichEdit ask their parent for the background and text
             // colors. Return the process-lifetime class brush: Windows keeps
-            // using it after this callback. Distinguish the muted input from
-            // the primary result by child HWND because both read-only controls
-            // may send WM_CTLCOLORSTATIC.
+            // using it after this callback. The Selection card's target stays
+            // primary ink while its context line stays muted; both share the
+            // raised card background.
             0x0133 | 0x0135 | 0x0138 => {
                 let hdc = windows::Win32::Graphics::Gdi::HDC(wparam.0 as *mut _);
                 let child = HWND(lparam.0 as *mut core::ffi::c_void);
-                let muted = data_mut(hwnd)
-                    .is_some_and(|data| data.input == child || data.context_input == child);
+                let muted = data_mut(hwnd).is_some_and(|data| data.context_input == child);
                 SetBkColor(hdc, POPUP_SECTION_BG);
                 SetTextColor(hdc, if muted { POPUP_MUTED } else { POPUP_TEXT });
                 return LRESULT(popup_section_brush().0 as isize);
@@ -3022,6 +3305,147 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    #[ignore = "visual capture; run with --ignored to write profile_rail.bmp"]
+    fn capture_profile_rail_bitmap() {
+        use windows::core::w;
+        use windows::Win32::Foundation::RECT;
+        use windows::Win32::Graphics::Gdi::{
+            BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
+            GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS,
+            SRCCOPY,
+        };
+        use windows::Win32::Foundation::HINSTANCE;
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DestroyWindow, FindWindowW, GetWindowRect, WS_POPUP,
+        };
+
+        let instance = unsafe { GetModuleHandleW(None) }.expect("module");
+        let parent = unsafe {
+            CreateWindowExW(
+                Default::default(),
+                w!("STATIC"),
+                w!(""),
+                WS_POPUP,
+                80,
+                80,
+                200,
+                200,
+                None,
+                None,
+                Some(HINSTANCE(instance.0)),
+                None,
+            )
+        }
+        .expect("parent");
+        let mut popup =
+            Popup::show(parent, 98, super::Point { x: 120, y: 120 }).expect("popup show");
+        let names: Vec<String> = ["Translate", "Expert", "Program", "Concise", "Word"]
+            .iter()
+            .map(|name| name.to_string())
+            .collect();
+        assert!(
+            popup.show_profile_choices(&names, Some(0)),
+            "chooser shown"
+        );
+        for _ in 0..20 {
+            let mut msg = windows::Win32::UI::WindowsAndMessaging::MSG::default();
+            while unsafe {
+                windows::Win32::UI::WindowsAndMessaging::PeekMessageW(
+                    &mut msg,
+                    None,
+                    0,
+                    0,
+                    windows::Win32::UI::WindowsAndMessaging::PM_REMOVE,
+                )
+                .as_bool()
+            } {
+                unsafe {
+                    let _ = windows::Win32::UI::WindowsAndMessaging::TranslateMessage(&msg);
+                    let _ = windows::Win32::UI::WindowsAndMessaging::DispatchMessageW(&msg);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        let class: Vec<u16> = "SelectionTranslatePopup\0".encode_utf16().collect();
+        let popup_hwnd = unsafe { FindWindowW(windows::core::PCWSTR(class.as_ptr()), None) }
+            .expect("popup class window");
+        let mut rect = RECT::default();
+        unsafe { GetWindowRect(popup_hwnd, &mut rect) }.expect("rect");
+        let width = rect.right - rect.left;
+        let height = rect.bottom - rect.top;
+        let screen = unsafe { GetDC(Some(popup_hwnd)) };
+        let mem = unsafe { CreateCompatibleDC(Some(screen)) };
+        let bmp = unsafe { CreateCompatibleBitmap(screen, width, height) };
+        let old = unsafe { SelectObject(mem, bmp.into()) };
+        unsafe {
+            let _ = BitBlt(mem, 0, 0, width, height, Some(screen), 0, 0, SRCCOPY);
+        }
+        let mut info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: 0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut pixels = vec![0u8; (width * height * 4) as usize];
+        unsafe {
+            let _ = GetDIBits(
+                mem,
+                bmp,
+                0,
+                height as u32,
+                Some(pixels.as_mut_ptr() as *mut _),
+                &mut info,
+                DIB_RGB_COLORS,
+            );
+            SelectObject(mem, old);
+            let _ = DeleteObject(bmp.into());
+            let _ = DeleteDC(mem);
+            ReleaseDC(Some(popup_hwnd), screen);
+        }
+        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tmp/profile_rail.bmp");
+        std::fs::create_dir_all(out.parent().unwrap()).ok();
+        let mut file = std::fs::File::create(&out).expect("create bmp");
+        use std::io::Write;
+        let row = (width * 4) as usize;
+        let data_size = (row * height as usize) as u32;
+        let mut header = Vec::new();
+        header.extend_from_slice(b"BM");
+        header.extend_from_slice(&(54u32 + data_size).to_le_bytes());
+        header.extend_from_slice(&0u32.to_le_bytes());
+        header.extend_from_slice(&54u32.to_le_bytes());
+        header.extend_from_slice(&40u32.to_le_bytes());
+        header.extend_from_slice(&width.to_le_bytes());
+        header.extend_from_slice(&height.to_le_bytes());
+        header.extend_from_slice(&1u16.to_le_bytes());
+        header.extend_from_slice(&32u16.to_le_bytes());
+        header.extend_from_slice(&0u32.to_le_bytes());
+        header.extend_from_slice(&data_size.to_le_bytes());
+        header.extend_from_slice(&0i32.to_le_bytes());
+        header.extend_from_slice(&0i32.to_le_bytes());
+        header.extend_from_slice(&0u32.to_le_bytes());
+        header.extend_from_slice(&0u32.to_le_bytes());
+        file.write_all(&header).unwrap();
+        for y in (0..height as usize).rev() {
+            file.write_all(&pixels[y * row..(y + 1) * row]).unwrap();
+        }
+        eprintln!("wrote {}", out.display());
+        popup.dismiss();
+        unsafe {
+            let _ = DestroyWindow(parent);
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn chooser_height_cannot_persist_as_result_popup_size() {
         use super::windows_impl::valid_result_size;
 
@@ -3047,10 +3471,10 @@ mod tests {
             .map(|label| chooser_button_width(label))
             .collect();
         let size = chooser_size(Point { x: 200, y: 200 }, &widths, 96);
-        assert_eq!(size.1, 38, "chooser window height must stay compact");
+        assert_eq!(size.1, 44, "chooser rail must stay a compact pill strip");
 
         let (row_top, row_height, rects) = chooser_strip_layout(size.0, 400, &widths, 96);
-        assert_eq!(row_height, 38);
+        assert_eq!(row_height, 44);
         assert!(
             row_top > 100,
             "strip is vertically centered in a tall client"
@@ -3098,34 +3522,32 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn layout_fills_width_and_lets_result_absorb_extra_height() {
-        use super::windows_impl::compute_layout;
+    fn layout_stacks_selection_result_cards_over_left_aligned_footer() {
+        use super::windows_impl::{compute_layout, footer_button_width};
 
-        let base = compute_layout(440, 260, 96, 5);
-        let wide = compute_layout(800, 260, 96, 5);
-        let tall = compute_layout(440, 500, 96, 5);
-
-        // Buttons stretch with content width (integer division may leave 1px).
-        assert!(wide.button_width > base.button_width);
-        let wide_used = wide.button_width * 5 + wide.button_gap * 4 + wide.margin * 2;
-        let base_used = base.button_width * 5 + base.button_gap * 4 + base.margin * 2;
-        // Integer division may leave a few leftover pixels.
-        assert!((790..=800).contains(&wide_used));
-        assert!((430..=440).contains(&base_used));
-
-        // Target/context stay compact; result grows with height.
-        assert_eq!(tall.target_height, base.target_height);
-        assert_eq!(tall.context_height, base.context_height);
-        assert_eq!(tall.output_top, base.output_top);
+        let base = compute_layout(440, 480, 96, 5);
+        // Header, Selection card, Result card, footer, in order.
+        assert!(base.header_height < base.sel_card_top);
+        assert!(base.sel_card_bottom < base.result_card_top);
+        assert!(base.result_card_bottom <= base.foot_top);
+        assert!(base.foot_top < 480);
+        // Footer buttons hug the bottom edge above the window border.
+        assert_eq!(base.button_top, base.foot_top + 12);
+        assert!(base.button_top + base.button_height <= 480);
+        // Target sits above context inside the Selection card.
+        assert!(base.target_top < base.context_top);
+        assert!(base.context_top + base.context_height <= base.sel_card_bottom);
+        // The result pane absorbs extra height; the Selection card keeps its size.
+        let tall = compute_layout(440, 640, 96, 5);
         assert!(tall.output_height > base.output_height);
-        assert!(tall.button_top > base.button_top);
-
-        // Shorter client shrinks panes instead of overflowing buttons.
-        let short = compute_layout(440, 180, 96, 5);
-        assert!(short.context_height <= base.context_height);
-        assert!(short.target_height <= base.target_height);
-        assert!(short.output_height >= 1);
-        assert!(short.button_top + short.button_height <= 180);
+        assert_eq!(
+            tall.sel_card_bottom - tall.sel_card_top,
+            base.sel_card_bottom - base.sel_card_top
+        );
+        // Footer widths follow the label, not the window width.
+        assert_eq!(footer_button_width("Copy"), 58);
+        assert_eq!(footer_button_width("Unpin"), 66);
+        assert!(footer_button_width("非常长的本地化按钮标题") > footer_button_width("Copy"));
     }
 
     #[cfg(windows)]
@@ -3147,17 +3569,17 @@ mod tests {
     #[test]
     fn visual_geometry_and_button_states_scale_at_common_dpi_values() {
         use super::windows_impl::{
-            button_fill, popup_corner_radius, scaled_size, ButtonVisualState, POPUP_ACCENT_DIM,
-            POPUP_BUTTON_BG,
+            button_fill, popup_corner_radius, scaled_size, ButtonVisualState, POPUP_BUTTON_BG,
+            POPUP_BUTTON_HOVER,
         };
-        assert_eq!(scaled_size((660, 470), 96), (660, 470));
-        assert_eq!(scaled_size((660, 470), 144), (990, 705));
-        assert_eq!(scaled_size((660, 470), 192), (1320, 940));
+        assert_eq!(scaled_size((440, 480), 96), (440, 480));
+        assert_eq!(scaled_size((440, 480), 144), (660, 720));
+        assert_eq!(scaled_size((440, 480), 192), (880, 960));
         assert_eq!(popup_corner_radius(96), 12);
         assert_eq!(popup_corner_radius(144), 18);
         assert_eq!(popup_corner_radius(192), 24);
         assert_eq!(button_fill(ButtonVisualState::Normal), POPUP_BUTTON_BG);
-        assert_eq!(button_fill(ButtonVisualState::Pressed), POPUP_ACCENT_DIM);
+        assert_eq!(button_fill(ButtonVisualState::Pressed), POPUP_BUTTON_HOVER);
         assert_ne!(button_fill(ButtonVisualState::Disabled), POPUP_BUTTON_BG);
         assert_ne!(button_fill(ButtonVisualState::Focused), POPUP_BUTTON_BG);
     }
@@ -3171,10 +3593,10 @@ mod tests {
         assert_eq!(compact_profile_label("code-specialist"), "code");
         assert_eq!(compact_profile_label("简洁解释"), "简洁解释");
         assert_eq!(compact_profile_label("abcdefghijklmnop"), "abcdefghijk…");
-        assert_eq!(chooser_button_width("Contextual"), 100);
-        assert_eq!(chooser_button_width("Word"), 52);
-        assert_eq!(chooser_button_width("Wiki"), 52);
-        assert_eq!(chooser_button_width("More…"), 60);
+        assert_eq!(chooser_button_width("Contextual"), 108);
+        assert_eq!(chooser_button_width("Word"), 60);
+        assert_eq!(chooser_button_width("Wiki"), 60);
+        assert_eq!(chooser_button_width("More…"), 68);
     }
 
     #[test]
@@ -3325,17 +3747,18 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn drag_band_client_routing_only_accepts_blank_top_strip() {
+    fn drag_band_client_routing_only_accepts_blank_header_strip() {
         use super::windows_impl::drag_band_client_contains;
 
+        // The full 52px header is the drag band; the body starts below it.
         assert!(drag_band_client_contains(
-            Point { x: 100, y: 23 },
+            Point { x: 100, y: 51 },
             (440, 260),
             96,
             false
         ));
         assert!(!drag_band_client_contains(
-            Point { x: 100, y: 24 },
+            Point { x: 100, y: 52 },
             (440, 260),
             96,
             false
@@ -3353,25 +3776,25 @@ mod tests {
             false
         ));
         assert!(drag_band_client_contains(
-            Point { x: 100, y: 35 },
+            Point { x: 100, y: 77 },
             (660, 390),
             144,
             false
         ));
         assert!(!drag_band_client_contains(
-            Point { x: 100, y: 36 },
+            Point { x: 100, y: 78 },
             (660, 390),
             144,
             false
         ));
         assert!(drag_band_client_contains(
-            Point { x: 100, y: 47 },
+            Point { x: 100, y: 103 },
             (880, 520),
             192,
             false
         ));
         assert!(!drag_band_client_contains(
-            Point { x: 100, y: 48 },
+            Point { x: 100, y: 104 },
             (880, 520),
             192,
             false
@@ -3470,7 +3893,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn hidden_richedit_applies_bold_format_to_completed_markdown() {
-        use super::windows_impl::{set_output, POPUP_TEXT, RICH_EDIT_CLASS};
+        use super::windows_impl::{set_output, POPUP_GOLD, POPUP_TEXT, RICH_EDIT_CLASS};
         use windows::core::w;
         use windows::Win32::Foundation::{FreeLibrary, HINSTANCE, LPARAM, WPARAM};
         use windows::Win32::System::LibraryLoader::{GetModuleHandleW, LoadLibraryW};
@@ -3527,7 +3950,7 @@ mod tests {
             let _ = ShowWindow(hwnd, SW_HIDE);
         }
 
-        set_output(hwnd, "**bold**", true);
+        set_output(hwnd, "**bold** `code`", true);
         let mut format = CHARFORMATW {
             cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
             ..Default::default()
@@ -3547,6 +3970,19 @@ mod tests {
             assert_ne!(format.dwMask.0 & CFM_FACE.0, 0);
             let face = String::from_utf16_lossy(&format.szFaceName);
             assert_eq!(face.trim_end_matches('\0'), "Segoe UI");
+
+            // Inline code renders in the gold mono treatment.
+            let _ = SendMessageW(hwnd, EM_SETSEL, Some(WPARAM(5)), Some(LPARAM(9)));
+            let _ = SendMessageW(
+                hwnd,
+                EM_GETCHARFORMAT,
+                Some(WPARAM(SCF_SELECTION)),
+                Some(LPARAM((&mut format as *mut CHARFORMATW) as isize)),
+            );
+            assert_eq!(format.crTextColor, POPUP_GOLD);
+            let code_face = String::from_utf16_lossy(&format.szFaceName);
+            assert_eq!(code_face.trim_end_matches('\0'), "Consolas");
+
             let _ = DestroyWindow(hwnd);
             let _ = DestroyWindow(parent);
             let _ = FreeLibrary(module);
