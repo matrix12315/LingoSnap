@@ -90,27 +90,28 @@ mod windows_impl {
         CFM_FACE, CFM_ITALIC, CFM_SIZE, CFM_STRIKEOUT, CHARFORMATW,
     };
     use windows::Win32::UI::Controls::{
-        SetWindowTheme, DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_MENU,
+        SetWindowTheme, DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_MENU, WM_MOUSELEAVE,
     };
-    use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetFocus, VK_ESCAPE};
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
+        VK_ESCAPE,
+    };
     use windows::Win32::UI::WindowsAndMessaging::{
-        AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DestroyWindow,
-        GetAncestor, GetClassNameW, GetClientRect, GetParent, GetWindow, GetWindowLongPtrW,
-        GetWindowRect, GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible, MoveWindow,
-        PostMessageW, RegisterClassW, SendMessageW, SetForegroundWindow, SetMenuInfo,
-        SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, TrackPopupMenu,
-        WindowFromPoint, BS_PUSHBUTTON, CS_DROPSHADOW, CS_HREDRAW, CS_VREDRAW, ES_AUTOVSCROLL,
-        ES_MULTILINE, ES_NOHIDESEL, ES_READONLY, GA_ROOT, GWLP_USERDATA, GWL_EXSTYLE, GW_OWNER,
-        HMENU, HTBOTTOM, HTBOTTOMLEFT, HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT,
-        HTTOPRIGHT, HWND_TOPMOST, MA_NOACTIVATE, MENUINFO, MF_OWNERDRAW, MF_STRING,
-        MIM_APPLYTOSUBMENUS, MIM_BACKGROUND, MINMAXINFO, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
-        SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, TPM_LEFTALIGN, TPM_RETURNCMD, TPM_TOPALIGN,
-        WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DPICHANGED,
-        WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND, WM_EXITSIZEMOVE, WM_GETMINMAXINFO,
-        WM_KEYDOWN, WM_LBUTTONDOWN, WM_MEASUREITEM, WM_MOUSEACTIVATE, WM_NCCREATE, WM_NCDESTROY,
-        WM_NCHITTEST, WM_NCLBUTTONDOWN, WM_PAINT, WM_SETREDRAW, WM_SIZE, WM_TIMER, WNDCLASSW,
-        WS_CHILD, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_TABSTOP,
-        WS_VISIBLE, WS_VSCROLL,
+        CallWindowProcW, CreateWindowExW, DefWindowProcW, DestroyWindow, GetAncestor,
+        GetClassNameW, GetClientRect, GetParent, GetWindow, GetWindowLongPtrW, GetWindowRect,
+        GetWindowTextLengthW, GetWindowTextW, IsWindow, IsWindowVisible, MoveWindow, PostMessageW,
+        RegisterClassW, SendMessageW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
+        SetWindowTextW, ShowWindow, WindowFromPoint, BS_PUSHBUTTON, CREATESTRUCTW, CS_DROPSHADOW,
+        CS_HREDRAW, CS_VREDRAW, ES_AUTOVSCROLL, ES_MULTILINE, ES_NOHIDESEL, ES_READONLY, GA_ROOT,
+        GWLP_USERDATA, GWLP_WNDPROC, GWL_EXSTYLE, GW_OWNER, HMENU, HTBOTTOM, HTBOTTOMLEFT,
+        HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HWND_TOPMOST,
+        MA_NOACTIVATE, MINMAXINFO, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+        SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND,
+        WM_CREATE, WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND,
+        WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MEASUREITEM,
+        WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN,
+        WM_PAINT, WM_SETREDRAW, WM_SIZE, WM_TIMER, WNDCLASSW, WS_CHILD, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
     };
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslatePopup");
@@ -190,6 +191,25 @@ mod windows_impl {
     pub(super) const OWNER_DRAW_BUTTON_STYLE: u32 = BS_PUSHBUTTON as u32 | 0x0000000b;
 
     pub const MAX_OUTPUT_CHARS: usize = 64 * 1024;
+
+    /// Dropdown panel behind the rail's More… item — a plain rectangle card
+    /// in the same design language, listing only the additional profiles.
+    const MENU_PANEL_CLASS: PCWSTR = w!("SelectionTranslateMenuPanel");
+
+    pub(super) struct MenuPanelData {
+        /// (compact label, absolute profile index) for the overflow profiles.
+        items: Vec<(String, usize)>,
+        pub(super) hovered: Option<usize>,
+        item_height: i32,
+        pad: i32,
+        width: i32,
+        callback_target: HWND,
+        popup_id: PopupId,
+        owner: HWND,
+        /// Borrowed from the owner popup's font set; the panel never deletes
+        /// it and always closes before the popup does.
+        font: HFONT,
+    }
     const MAX_INPUT_CHARS: usize = 4 * 1024;
     const MAX_OUTPUT_UTF16_UNITS: usize = MAX_OUTPUT_CHARS * 2;
     const TRUNCATION_MARKER: &str = "\n\n[Output truncated]";
@@ -312,6 +332,12 @@ mod windows_impl {
         /// Index (into profile_labels) of the profile that would run without
         /// an explicit choice; rendered as the accent-filled rail pill.
         profile_default: Option<usize>,
+        /// Button currently under the pointer (hover highlight source).
+        hovered_button: HWND,
+        /// More… dropdown panel while open; owned by this popup.
+        menu_panel: HWND,
+        /// More… list is expanded below the rail row.
+        rail_expanded: bool,
         choosing_profile: bool,
         /// Only a user close should notify the resident. Replacement and
         /// cancellation destroy the window silently.
@@ -373,6 +399,9 @@ mod windows_impl {
                 profile_button_widths: Vec::new(),
                 profile_labels: Vec::new(),
                 profile_default: None,
+                hovered_button: HWND::default(),
+                menu_panel: HWND::default(),
+                rail_expanded: false,
                 choosing_profile: false,
                 notify_owner: true,
                 in_native_move: false,
@@ -644,6 +673,7 @@ mod windows_impl {
                     set_standard_controls_visible(data, true);
                     return false;
                 }
+                enable_button_hover(button);
                 data.profile_buttons.push(button);
             }
             data.choosing_profile = true;
@@ -660,7 +690,7 @@ mod windows_impl {
                     for button in data.profile_buttons.clone() {
                         if !button.0.is_null() && !data.fonts[1].0.is_null() {
                             unsafe {
-                                let _ = SendMessageW(
+                                let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                                     button,
                                     0x0030,
                                     Some(WPARAM(data.fonts[1].0 as usize)),
@@ -704,6 +734,20 @@ mod windows_impl {
 
         pub fn is_pinned(&self) -> bool {
             data_mut(self.hwnd).is_some_and(|data| data.pinned)
+        }
+
+        /// Test-only: park the hover state on a profile rail pill so the
+        /// visual capture shows the hover treatment without a real pointer.
+        #[cfg(test)]
+        pub fn hover_button_for_capture(&self, index: usize) {
+            if let Some(data) = data_mut(self.hwnd) {
+                if let Some(button) = data.profile_buttons.get(index).copied() {
+                    data.hovered_button = button;
+                    unsafe {
+                        let _ = InvalidateRect(Some(button), None, false);
+                    }
+                }
+            }
         }
 
         pub fn is_completed(&self) -> bool {
@@ -1119,11 +1163,12 @@ mod windows_impl {
     }
 
     fn apply_round_region(hwnd: HWND, size: (i32, i32), dpi: u32) {
-        // The profile rail is a fully-rounded pill strip; the result popup
-        // keeps the mockup's 12px card corners.
+        // The profile rail is a plain rectangle strip (buttons carry their
+        // own rectangle shapes; a rounded window region would clip their
+        // corners). The result popup keeps the mockup's 12px card corners.
         let choosing = data_mut(hwnd).is_some_and(|data| data.choosing_profile);
         let radius = if choosing {
-            (size.1 / 2).max(8)
+            0
         } else {
             popup_corner_radius(dpi)
         };
@@ -1571,13 +1616,13 @@ mod windows_impl {
             format.szFaceName[..face.len()].copy_from_slice(&face);
         }
         unsafe {
-            let _ = SendMessageW(
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                 hwnd,
                 EM_SETSEL,
                 Some(WPARAM(span.start)),
                 Some(LPARAM(span.end as isize)),
             );
-            let _ = SendMessageW(
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                 hwnd,
                 EM_SETCHARFORMAT,
                 Some(WPARAM(SCF_SELECTION)),
@@ -1606,13 +1651,13 @@ mod windows_impl {
         let face: Vec<u16> = "Segoe UI".encode_utf16().collect();
         format.szFaceName[..face.len()].copy_from_slice(&face);
         unsafe {
-            let _ = SendMessageW(
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                 hwnd,
                 EM_SETSEL,
                 Some(WPARAM(0)),
                 Some(LPARAM(utf16_len as isize)),
             );
-            let _ = SendMessageW(
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                 hwnd,
                 EM_SETCHARFORMAT,
                 Some(WPARAM(SCF_SELECTION)),
@@ -1632,7 +1677,7 @@ mod windows_impl {
                 hwnd,
                 EM_GETFIRSTVISIBLELINE,
                 Some(WPARAM(0)),
-                Some(LPARAM(0)),
+                Some(windows::Win32::Foundation::LPARAM(0)),
             )
             .0 as i32
         };
@@ -1651,8 +1696,13 @@ mod windows_impl {
         };
         let utf16_len = rendered.text.encode_utf16().count();
         unsafe {
-            let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(0)), Some(LPARAM(0)));
-            let _ = SendMessageW(
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+                hwnd,
+                WM_SETREDRAW,
+                Some(WPARAM(0)),
+                Some(LPARAM(0)),
+            );
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                 hwnd,
                 EM_EXLIMITTEXT,
                 Some(WPARAM(0)),
@@ -1668,24 +1718,34 @@ mod windows_impl {
             // Reset the caret before restoring the viewport. Both operations
             // must happen while redraw is still disabled; otherwise RichEdit
             // can briefly paint the end of the response between them.
-            let _ = SendMessageW(hwnd, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(0)));
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+                hwnd,
+                EM_SETSEL,
+                Some(WPARAM(0)),
+                Some(LPARAM(0)),
+            );
             let current_first_line = SendMessageW(
                 hwnd,
                 EM_GETFIRSTVISIBLELINE,
                 Some(WPARAM(0)),
-                Some(LPARAM(0)),
+                Some(windows::Win32::Foundation::LPARAM(0)),
             )
             .0 as i32;
             let line_delta = first_visible_line.saturating_sub(current_first_line);
             if line_delta != 0 {
-                let _ = SendMessageW(
+                let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                     hwnd,
                     EM_LINESCROLL,
                     Some(WPARAM(0)),
                     Some(LPARAM(line_delta as isize)),
                 );
             }
-            let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(1)), Some(LPARAM(0)));
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+                hwnd,
+                WM_SETREDRAW,
+                Some(WPARAM(1)),
+                Some(LPARAM(0)),
+            );
             let _ = InvalidateRect(Some(hwnd), None, false);
         }
     }
@@ -1799,8 +1859,12 @@ mod windows_impl {
     }
 
     fn clear_profile_buttons(data: &mut PopupData) {
+        close_menu_panel(data);
         for button in data.profile_buttons.drain(..) {
             if !button.0.is_null() {
+                if data.hovered_button == button {
+                    data.hovered_button = HWND::default();
+                }
                 unsafe {
                     let _ = DestroyWindow(button);
                 }
@@ -1970,7 +2034,7 @@ mod windows_impl {
                     // RichEdit does not consistently honor CTLCOLOR for its own
                     // document background, so set it once before the popup is
                     // presented. The result card body is the raised surface.
-                    let _ = SendMessageW(
+                    let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                         data.output,
                         EM_SETBKGNDCOLOR,
                         Some(WPARAM(0)),
@@ -1981,7 +2045,7 @@ mod windows_impl {
             for control in [data.input, data.context_input] {
                 if !control.0.is_null() {
                     unsafe {
-                        let _ = SendMessageW(
+                        let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                             control,
                             EM_SETBKGNDCOLOR,
                             Some(WPARAM(0)),
@@ -1989,7 +2053,7 @@ mod windows_impl {
                         );
                         // 2px side margins keep the pane tight around the text
                         // without changing the 13px font.
-                        let _ = SendMessageW(
+                        let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                             control,
                             EM_SETMARGINS,
                             Some(WPARAM(0x0003)),
@@ -2055,7 +2119,7 @@ mod windows_impl {
             // and result use the body face.
             if !data.input.0.is_null() && !data.fonts[3].0.is_null() {
                 unsafe {
-                    let _ = SendMessageW(
+                    let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                         data.input,
                         0x0030,
                         Some(WPARAM(data.fonts[3].0 as usize)),
@@ -2066,7 +2130,7 @@ mod windows_impl {
             for control in [data.context_input, data.output] {
                 if !control.0.is_null() && !data.fonts[0].0.is_null() {
                     unsafe {
-                        let _ = SendMessageW(
+                        let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                             control,
                             0x0030,
                             Some(WPARAM(data.fonts[0].0 as usize)),
@@ -2081,9 +2145,10 @@ mod windows_impl {
                 .copied()
                 .chain([data.pin_icon, data.close_icon])
             {
+                enable_button_hover(button);
                 if !button.0.is_null() && !data.fonts[1].0.is_null() {
                     unsafe {
-                        let _ = SendMessageW(
+                        let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                             button,
                             0x0030,
                             Some(WPARAM(data.fonts[1].0 as usize)),
@@ -2113,6 +2178,84 @@ mod windows_impl {
         static BRUSH: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
         let raw = *BRUSH.get_or_init(|| unsafe { CreateSolidBrush(POPUP_SECTION_BG).0 as usize });
         HBRUSH(raw as *mut core::ffi::c_void)
+    }
+
+    /// Original BUTTON class procedure shared by every subclassed pill and
+    /// action button; captured when the first button enables hover tracking.
+    static ORIGINAL_BUTTON_PROC: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+
+    /// Route hover messages into the popup's shared hover state so
+    /// owner-drawn buttons can react to the pointer like CSS `:hover`.
+    unsafe extern "system" fn button_hover_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        match msg {
+            WM_MOUSEMOVE => {
+                if let Ok(parent) = GetParent(hwnd) {
+                    if let Some(data) = data_mut(parent) {
+                        if data.hovered_button != hwnd {
+                            let previous = data.hovered_button;
+                            data.hovered_button = hwnd;
+                            let _ = InvalidateRect(Some(hwnd), None, false);
+                            if !previous.0.is_null() {
+                                let _ = InvalidateRect(Some(previous), None, false);
+                            }
+                        }
+                    }
+                }
+                let mut track = TRACKMOUSEEVENT {
+                    cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                    dwFlags: TME_LEAVE,
+                    hwndTrack: hwnd,
+                    dwHoverTime: 0,
+                };
+                let _ = TrackMouseEvent(&mut track);
+            }
+            WM_MOUSELEAVE => {
+                if let Ok(parent) = GetParent(hwnd) {
+                    if let Some(data) = data_mut(parent) {
+                        if data.hovered_button == hwnd {
+                            data.hovered_button = HWND::default();
+                            let _ = InvalidateRect(Some(hwnd), None, false);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        match ORIGINAL_BUTTON_PROC.get().copied() {
+            Some(original) if original != 0 => CallWindowProcW(
+                Some(std::mem::transmute::<
+                    usize,
+                    unsafe extern "system" fn(HWND, u32, WPARAM, LPARAM) -> LRESULT,
+                >(original)),
+                hwnd,
+                msg,
+                wparam,
+                lparam,
+            ),
+            _ => DefWindowProcW(hwnd, msg, wparam, lparam),
+        }
+    }
+
+    /// Subclass one owner-drawn button for hover tracking. Call once after
+    /// creation, before the button is presented.
+    fn enable_button_hover(button: HWND) {
+        if button.0.is_null() {
+            return;
+        }
+        unsafe {
+            let proc_address = GetWindowLongPtrW(button, GWLP_WNDPROC);
+            let _ = ORIGINAL_BUTTON_PROC.set(proc_address as usize);
+            SetWindowLongPtrW(
+                button,
+                GWLP_WNDPROC,
+                button_hover_proc as *const () as isize,
+            );
+        }
     }
 
     /// Visual style resolved from the control id so footer actions, header
@@ -2146,7 +2289,13 @@ mod windows_impl {
         }
     }
 
-    fn draw_button(item: &DRAWITEMSTRUCT, profile_default: Option<usize>, pinned: bool) {
+    fn draw_button(
+        item: &DRAWITEMSTRUCT,
+        profile_default: Option<usize>,
+        pinned: bool,
+        hovered: bool,
+        rail_expanded: bool,
+    ) {
         if item.CtlType != ODT_BUTTON {
             return;
         }
@@ -2168,7 +2317,7 @@ mod windows_impl {
             ButtonStyle::Raised => {
                 let fill = if disabled {
                     POPUP_BUTTON_DISABLED
-                } else if selected || focused {
+                } else if selected || focused || hovered {
                     POPUP_BUTTON_HOVER
                 } else {
                     POPUP_BUTTON_BG
@@ -2181,7 +2330,7 @@ mod windows_impl {
                 (fill, border, POPUP_BUTTON_TEXT, 500)
             }
             ButtonStyle::Ghost => {
-                let fill = if selected || focused {
+                let fill = if selected || focused || hovered {
                     POPUP_BUTTON_HOVER
                 } else {
                     POPUP_BG
@@ -2196,45 +2345,40 @@ mod windows_impl {
             ButtonStyle::Icon { pinned } => {
                 let text = if pinned {
                     POPUP_ACCENT
-                } else if selected {
+                } else if selected || hovered {
                     POPUP_TEXT
                 } else {
                     POPUP_MUTED
                 };
                 (POPUP_BG, POPUP_BG, text, 400)
             }
-            ButtonStyle::RailPill { active } => {
-                if active {
-                    let fill = if selected {
-                        POPUP_ACCENT_DIM
-                    } else {
-                        POPUP_ACCENT
-                    };
-                    (fill, fill, POPUP_LOGO_INK, 600)
-                } else if selected || focused {
+            ButtonStyle::RailPill { active: _ } => {
+                // Unified rectangle: every rail item shares one fill, border,
+                // and text color; the accent appears only on hover.
+                if selected || focused {
                     (POPUP_BUTTON_BG, POPUP_ACCENT, POPUP_TEXT, 500)
+                } else if hovered {
+                    (POPUP_ACCENT_DIM, POPUP_ACCENT_DIM, POPUP_ACCENT, 500)
                 } else {
-                    (POPUP_BG, POPUP_BG, POPUP_MUTED, 500)
+                    (POPUP_BUTTON_BG, POPUP_BUTTON_STROKE, POPUP_TEXT, 500)
                 }
             }
             ButtonStyle::RailMore => {
-                let fill = if selected || focused {
-                    POPUP_BUTTON_HOVER
+                if rail_expanded || selected || focused || hovered {
+                    // Open indicator: the accent-tinted hover treatment.
+                    (POPUP_ACCENT_DIM, POPUP_ACCENT_DIM, POPUP_ACCENT, 500)
                 } else {
-                    POPUP_BUTTON_BG
-                };
-                (fill, POPUP_BUTTON_STROKE, POPUP_TEXT, 500)
+                    (POPUP_BUTTON_BG, POPUP_BUTTON_STROKE, POPUP_TEXT, 500)
+                }
             }
         };
         let brush = popup_brush(fill);
         let border_brush = popup_brush(border);
         let mut rect = item.rcItem;
-        // Pills wrap the rail height fully; footer actions use the mockup's
-        // 8px corner radius; icon chrome stays square-transparent.
-        let pill = matches!(style, ButtonStyle::RailPill { .. } | ButtonStyle::RailMore);
-        let radius = if pill {
-            ((rect.bottom - rect.top) / 2).max(2)
-        } else if matches!(style, ButtonStyle::Icon { .. }) {
+        // Rail items are rectangles per the unified design; footer actions
+        // use the mockup's 8px corner radius; icon chrome stays square.
+        let rail_item = matches!(style, ButtonStyle::RailPill { .. } | ButtonStyle::RailMore);
+        let radius = if rail_item || matches!(style, ButtonStyle::Icon { .. }) {
             0
         } else {
             let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(item.hwndItem) };
@@ -2260,7 +2404,12 @@ mod windows_impl {
                     let _ = FillRect(item.hDC, &rect, brush);
                 }
             } else {
+                // Square rectangle: plain fill + frame avoids the hairline
+                // seams a radius-0 region can leave at the corners.
                 let _ = FillRect(item.hDC, &rect, brush);
+                if border != fill {
+                    let _ = FrameRect(item.hDC, &rect, border_brush);
+                }
             }
             let _ = DeleteObject(brush.into());
             let _ = DeleteObject(border_brush.into());
@@ -2416,16 +2565,16 @@ mod windows_impl {
             let _ = FillRect(hdc, &client, background);
             let _ = DeleteObject(background.into());
         }
+        let choosing = data_mut(hwnd).is_some_and(|data| data.choosing_profile);
+        if choosing {
+            // The rail paints only its background: every item carries its own
+            // rectangle border, so an outer frame would just double the lines.
+            return;
+        }
         let border = popup_brush(POPUP_BORDER);
         unsafe {
             let _ = FrameRect(hdc, &client, border);
             let _ = DeleteObject(border.into());
-        }
-        let choosing = data_mut(hwnd).is_some_and(|data| data.choosing_profile);
-        if choosing {
-            // The standalone profile rail paints no body chrome; the pills are
-            // owner-drawn buttons on the surface background.
-            return;
         }
         let layout = compute_layout(client.right, client.bottom, dpi, 5);
         let card_radius = scale(10, dpi).max(6);
@@ -2635,7 +2784,7 @@ mod windows_impl {
 
     fn handle_command(hwnd: HWND, id: usize) {
         if id == PROFILE_MORE_ID {
-            show_more_profiles(hwnd);
+            toggle_menu_panel(hwnd);
             return;
         }
         let profile_choice =
@@ -2680,97 +2829,312 @@ mod windows_impl {
     }
 
     fn show_more_profiles(hwnd: HWND) {
-        let labels = data_mut(hwnd)
-            .map(|data| data.profile_labels.clone())
-            .unwrap_or_default();
-        if labels.len() <= INLINE_PROFILE_LIMIT {
-            return;
-        }
-        let Ok(menu) = (unsafe { CreatePopupMenu() }) else {
-            return;
-        };
-        // Owner-draw items keep the command menu on the popup's dark surface:
-        // raised body, accent hot state. The UTF-16 labels live in this stack
-        // frame for the whole modal TrackPopupMenu call.
-        let item_text: Vec<Vec<u16>> = labels
-            .iter()
-            .skip(INLINE_PROFILE_LIMIT)
-            .map(|label| label.encode_utf16().chain(std::iter::once(0)).collect())
-            .collect();
-        let mut appended = true;
-        for (offset, text) in item_text.iter().enumerate() {
-            let index = INLINE_PROFILE_LIMIT + offset;
-            if unsafe {
-                AppendMenuW(
-                    menu,
-                    MF_STRING | MF_OWNERDRAW,
-                    PROFILE_CHOICE_ID_START + index,
-                    PCWSTR(text.as_ptr()),
+        if let Some(data) = data_mut(hwnd) {
+            // Items = only the profiles that do not fit on the rail row.
+            let items: Vec<(String, usize)> = data
+                .profile_labels
+                .iter()
+                .skip(INLINE_PROFILE_LIMIT)
+                .enumerate()
+                .map(|(offset, label)| (label.clone(), INLINE_PROFILE_LIMIT + offset))
+                .collect();
+            if items.is_empty() {
+                return;
+            }
+            let dpi = data.dpi;
+            let width = scale(
+                items
+                    .iter()
+                    .map(|(label, _)| chooser_button_width(label) + 24)
+                    .max()
+                    .unwrap_or(MENU_WIDTH)
+                    .max(MENU_WIDTH),
+                dpi,
+            );
+            let item_height = scale(MENU_ITEM_HEIGHT, dpi);
+            let pad = scale(6, dpi);
+            let size = (width, pad * 2 + items.len() as i32 * item_height);
+            // Anchor below the More… pill (last rail slot).
+            let anchor = {
+                let mut anchor = Point { x: 0, y: 0 };
+                let mut found = false;
+                if let Some(more) = data.profile_buttons.last().copied() {
+                    let mut rect = RECT::default();
+                    if unsafe { GetWindowRect(more, &mut rect) }.is_ok() {
+                        anchor = Point {
+                            x: rect.left,
+                            y: rect.bottom + scale(2, dpi),
+                        };
+                        found = true;
+                    }
+                }
+                if !found {
+                    return;
+                }
+                origin_for(anchor, size).unwrap_or(anchor)
+            };
+            let data_box = Box::new(MenuPanelData {
+                items,
+                hovered: None,
+                item_height,
+                pad,
+                width,
+                callback_target: data.callback_target,
+                popup_id: data.id,
+                owner: hwnd,
+                font: data.fonts[1],
+            });
+            let data_ptr = Box::into_raw(data_box);
+            let created = unsafe {
+                if register_menu_panel_class().is_err() {
+                    return;
+                }
+                let instance = windows::Win32::System::LibraryLoader::GetModuleHandleW(None);
+                CreateWindowExW(
+                    WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
+                    MENU_PANEL_CLASS,
+                    w!("More profiles"),
+                    WS_POPUP,
+                    anchor.x,
+                    anchor.y,
+                    size.0,
+                    size.1,
+                    None,
+                    None,
+                    instance.ok().map(|m| HINSTANCE(m.0)),
+                    Some(data_ptr.cast()),
                 )
-            }
-            .is_err()
-            {
-                appended = false;
-                break;
-            }
-        }
-        if appended {
-            unsafe {
-                // Dark menu background for any frame margins around the
-                // owner-drawn items. The process-lifetime brush stays valid
-                // while the modal menu is open.
-                let info = MENUINFO {
-                    cbSize: std::mem::size_of::<MENUINFO>() as u32,
-                    fMask: MIM_BACKGROUND | MIM_APPLYTOSUBMENUS,
-                    hbrBack: popup_section_brush(),
-                    ..Default::default()
-                };
-                let _ = SetMenuInfo(menu, &info);
-            }
-            // Anchor the menu under the More… pill (last rail slot).
-            let mut anchor_x = 0;
-            unsafe {
-                let mut rect = RECT::default();
-                if GetWindowRect(hwnd, &mut rect).is_ok() {
-                    let dpi = data_mut(hwnd).map(|data| data.dpi).unwrap_or(DEFAULT_DPI);
-                    let mut client = RECT::default();
-                    if GetClientRect(hwnd, &mut client).is_ok() {
-                        let natural: Vec<i32> = data_mut(hwnd)
-                            .map(|data| {
-                                data.profile_button_widths
-                                    .iter()
-                                    .map(|width| scale(*width, dpi).max(1))
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        let (_, _, rects) =
-                            chooser_strip_layout(client.right, client.bottom, &natural, dpi);
-                        if let Some((x, width)) = rects.last().copied() {
-                            anchor_x = (rect.left + x + width / 2 - scale(MENU_WIDTH, dpi) / 2)
-                                .max(rect.left);
+            };
+            match created {
+                Ok(panel) => {
+                    if let Some(data) = data_mut(hwnd) {
+                        data.menu_panel = panel;
+                        data.rail_expanded = true;
+                        if let Some(more) = data.profile_buttons.last().copied() {
+                            unsafe {
+                                let _ = InvalidateRect(Some(more), None, false);
+                            }
                         }
                     }
-                    let anchor_y = rect.bottom + scale(2, dpi);
-                    let _ = SetForegroundWindow(hwnd);
-                    let command = TrackPopupMenu(
-                        menu,
-                        TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RETURNCMD,
-                        anchor_x,
-                        anchor_y,
-                        Some(0),
-                        hwnd,
-                        None,
-                    );
-                    let command_id = command.0 as usize;
-                    if let Some(index) = profile_choice_index(command_id, labels.len()) {
-                        post_owner_with_value(hwnd, POPUP_PROFILE_SELECTED, index);
+                    unsafe {
+                        let _ = ShowWindow(panel, SW_SHOWNOACTIVATE);
+                        let _ = SetWindowPos(
+                            panel,
+                            Some(HWND_TOPMOST),
+                            0,
+                            0,
+                            0,
+                            0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                        );
+                        // Capture keeps the panel responsible for every click
+                        // until it closes: item clicks select, any other click
+                        // dismisses — the standard dropdown contract.
+                        SetCapture(panel);
                     }
+                }
+                Err(error) => {
+                    unsafe {
+                        drop(Box::from_raw(data_ptr));
+                    }
+                    let _ = error;
                 }
             }
         }
-        unsafe {
-            let _ = DestroyMenu(menu);
+    }
+
+    fn close_menu_panel(data: &mut PopupData) {
+        if data.menu_panel.0.is_null() {
+            return;
         }
+        let panel = data.menu_panel;
+        data.menu_panel = HWND::default();
+        unsafe {
+            let _ = ReleaseCapture();
+            let _ = DestroyWindow(panel);
+        }
+        if let Some(more) = data.profile_buttons.last().copied() {
+            unsafe {
+                let _ = InvalidateRect(Some(more), None, false);
+            }
+        }
+    }
+
+    fn toggle_menu_panel(hwnd: HWND) {
+        if let Some(data) = data_mut(hwnd) {
+            if !data.menu_panel.0.is_null() {
+                close_menu_panel(data);
+                return;
+            }
+            show_more_profiles(hwnd);
+            if let Some(data) = data_mut(hwnd) {
+                if data.menu_panel.0.is_null() {
+                    data.rail_expanded = false;
+                }
+            }
+        }
+    }
+
+    pub(super) fn menu_panel_data(hwnd: HWND) -> Option<&'static mut MenuPanelData> {
+        let pointer = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut MenuPanelData;
+        (!pointer.is_null()).then(|| unsafe { &mut *pointer })
+    }
+
+    fn register_menu_panel_class() -> windows::core::Result<()> {
+        static ONCE: std::sync::OnceLock<windows::core::Result<()>> = std::sync::OnceLock::new();
+        let registered = ONCE.get_or_init(|| {
+            let instance =
+                unsafe { windows::Win32::System::LibraryLoader::GetModuleHandleW(None)? };
+            let class = WNDCLASSW {
+                style: CS_DROPSHADOW,
+                lpfnWndProc: Some(menu_panel_proc),
+                hInstance: HINSTANCE(instance.0),
+                hbrBackground: popup_section_brush(),
+                lpszClassName: MENU_PANEL_CLASS,
+                ..Default::default()
+            };
+            if unsafe { RegisterClassW(&class) } == 0 {
+                Err(windows::core::Error::from_win32())
+            } else {
+                Ok(())
+            }
+        });
+        registered.clone()
+    }
+
+    unsafe extern "system" fn menu_panel_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        match msg {
+            WM_CREATE => {
+                let create = &*(lparam.0 as *const CREATESTRUCTW);
+                SetWindowLongPtrW(hwnd, GWLP_USERDATA, create.lpCreateParams as isize);
+                return LRESULT(0);
+            }
+            WM_PAINT => {
+                if let Some(data) = menu_panel_data(hwnd) {
+                    let mut paint = windows::Win32::Graphics::Gdi::PAINTSTRUCT::default();
+                    let hdc = BeginPaint(hwnd, &mut paint);
+                    let mut client = RECT::default();
+                    if GetClientRect(hwnd, &mut client).is_ok() {
+                        let background = popup_brush(POPUP_SECTION_BG);
+                        let border = popup_brush(POPUP_BORDER);
+                        unsafe {
+                            let _ = FillRect(hdc, &client, background);
+                            let _ = FrameRect(hdc, &client, border);
+                            let _ = DeleteObject(background.into());
+                            let _ = DeleteObject(border.into());
+                            let old_font = SelectObject(hdc, HGDIOBJ(data.font.0));
+                            let old_bk = SetBkMode(hdc, TRANSPARENT);
+                            for (index, (label, _)) in data.items.iter().enumerate() {
+                                let mut rect = RECT {
+                                    left: data.pad,
+                                    top: data.pad + index as i32 * data.item_height,
+                                    right: client.right - data.pad,
+                                    bottom: data.pad + (index as i32 + 1) * data.item_height,
+                                };
+                                let hot = data.hovered == Some(index);
+                                if hot {
+                                    let hot_brush = CreateSolidBrush(POPUP_ACCENT_DIM);
+                                    let _ = FillRect(hdc, &rect, hot_brush);
+                                    let _ = DeleteObject(hot_brush.into());
+                                    SetTextColor(hdc, POPUP_ACCENT);
+                                } else {
+                                    SetTextColor(hdc, POPUP_TEXT);
+                                }
+                                rect.left += scale(8, 96);
+                                rect.right -= scale(8, 96);
+                                let mut text: Vec<u16> = label.encode_utf16().collect();
+                                let _ = DrawTextW(
+                                    hdc,
+                                    &mut text,
+                                    &mut rect,
+                                    // DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX
+                                    DRAW_TEXT_FORMAT(0x0020 | 0x0100 | 0x0800),
+                                );
+                            }
+                            let _ = SetBkMode(hdc, BACKGROUND_MODE(old_bk as u32));
+                            let _ = SelectObject(hdc, old_font);
+                        }
+                    }
+                    let _ = EndPaint(hwnd, &paint);
+                    return LRESULT(0);
+                }
+            }
+            WM_MOUSEMOVE => {
+                if let Some(data) = menu_panel_data(hwnd) {
+                    let y = ((lparam.0 as u32 >> 16) & 0xffff) as i16 as i32;
+                    let x = (lparam.0 as u32 & 0xffff) as i16 as i32;
+                    let inside = x >= data.pad && x <= data.width - data.pad;
+                    let index = if inside {
+                        let relative = (y - data.pad).div_euclid(data.item_height);
+                        if relative >= 0 && (relative as usize) < data.items.len() {
+                            Some(relative as usize)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    if data.hovered != index {
+                        data.hovered = index;
+                        let _ = InvalidateRect(Some(hwnd), None, false);
+                    }
+                }
+            }
+            WM_LBUTTONDOWN => {
+                let selection = menu_panel_data(hwnd).and_then(|data| {
+                    let y = ((lparam.0 as u32 >> 16) & 0xffff) as i16 as i32;
+                    let relative = (y - data.pad).div_euclid(data.item_height);
+                    if relative >= 0 && (relative as usize) < data.items.len() {
+                        Some(data.items[relative as usize].1)
+                    } else {
+                        None
+                    }
+                });
+                if let Some(index) = selection {
+                    if let Some(data) = menu_panel_data(hwnd) {
+                        let target = data.callback_target;
+                        let popup_id = data.popup_id;
+                        unsafe {
+                            let _ = PostMessageW(
+                                Some(target),
+                                POPUP_PROFILE_SELECTED,
+                                WPARAM(index),
+                                LPARAM(popup_id as isize),
+                            );
+                        }
+                    }
+                }
+                if let Some(data) = menu_panel_data(hwnd) {
+                    let owner = data.owner;
+                    if let Some(owner_data) = data_mut(owner) {
+                        owner_data.menu_panel = HWND::default();
+                        owner_data.rail_expanded = false;
+                        if let Some(more) = owner_data.profile_buttons.last().copied() {
+                            let _ = InvalidateRect(Some(more), None, false);
+                        }
+                    }
+                }
+                unsafe {
+                    let _ = ReleaseCapture();
+                    let _ = DestroyWindow(hwnd);
+                }
+                return LRESULT(0);
+            }
+            WM_DESTROY => {
+                let pointer = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut MenuPanelData;
+                if !pointer.is_null() {
+                    drop(Box::from_raw(pointer));
+                    SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+                }
+            }
+            _ => {}
+        }
+        DefWindowProcW(hwnd, msg, wparam, lparam)
     }
 
     pub(super) fn profile_choice_index(command_id: usize, profile_count: usize) -> Option<usize> {
@@ -2808,10 +3172,17 @@ mod windows_impl {
                     if item.CtlType == ODT_MENU {
                         draw_menu_item(item);
                     } else {
-                        let (profile_default, pinned) = data_mut(hwnd)
-                            .map(|data| (data.profile_default, data.pinned))
-                            .unwrap_or((None, false));
-                        draw_button(item, profile_default, pinned);
+                        let (profile_default, pinned, hovered, rail_expanded) = data_mut(hwnd)
+                            .map(|data| {
+                                (
+                                    data.profile_default,
+                                    data.pinned,
+                                    data.hovered_button == item.hwndItem,
+                                    data.rail_expanded,
+                                )
+                            })
+                            .unwrap_or((None, false, false, false));
+                        draw_button(item, profile_default, pinned, hovered, rail_expanded);
                     }
                 }
                 return LRESULT(1);
@@ -2869,11 +3240,11 @@ mod windows_impl {
                     // DefWindowProc to process HTCAPTION makes dragging work
                     // consistently even when WM_NCHITTEST is bypassed.
                     let _ = ReleaseCapture();
-                    let _ = SendMessageW(
+                    let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                         hwnd,
                         WM_NCLBUTTONDOWN,
                         Some(WPARAM(2)), // HTCAPTION
-                        Some(LPARAM(0)),
+                        Some(windows::Win32::Foundation::LPARAM(0)),
                     );
                     return LRESULT(0);
                 }
@@ -3084,6 +3455,8 @@ mod windows_impl {
             WM_DESTROY => {
                 runtime_trace::record("popup_wm_destroy");
                 let notify = data_mut(hwnd).map(|data| {
+                    // The dropdown panel must never outlive its owner popup.
+                    close_menu_panel(data);
                     let notify = data.notify_owner;
                     data.notify_owner = false;
                     notify
@@ -3308,13 +3681,13 @@ mod tests {
     #[ignore = "visual capture; run with --ignored to write profile_rail.bmp"]
     fn capture_profile_rail_bitmap() {
         use windows::core::w;
+        use windows::Win32::Foundation::HINSTANCE;
         use windows::Win32::Foundation::RECT;
         use windows::Win32::Graphics::Gdi::{
             BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
             GetDIBits, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS,
             SRCCOPY,
         };
-        use windows::Win32::Foundation::HINSTANCE;
         use windows::Win32::System::LibraryLoader::GetModuleHandleW;
         use windows::Win32::UI::WindowsAndMessaging::{
             CreateWindowExW, DestroyWindow, FindWindowW, GetWindowRect, WS_POPUP,
@@ -3344,10 +3717,10 @@ mod tests {
             .iter()
             .map(|name| name.to_string())
             .collect();
-        assert!(
-            popup.show_profile_choices(&names, Some(0)),
-            "chooser shown"
-        );
+        assert!(popup.show_profile_choices(&names, Some(0)), "chooser shown");
+        // Park the pointer on the second pill so the capture shows the
+        // hover treatment (accent tint + accent text).
+        popup.hover_button_for_capture(1);
         for _ in 0..20 {
             let mut msg = windows::Win32::UI::WindowsAndMessaging::MSG::default();
             while unsafe {
@@ -3410,8 +3783,8 @@ mod tests {
             let _ = DeleteDC(mem);
             ReleaseDC(Some(popup_hwnd), screen);
         }
-        let out = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tmp/profile_rail.bmp");
+        let out =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tmp/profile_rail.bmp");
         std::fs::create_dir_all(out.parent().unwrap()).ok();
         let mut file = std::fs::File::create(&out).expect("create bmp");
         use std::io::Write;
@@ -3437,7 +3810,143 @@ mod tests {
         for y in (0..height as usize).rev() {
             file.write_all(&pixels[y * row..(y + 1) * row]).unwrap();
         }
-        eprintln!("wrote {}", out.display());
+
+        // —— Dropdown panel capture: click More…, park the hover on the
+        // first overflow item, capture the panel window. ——
+        unsafe {
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+                popup_hwnd,
+                windows::Win32::UI::WindowsAndMessaging::WM_COMMAND,
+                Some(windows::Win32::Foundation::WPARAM(900)),
+                Some(windows::Win32::Foundation::LPARAM(0)),
+            );
+        }
+        for _ in 0..20 {
+            let mut msg = windows::Win32::UI::WindowsAndMessaging::MSG::default();
+            while unsafe {
+                windows::Win32::UI::WindowsAndMessaging::PeekMessageW(
+                    &mut msg,
+                    None,
+                    0,
+                    0,
+                    windows::Win32::UI::WindowsAndMessaging::PM_REMOVE,
+                )
+                .as_bool()
+            } {
+                unsafe {
+                    let _ = windows::Win32::UI::WindowsAndMessaging::TranslateMessage(&msg);
+                    let _ = windows::Win32::UI::WindowsAndMessaging::DispatchMessageW(&msg);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let panel_class: Vec<u16> = "SelectionTranslateMenuPanel\0".encode_utf16().collect();
+        let panel_hwnd = unsafe { FindWindowW(windows::core::PCWSTR(panel_class.as_ptr()), None) }
+            .expect("menu panel window");
+        unsafe {
+            if let Some(panel_data) = super::windows_impl::menu_panel_data(panel_hwnd) {
+                panel_data.hovered = Some(0);
+                let _ =
+                    windows::Win32::Graphics::Gdi::InvalidateRect(Some(panel_hwnd), None, false);
+            }
+        }
+        for _ in 0..10 {
+            let mut msg = windows::Win32::UI::WindowsAndMessaging::MSG::default();
+            while unsafe {
+                windows::Win32::UI::WindowsAndMessaging::PeekMessageW(
+                    &mut msg,
+                    None,
+                    0,
+                    0,
+                    windows::Win32::UI::WindowsAndMessaging::PM_REMOVE,
+                )
+                .as_bool()
+            } {
+                unsafe {
+                    let _ = windows::Win32::UI::WindowsAndMessaging::TranslateMessage(&msg);
+                    let _ = windows::Win32::UI::WindowsAndMessaging::DispatchMessageW(&msg);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let mut panel_rect = RECT::default();
+        unsafe { GetWindowRect(panel_hwnd, &mut panel_rect) }.expect("panel rect");
+        let panel_width = panel_rect.right - panel_rect.left;
+        let panel_height = panel_rect.bottom - panel_rect.top;
+        let panel_screen = unsafe { GetDC(Some(panel_hwnd)) };
+        let panel_mem = unsafe { CreateCompatibleDC(Some(panel_screen)) };
+        let panel_bmp = unsafe { CreateCompatibleBitmap(panel_screen, panel_width, panel_height) };
+        let panel_old = unsafe { SelectObject(panel_mem, panel_bmp.into()) };
+        unsafe {
+            let _ = BitBlt(
+                panel_mem,
+                0,
+                0,
+                panel_width,
+                panel_height,
+                Some(panel_screen),
+                0,
+                0,
+                SRCCOPY,
+            );
+        }
+        let mut panel_info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: panel_width,
+                biHeight: -panel_height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: 0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut panel_pixels = vec![0u8; (panel_width * panel_height * 4) as usize];
+        unsafe {
+            let _ = GetDIBits(
+                panel_mem,
+                panel_bmp,
+                0,
+                panel_height as u32,
+                Some(panel_pixels.as_mut_ptr() as *mut _),
+                &mut panel_info,
+                DIB_RGB_COLORS,
+            );
+            SelectObject(panel_mem, panel_old);
+            let _ = DeleteObject(panel_bmp.into());
+            let _ = DeleteDC(panel_mem);
+            ReleaseDC(Some(panel_hwnd), panel_screen);
+        }
+        let panel_out =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tmp/profile_menu.bmp");
+        let mut panel_file = std::fs::File::create(&panel_out).expect("create panel bmp");
+        let panel_row = (panel_width * 4) as usize;
+        let panel_data_size = (panel_row * panel_height as usize) as u32;
+        let mut panel_header = Vec::new();
+        panel_header.extend_from_slice(b"BM");
+        panel_header.extend_from_slice(&(54u32 + panel_data_size).to_le_bytes());
+        panel_header.extend_from_slice(&0u32.to_le_bytes());
+        panel_header.extend_from_slice(&54u32.to_le_bytes());
+        panel_header.extend_from_slice(&40u32.to_le_bytes());
+        panel_header.extend_from_slice(&panel_width.to_le_bytes());
+        panel_header.extend_from_slice(&panel_height.to_le_bytes());
+        panel_header.extend_from_slice(&1u16.to_le_bytes());
+        panel_header.extend_from_slice(&32u16.to_le_bytes());
+        panel_header.extend_from_slice(&0u32.to_le_bytes());
+        panel_header.extend_from_slice(&panel_data_size.to_le_bytes());
+        panel_header.extend_from_slice(&0i32.to_le_bytes());
+        panel_header.extend_from_slice(&0i32.to_le_bytes());
+        panel_header.extend_from_slice(&0u32.to_le_bytes());
+        panel_header.extend_from_slice(&0u32.to_le_bytes());
+        panel_file.write_all(&panel_header).unwrap();
+        for y in (0..panel_height as usize).rev() {
+            panel_file
+                .write_all(&panel_pixels[y * panel_row..(y + 1) * panel_row])
+                .unwrap();
+        }
+        eprintln!("wrote {}", panel_out.display());
+        popup.dismiss();
         popup.dismiss();
         unsafe {
             let _ = DestroyWindow(parent);
@@ -3956,8 +4465,13 @@ mod tests {
             ..Default::default()
         };
         unsafe {
-            let _ = SendMessageW(hwnd, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(4)));
-            let _ = SendMessageW(
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+                hwnd,
+                EM_SETSEL,
+                Some(WPARAM(0)),
+                Some(LPARAM(4)),
+            );
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                 hwnd,
                 EM_GETCHARFORMAT,
                 Some(WPARAM(SCF_SELECTION)),
@@ -3972,8 +4486,13 @@ mod tests {
             assert_eq!(face.trim_end_matches('\0'), "Segoe UI");
 
             // Inline code renders in the gold mono treatment.
-            let _ = SendMessageW(hwnd, EM_SETSEL, Some(WPARAM(5)), Some(LPARAM(9)));
-            let _ = SendMessageW(
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+                hwnd,
+                EM_SETSEL,
+                Some(WPARAM(5)),
+                Some(LPARAM(9)),
+            );
+            let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                 hwnd,
                 EM_GETCHARFORMAT,
                 Some(WPARAM(SCF_SELECTION)),
@@ -4057,7 +4576,7 @@ mod tests {
                 hwnd,
                 EM_GETFIRSTVISIBLELINE,
                 Some(WPARAM(0)),
-                Some(LPARAM(0)),
+                Some(windows::Win32::Foundation::LPARAM(0)),
             )
             .0 as i32
         };
@@ -4075,7 +4594,7 @@ mod tests {
                 hwnd,
                 EM_GETFIRSTVISIBLELINE,
                 Some(WPARAM(0)),
-                Some(LPARAM(0)),
+                Some(windows::Win32::Foundation::LPARAM(0)),
             )
             .0 as i32
         };
