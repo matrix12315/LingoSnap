@@ -1537,6 +1537,11 @@ mod windows_app {
             Slot::HistoryContext,
             true,
         )?;
+        // Context is merged into the shared target area; keep the legacy
+        // control hidden for its automation handle.
+        unsafe {
+            let _ = ShowWindow(h.history_context, SW_HIDE);
+        }
         h.history_output =
             add_readonly_edit(hwnd, &mut h, Some(View::History), Slot::HistoryOutput, true)?;
         add_label(
@@ -2497,7 +2502,9 @@ mod windows_app {
                         left: detail_left + 12,
                         top: card_top + 49,
                         right: detail_right - 12,
-                        bottom: card_top + 73,
+                        // One shared raw-text area spans the target and
+                        // context rows, same as the popup's selection card.
+                        bottom: card_top + 101,
                     },
                 ));
                 slots.push((
@@ -2593,10 +2600,9 @@ mod windows_app {
         set_font(state.handles.status, note);
         for placement in &state.handles.placements {
             let font = match placement.slot {
-                Slot::SystemPrompt
-                | Slot::UserTemplate
-                | Slot::HistoryTarget
-                | Slot::HistoryOutput => mono,
+                // History detail shares the popup's raw 12px body treatment.
+                Slot::SystemPrompt | Slot::UserTemplate | Slot::HistoryOutput => mono,
+                Slot::HistoryTarget => note,
                 Slot::CredentialHint
                 | Slot::PromptHint
                 | Slot::HistoryHint
@@ -3521,17 +3527,15 @@ mod windows_app {
         let index = selected_history_index(state.handles.history_list, state.history_entries.len());
         if let Some(index) = index {
             if let Some(entry) = state.history_entries.get(index) {
-                set_text(state.handles.history_target, &entry.target);
-                set_text(
-                    state.handles.history_context,
-                    entry
-                        .context
-                        .as_deref()
-                        .unwrap_or_else(|| match state.language() {
-                            UiLanguage::English => "(no context)",
-                            UiLanguage::SimplifiedChinese => "（无上下文）",
-                        }),
-                );
+                // Target and context share one raw-text area, same as the
+                // popup: target line first, context after a blank line.
+                let detail = match entry.context.as_deref() {
+                    Some(context) if !context.trim().is_empty() => {
+                        format!("{}\n\n{}", entry.target, context)
+                    }
+                    _ => entry.target.clone(),
+                };
+                set_text(state.handles.history_target, &detail);
                 set_text(state.handles.history_output, &entry.output);
                 set_text(
                     state.handles.history_meta,

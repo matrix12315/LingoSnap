@@ -213,7 +213,6 @@ mod windows_impl {
         font: HFONT,
     }
     const MAX_INPUT_CHARS: usize = 4 * 1024;
-    const MAX_INPUT_UTF16_UNITS: usize = MAX_INPUT_CHARS * 2;
     const MAX_OUTPUT_UTF16_UNITS: usize = MAX_OUTPUT_CHARS * 2;
     const TRUNCATION_MARKER: &str = "\n\n[Output truncated]";
     const OUTPUT_ID: usize = 1;
@@ -357,7 +356,7 @@ mod windows_impl {
         /// default). Present/reanchor paths reuse this instead of snapping
         /// back to the default geometry.
         window_size: Option<(i32, i32)>,
-        fonts: [HFONT; 6],
+        fonts: [HFONT; 7],
     }
 
     pub struct Popup {
@@ -411,7 +410,7 @@ mod windows_impl {
                 render_pending: false,
                 render_timer_armed: false,
                 window_size: None,
-                fonts: [HFONT::default(); 6],
+                fonts: [HFONT::default(); 7],
             });
             let data_ptr = Box::into_raw(data);
             let result = unsafe {
@@ -1692,109 +1691,16 @@ mod windows_impl {
         }
     }
 
-    /// Fill the shared input area: the target in mono ink, a blank line, then
-    /// the context in smaller muted body text. One control wraps and scrolls
-    /// both parts together.
+    /// Fill the shared input area with raw text: the target line, then the
+    /// context after a single blank line. One plain EDIT control wraps and
+    /// scrolls both parts together — no rich rendering, 12px compact font.
     fn set_combined_input(hwnd: HWND, target: &str, context: &str) {
-        let target_units = target.encode_utf16().count();
         let combined = if context.is_empty() {
             target.to_owned()
         } else {
             format!("{target}\n\n{context}")
         };
-        let total_units = combined.encode_utf16().count();
-        // The viewport stays where the reader is; RichEdit otherwise jumps to
-        // the caret on every text replacement.
-        let first_visible_line = unsafe {
-            SendMessageW(
-                hwnd,
-                EM_GETFIRSTVISIBLELINE,
-                Some(WPARAM(0)),
-                Some(LPARAM(0)),
-            )
-            .0 as i32
-        };
-        unsafe {
-            let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(0)), Some(LPARAM(0)));
-            let _ = SendMessageW(
-                hwnd,
-                EM_EXLIMITTEXT,
-                Some(WPARAM(0)),
-                Some(LPARAM(MAX_INPUT_UTF16_UNITS as isize)),
-            );
-        }
         set_control_text(hwnd, &combined);
-        // Base format: the context treatment covers everything first.
-        reset_rich_format(hwnd, total_units);
-        let mut format = CHARFORMATW {
-            cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
-            dwMask: CFM_FACE | CFM_SIZE | CFM_COLOR | CFM_CHARSET,
-            dwEffects: CFE_EFFECTS(0),
-            yHeight: 260, // 13px mono target
-            crTextColor: POPUP_TEXT,
-            bCharSet: FONT_CHARSET(1),
-            bPitchAndFamily: 0,
-            ..Default::default()
-        };
-        let face: Vec<u16> = "Consolas".encode_utf16().collect();
-        format.szFaceName[..face.len()].copy_from_slice(&face);
-        unsafe {
-            let _ = SendMessageW(
-                hwnd,
-                EM_SETSEL,
-                Some(WPARAM(0)),
-                Some(LPARAM(target_units as isize)),
-            );
-            let _ = SendMessageW(
-                hwnd,
-                EM_SETCHARFORMAT,
-                Some(WPARAM(SCF_SELECTION)),
-                Some(LPARAM((&format as *const CHARFORMATW) as isize)),
-            );
-            if !context.is_empty() {
-                // Context range: smaller muted body text under the mono ink
-                // target. The separator blank line inherits the context look.
-                let mut context_format = CHARFORMATW {
-                    cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
-                    dwMask: CFM_SIZE | CFM_COLOR,
-                    dwEffects: CFE_EFFECTS(0),
-                    yHeight: 240, // 12px muted context
-                    crTextColor: POPUP_MUTED,
-                    ..Default::default()
-                };
-                let _ = SendMessageW(
-                    hwnd,
-                    EM_SETSEL,
-                    Some(WPARAM(target_units)),
-                    Some(LPARAM(total_units as isize)),
-                );
-                let _ = SendMessageW(
-                    hwnd,
-                    EM_SETCHARFORMAT,
-                    Some(WPARAM(SCF_SELECTION)),
-                    Some(LPARAM((&mut context_format as *const CHARFORMATW) as isize)),
-                );
-            }
-            let _ = SendMessageW(hwnd, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(0)));
-            let current_first_line = SendMessageW(
-                hwnd,
-                EM_GETFIRSTVISIBLELINE,
-                Some(WPARAM(0)),
-                Some(LPARAM(0)),
-            )
-            .0 as i32;
-            let line_delta = first_visible_line.saturating_sub(current_first_line);
-            if line_delta != 0 {
-                let _ = SendMessageW(
-                    hwnd,
-                    EM_LINESCROLL,
-                    Some(WPARAM(0)),
-                    Some(LPARAM(line_delta as isize)),
-                );
-            }
-            let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(1)), Some(LPARAM(0)));
-            let _ = InvalidateRect(Some(hwnd), None, false);
-        }
     }
 
     pub(super) fn set_output(hwnd: HWND, raw: &str, markdown: bool) {
@@ -2074,6 +1980,7 @@ mod windows_impl {
                 font(13, 400, mono_face), // mono target text
                 font(13, 600, face),      // semibold title
                 font(28, 600, face),      // 文 logo mark fills the accent chip
+                font(12, 400, face),      // raw input text (compact)
             ];
             let edit_style = WS_CHILD
                 | WS_VISIBLE
@@ -2090,12 +1997,12 @@ mod windows_impl {
             // back to the standard EDIT control below.
             let rich_edit_module = unsafe { LoadLibraryW(w!("msftedit.dll")).ok() };
             let rich_class = rich_edit_module.map(|_| RICH_EDIT_CLASS);
-            // Target and context share one RichEdit area so they wrap and
-            // scroll together while keeping distinct fonts and colors.
+            // Target and context share one raw-text area: plain EDIT, 12px,
+            // wrapping with a vertical scrollbar, no rich rendering.
             data.input = unsafe {
                 CreateWindowExW(
                     Default::default(),
-                    rich_class.unwrap_or(w!("EDIT")),
+                    w!("EDIT"),
                     w!(""),
                     input_style,
                     0,
@@ -2270,14 +2177,14 @@ mod windows_impl {
                     data.close_icon = icon;
                 }
             }
-            // Target text leans mono like the mockup Selection card; context
-            // and result use the body face.
-            if !data.input.0.is_null() && !data.fonts[3].0.is_null() {
+            // Raw input text uses the compact 12px body face; result uses the
+            // body face.
+            if !data.input.0.is_null() && !data.fonts[6].0.is_null() {
                 unsafe {
                     let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                         data.input,
                         0x0030,
-                        Some(WPARAM(data.fonts[3].0 as usize)),
+                        Some(WPARAM(data.fonts[6].0 as usize)),
                         Some(LPARAM(1)),
                     );
                 }
@@ -3357,9 +3264,11 @@ mod windows_impl {
                 }
             }
             WM_NOTIFY => {
-                // The user selected text inside the result: move keyboard
-                // focus to the RichEdit so Ctrl+C copies it. The popup is
-                // tool-window styled, so activation stays visually silent.
+                // The user selected text inside the result: give the RichEdit
+                // keyboard focus so Ctrl+C copies it. SetForegroundWindow is
+                // deliberately NOT used — it would pull focus away from the
+                // app the user is typing in; SetFocus alone suffices for the
+                // same thread's child window in most cases and stays silent.
                 if lparam.0 != 0 {
                     let nmh = &*(lparam.0 as *const windows::Win32::UI::Controls::NMHDR);
                     if nmh.code == windows::Win32::UI::Controls::RichEdit::EN_SELCHANGE {
@@ -3367,7 +3276,6 @@ mod windows_impl {
                         if let Some(output) = output {
                             if nmh.hwndFrom == output {
                                 unsafe {
-                                    let _ = SetForegroundWindow(hwnd);
                                     let _ = SetFocus(Some(output));
                                 }
                             }
