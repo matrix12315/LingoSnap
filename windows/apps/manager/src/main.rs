@@ -1528,19 +1528,14 @@ mod windows_app {
             Slot::HistOrderFilter,
         )?;
         h.history_list = add_list(hwnd, &mut h, Some(View::History), Slot::HistoryList)?;
-        h.history_target = add_readonly_edit(
-            hwnd,
-            &mut h,
-            Some(View::History),
-            Slot::HistoryTarget,
-            false,
-        )?;
+        h.history_target =
+            add_readonly_edit(hwnd, &mut h, Some(View::History), Slot::HistoryTarget, true)?;
         h.history_context = add_readonly_edit(
             hwnd,
             &mut h,
             Some(View::History),
             Slot::HistoryContext,
-            false,
+            true,
         )?;
         h.history_output =
             add_readonly_edit(hwnd, &mut h, Some(View::History), Slot::HistoryOutput, true)?;
@@ -1755,19 +1750,19 @@ mod windows_app {
         id: usize,
     ) -> windows::core::Result<HWND> {
         let target = page_parent(parent, h, view);
-        let mut style = WS_CHILD
-            | WS_CLIPSIBLINGS
-            | visibility_style(view)
-            | WS_TABSTOP
-            | WS_BORDER
-            | WINDOW_STYLE(ES_AUTOHSCROLL as u32);
-        if password {
-            style |= WINDOW_STYLE(ES_PASSWORD as u32);
-        }
+        let mut style =
+            WS_CHILD | WS_CLIPSIBLINGS | visibility_style(view) | WS_TABSTOP | WS_BORDER;
         if multiline {
+            // Word-wrapping editor: no ES_AUTOHSCROLL (it would disable wrap),
+            // vertical scrollbar for overflow.
             style |= WINDOW_STYLE(ES_MULTILINE as u32)
                 | WINDOW_STYLE(ES_AUTOVSCROLL as u32)
                 | WS_VSCROLL;
+        } else {
+            style |= WINDOW_STYLE(ES_AUTOHSCROLL as u32);
+        }
+        if password {
+            style |= WINDOW_STYLE(ES_PASSWORD as u32);
         }
         let hwnd = create_control(target, w!("EDIT"), "", style, 0, 0, 100, 24, id)?;
         Ok(add_control(h, hwnd, view, slot))
