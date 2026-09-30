@@ -4410,8 +4410,8 @@ mod tests {
             CFE_BOLD, CFM_BOLD, CFM_COLOR, CFM_FACE, CHARFORMATW,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
-            CreateWindowExW, DestroyWindow, SendMessageW, ShowWindow, ES_AUTOVSCROLL, ES_MULTILINE,
-            ES_NOHIDESEL, SW_HIDE, WINDOW_STYLE, WS_CHILD, WS_POPUP, WS_VISIBLE,
+            CreateWindowExW, DestroyWindow, ShowWindow, ES_AUTOVSCROLL, ES_MULTILINE, ES_NOHIDESEL,
+            SW_HIDE, WINDOW_STYLE, WS_CHILD, WS_POPUP, WS_VISIBLE,
         };
         const EM_GETCHARFORMAT: u32 = 0x043a;
         const EM_SETSEL: u32 = 0x00b1;
@@ -4513,7 +4513,7 @@ mod tests {
     fn hidden_richedit_keeps_first_line_visible_during_streaming_and_completion() {
         use super::windows_impl::{set_output, RICH_EDIT_CLASS};
         use windows::core::w;
-        use windows::Win32::Foundation::{FreeLibrary, HINSTANCE, LPARAM, WPARAM};
+        use windows::Win32::Foundation::{FreeLibrary, HINSTANCE, WPARAM};
         use windows::Win32::System::LibraryLoader::{GetModuleHandleW, LoadLibraryW};
         use windows::Win32::UI::WindowsAndMessaging::{
             CreateWindowExW, DestroyWindow, SendMessageW, ShowWindow, ES_AUTOVSCROLL, ES_MULTILINE,
