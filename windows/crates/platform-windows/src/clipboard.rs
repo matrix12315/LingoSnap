@@ -33,8 +33,8 @@ mod windows_impl {
         VK_C, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RSHIFT, VK_RWIN,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DestroyWindow, GetAncestor, GetForegroundWindow, GetWindowThreadProcessId,
-        GA_ROOT, HWND_MESSAGE,
+        CreateWindowExW, DestroyWindow, GetAncestor, GetClassNameW, GetForegroundWindow,
+        GetWindowThreadProcessId, GA_ROOT, HWND_MESSAGE,
     };
 
     const SNAPSHOT_TIMEOUT: Duration = Duration::from_millis(250);
@@ -193,7 +193,30 @@ mod windows_impl {
         unsafe { OleUninitialize() };
     }
 
+    /// True when the foreground window belongs to a console/terminal host.
+    /// Synthesized Ctrl+C means SIGINT there, not copy.
+    fn foreground_is_terminal() -> bool {
+        let root = foreground_root_window();
+        if root == 0 {
+            return false;
+        }
+        let mut buffer = [0u16; 64];
+        let len = unsafe { GetClassNameW(HWND(root as *mut core::ffi::c_void), &mut buffer) };
+        let class = String::from_utf16_lossy(&buffer[..(len.max(0) as usize).min(buffer.len())]);
+        matches!(
+            class.as_str(),
+            "ConsoleWindowClass" | "CASCADIA_HOSTING_WINDOW_CLASS" | "PuTTY"
+        )
+    }
+
     fn extract_once(expected_process_id: u32, expected_root_window: isize) -> ExtractionResult {
+        // Never synthesize Ctrl+C toward a terminal: with a live process
+        // attached, Ctrl+C is SIGINT and would interrupt the user's program
+        // instead of copying. UIA extraction stays available for those apps.
+        if foreground_is_terminal() {
+            crate::runtime_trace::record("clipboard_terminal_suppressed");
+            return Err(ExtractionFailure::Unsupported);
+        }
         // Do not synthesize Copy unless every advertised original format has
         // been independently and safely cloned; otherwise a failure could
         // permanently replace part of the user's clipboard.

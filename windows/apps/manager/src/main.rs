@@ -479,6 +479,7 @@ mod windows_app {
         InvalidTemperature,
         InvalidMaxOutputTokens,
         ConfigPathUnavailable,
+        ConfigExistsNotOverwritten,
         CredentialStatusPresent,
         CredentialStatusAbsent,
         CredentialStatusUnavailable {
@@ -620,6 +621,7 @@ mod windows_app {
             InvalidTemperature => match language { UiLanguage::English => "Temperature must be a number from 0 to 2.".to_owned(), UiLanguage::SimplifiedChinese => "温度必须是 0 到 2 之间的数字。".to_owned() },
             InvalidMaxOutputTokens => match language { UiLanguage::English => "Max output tokens must be a positive integer.".to_owned(), UiLanguage::SimplifiedChinese => "最大输出令牌数必须是正整数。".to_owned() },
             ConfigPathUnavailable => match language { UiLanguage::English => "LOCALAPPDATA is not available".to_owned(), UiLanguage::SimplifiedChinese => "LOCALAPPDATA 不可用".to_owned() },
+            ConfigExistsNotOverwritten => match language { UiLanguage::English => "A configuration file already exists at the expected path; it was not overwritten. Restart the Manager to load it.".to_owned(), UiLanguage::SimplifiedChinese => "预期路径已存在配置文件，未覆盖。请重新打开管理器以加载该文件。".to_owned() },
             CredentialStatusPresent => match language { UiLanguage::English => "A saved key is present (value hidden).".to_owned(), UiLanguage::SimplifiedChinese => "存在已保存的密钥（值已隐藏）。".to_owned() },
             CredentialStatusAbsent => match language { UiLanguage::English => "No saved key for this target.".to_owned(), UiLanguage::SimplifiedChinese => "此目标没有已保存的密钥。".to_owned() },
             CredentialStatusUnavailable { detail } => match language { UiLanguage::English => format!("Credential status unavailable: {detail}"), UiLanguage::SimplifiedChinese => format!("凭据状态不可用：{detail}") },
@@ -842,6 +844,10 @@ mod windows_app {
         config: AppConfig,
         config_path: Option<PathBuf>,
         load_error: Option<String>,
+        /// True when `config` was loaded from an existing, valid file. When
+        /// false it is only defaults, and saves must not clobber a config
+        /// file that exists on disk.
+        loaded_from_disk: bool,
         handles: Handles,
         view: View,
         profile_index: usize,
@@ -903,7 +909,7 @@ mod windows_app {
         if unsafe { RegisterClassW(&page_class) } == 0 {
             return Err(Error::from_win32());
         }
-        let (config, load_error) = load_config();
+        let (config, load_error, loaded_from_disk) = load_config();
         let initial_language = config.ui.manager_language;
         let window_title = wide(ui_text(initial_language, TextKey::WindowTitle));
         let dpi = unsafe { GetDpiForSystem() }.max(DEFAULT_DPI);
@@ -911,6 +917,7 @@ mod windows_app {
             config,
             config_path: default_config_path(),
             load_error,
+            loaded_from_disk,
             handles: Handles::default(),
             view: View::Settings,
             profile_index: 0,
@@ -988,7 +995,10 @@ mod windows_app {
         result
     }
 
-    fn load_config() -> (AppConfig, Option<String>) {
+    /// Loads the on-disk config. The third element reports whether the
+    /// values came from an existing, valid file — when false, the in-memory
+    /// config is only defaults and must never overwrite a file that appears.
+    fn load_config() -> (AppConfig, Option<String>, bool) {
         let Some(path) = default_config_path() else {
             return (
                 AppConfig::default(),
@@ -998,13 +1008,14 @@ mod windows_app {
                         operation: StatusOperation::Save,
                     },
                 )),
+                false,
             );
         };
         if !path.exists() {
-            return (AppConfig::default(), None);
+            return (AppConfig::default(), None, false);
         }
         match AppConfig::load(&path) {
-            Ok(config) => (config, None),
+            Ok(config) => (config, None, true),
             Err(error) => (
                 AppConfig::default(),
                 Some(status_text(
@@ -1013,6 +1024,7 @@ mod windows_app {
                         detail: &error.to_string(),
                     },
                 )),
+                false,
             ),
         }
     }
@@ -4191,11 +4203,23 @@ mod windows_app {
     fn nonempty(value: String) -> Option<String> {
         (!value.trim().is_empty()).then_some(value.trim().to_owned())
     }
+    /// Pure guard: a config built from defaults may only be written when no
+    /// file exists at the target path; a file that appeared after startup
+    /// (or failed to load) belongs to the user and is never clobbered.
+    fn should_write_config(loaded_from_disk: bool, path_exists: bool) -> bool {
+        loaded_from_disk || !path_exists
+    }
     fn save_config(state: &ManagerState, config: &AppConfig) -> Result<(), String> {
         let path = state
             .config_path
             .as_ref()
             .ok_or_else(|| status_text(state.language(), StatusEvent::ConfigPathUnavailable))?;
+        if !should_write_config(state.loaded_from_disk, path.exists()) {
+            return Err(status_text(
+                state.language(),
+                StatusEvent::ConfigExistsNotOverwritten,
+            ));
+        }
         save_atomic(path, config).map_err(|error| error.to_string())
     }
     fn update_credential_status(state: &mut ManagerState) {
@@ -4501,6 +4525,7 @@ mod windows_app {
                 StatusEvent::InvalidTemperature,
                 StatusEvent::InvalidMaxOutputTokens,
                 StatusEvent::ConfigPathUnavailable,
+                StatusEvent::ConfigExistsNotOverwritten,
                 StatusEvent::CredentialStatusPresent,
                 StatusEvent::CredentialStatusAbsent,
                 StatusEvent::CredentialStatusUnavailable {
@@ -4594,6 +4619,16 @@ mod windows_app {
             assert_eq!(committed.profiles.len(), original_count + 1);
             assert!(config.profile("draft").is_none());
             assert!(committed.profile("draft").is_some());
+        }
+
+        #[test]
+        fn defaults_never_write_over_a_config_file_that_appeared() {
+            // Config loaded from disk: writes allowed regardless.
+            assert!(super::should_write_config(true, false));
+            assert!(super::should_write_config(true, true));
+            // Config is only defaults: writes allowed only into the void.
+            assert!(super::should_write_config(false, false));
+            assert!(!super::should_write_config(false, true));
         }
 
         #[test]

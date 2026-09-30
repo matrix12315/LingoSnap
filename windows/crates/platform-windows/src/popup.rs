@@ -110,8 +110,9 @@ mod windows_impl {
         WM_CREATE, WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND,
         WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MEASUREITEM,
         WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN,
-        WM_PAINT, WM_SETREDRAW, WM_SIZE, WM_TIMER, WNDCLASSW, WS_CHILD, WS_EX_NOACTIVATE,
-        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+        WM_NOTIFY, WM_PAINT, WM_SETREDRAW, WM_SIZE, WM_TIMER, WNDCLASSW, WS_CHILD,
+        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP, WS_TABSTOP, WS_VISIBLE,
+        WS_VSCROLL,
     };
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslatePopup");
@@ -119,22 +120,22 @@ mod windows_impl {
     // Popup: 440 logical px wide, compact header, integrated Selection card,
     // Result card, and a left-aligned action footer.
     const WIDTH: i32 = 440;
-    const HEIGHT: i32 = 480;
+    const HEIGHT: i32 = 380;
     const MIN_WIDTH: i32 = 420;
-    const MIN_HEIGHT: i32 = 360;
+    const MIN_HEIGHT: i32 = 300;
     const MARGIN: i32 = 14;
     const HEADER_HEIGHT: i32 = 52;
     const DRAG_BAND_HEIGHT: i32 = HEADER_HEIGHT;
     const CARD_GAP: i32 = 10;
     const CAP_HEIGHT: i32 = 13;
-    const TARGET_HEIGHT: i32 = 44;
-    const CONTEXT_HEIGHT: i32 = 30;
+    const TARGET_HEIGHT: i32 = 32;
+    const CONTEXT_HEIGHT: i32 = 24;
     const FOOT_HEIGHT: i32 = 60;
     const BUTTON_HEIGHT: i32 = 36;
     const BUTTON_GAP: i32 = 8;
     const MARK_SIZE: i32 = 28;
     const ICON_SIZE: i32 = 28;
-    const CHOOSER_HEIGHT: i32 = 44;
+    const CHOOSER_HEIGHT: i32 = 34;
     const CHOOSER_MARGIN: i32 = 4;
     const CHOOSER_BUTTON_GAP: i32 = 4;
     const CHOOSER_POINTER_GAP: i32 = 8;
@@ -153,6 +154,7 @@ mod windows_impl {
     const EM_SETBKGNDCOLOR: u32 = 0x0443;
     const EM_SETMARGINS: u32 = 0x00d3;
     const EM_SETCHARFORMAT: u32 = 0x0444;
+    const EM_SETEVENTMASK: u32 = 0x0445;
     const SCF_SELECTION: usize = 0x0001;
     // 14px body text (10.5pt) per the mockup result ramp.
     const BASE_FONT_HEIGHT_TWIPS: i32 = 210;
@@ -211,6 +213,7 @@ mod windows_impl {
         font: HFONT,
     }
     const MAX_INPUT_CHARS: usize = 4 * 1024;
+    const MAX_INPUT_UTF16_UNITS: usize = MAX_INPUT_CHARS * 2;
     const MAX_OUTPUT_UTF16_UNITS: usize = MAX_OUTPUT_CHARS * 2;
     const TRUNCATION_MARKER: &str = "\n\n[Output truncated]";
     const OUTPUT_ID: usize = 1;
@@ -354,7 +357,7 @@ mod windows_impl {
         /// default). Present/reanchor paths reuse this instead of snapping
         /// back to the default geometry.
         window_size: Option<(i32, i32)>,
-        fonts: [HFONT; 5],
+        fonts: [HFONT; 6],
     }
 
     pub struct Popup {
@@ -408,7 +411,7 @@ mod windows_impl {
                 render_pending: false,
                 render_timer_armed: false,
                 window_size: None,
-                fonts: [HFONT::default(); 5],
+                fonts: [HFONT::default(); 6],
             });
             let data_ptr = Box::into_raw(data);
             let result = unsafe {
@@ -706,17 +709,17 @@ mod windows_impl {
             presented
         }
 
-        /// Target and context stay in separate panes so the user can see
-        /// exactly which text is being translated versus which local sentence
-        /// is only disambiguating it.
+        /// Target and context share one wrapping, scrolling RichEdit area;
+        /// the parts stay distinguishable through font family, size, and
+        /// color rather than separate panes.
         pub fn set_input(&mut self, target: &str, context: Option<&str>) {
             if let Some(data) = data_mut(self.hwnd) {
-                set_control_text(data.input, &bounded_input(target));
+                let target_text = bounded_input(target);
                 let context_text = match context {
                     Some(value) if !value.is_empty() && value != target => bounded_input(value),
                     _ => String::new(),
                 };
-                set_control_text(data.context_input, &context_text);
+                set_combined_input(data.input, &target_text, &context_text);
             }
         }
 
@@ -1125,10 +1128,29 @@ mod windows_impl {
         }
     }
 
+    /// Size the user last resized a result popup to, remembered across
+    /// popup instances for the lifetime of the resident process.
+    static LAST_WINDOW_SIZE: std::sync::Mutex<Option<(i32, i32)>> = std::sync::Mutex::new(None);
+
+    fn remember_window_size(size: (i32, i32)) {
+        if let Ok(mut slot) = LAST_WINDOW_SIZE.lock() {
+            *slot = Some(size);
+        }
+    }
+
+    fn last_window_size() -> Option<(i32, i32)> {
+        LAST_WINDOW_SIZE.lock().ok().and_then(|slot| *slot)
+    }
+
     fn resolve_window_size(hwnd: HWND, dpi: u32) -> (i32, i32) {
         let min = min_popup_size(dpi);
         let fallback = default_popup_size(dpi);
         if let Some(data) = data_mut(hwnd) {
+            if data.window_size.is_none() {
+                // No size chosen by this popup yet: reuse the size the user
+                // last adjusted, if it is still valid at this DPI.
+                data.window_size = last_window_size();
+            }
             let size = valid_result_size(data.window_size, min, fallback);
             data.window_size = Some(size);
             return size;
@@ -1370,12 +1392,14 @@ mod windows_impl {
             return;
         }
         let layout = compute_layout(client.right, client.bottom, dpi, data.buttons.len() as i32);
+        // One shared area wraps and scrolls target + context together; the
+        // hidden context control keeps its legacy rect but stays invisible.
         move_child(
             data.input,
             layout.margin + scale(12, dpi),
             layout.target_top,
             layout.content_width - scale(24, dpi),
-            layout.target_height,
+            layout.context_top + layout.context_height - layout.target_top,
         );
         move_child(
             data.context_input,
@@ -1599,7 +1623,9 @@ mod windows_impl {
                 Some(POPUP_GOLD),
                 true,
             ),
-            MarkdownStyle::Heading(_) => (CFM_BOLD, CFE_BOLD, 210, None, false),
+            MarkdownStyle::Heading(_) => {
+                (CFM_BOLD | CFM_COLOR, CFE_BOLD, 210, Some(POPUP_GOLD), false)
+            }
         };
         let mut format = CHARFORMATW {
             cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
@@ -1663,6 +1689,111 @@ mod windows_impl {
                 Some(WPARAM(SCF_SELECTION)),
                 Some(LPARAM((&format as *const CHARFORMATW) as isize)),
             );
+        }
+    }
+
+    /// Fill the shared input area: the target in mono ink, a blank line, then
+    /// the context in smaller muted body text. One control wraps and scrolls
+    /// both parts together.
+    fn set_combined_input(hwnd: HWND, target: &str, context: &str) {
+        let target_units = target.encode_utf16().count();
+        let combined = if context.is_empty() {
+            target.to_owned()
+        } else {
+            format!("{target}\n\n{context}")
+        };
+        let total_units = combined.encode_utf16().count();
+        // The viewport stays where the reader is; RichEdit otherwise jumps to
+        // the caret on every text replacement.
+        let first_visible_line = unsafe {
+            SendMessageW(
+                hwnd,
+                EM_GETFIRSTVISIBLELINE,
+                Some(WPARAM(0)),
+                Some(LPARAM(0)),
+            )
+            .0 as i32
+        };
+        unsafe {
+            let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(0)), Some(LPARAM(0)));
+            let _ = SendMessageW(
+                hwnd,
+                EM_EXLIMITTEXT,
+                Some(WPARAM(0)),
+                Some(LPARAM(MAX_INPUT_UTF16_UNITS as isize)),
+            );
+        }
+        set_control_text(hwnd, &combined);
+        // Base format: the context treatment covers everything first.
+        reset_rich_format(hwnd, total_units);
+        let mut format = CHARFORMATW {
+            cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
+            dwMask: CFM_FACE | CFM_SIZE | CFM_COLOR | CFM_CHARSET,
+            dwEffects: CFE_EFFECTS(0),
+            yHeight: 260, // 13px mono target
+            crTextColor: POPUP_TEXT,
+            bCharSet: FONT_CHARSET(1),
+            bPitchAndFamily: 0,
+            ..Default::default()
+        };
+        let face: Vec<u16> = "Consolas".encode_utf16().collect();
+        format.szFaceName[..face.len()].copy_from_slice(&face);
+        unsafe {
+            let _ = SendMessageW(
+                hwnd,
+                EM_SETSEL,
+                Some(WPARAM(0)),
+                Some(LPARAM(target_units as isize)),
+            );
+            let _ = SendMessageW(
+                hwnd,
+                EM_SETCHARFORMAT,
+                Some(WPARAM(SCF_SELECTION)),
+                Some(LPARAM((&format as *const CHARFORMATW) as isize)),
+            );
+            if !context.is_empty() {
+                // Context range: smaller muted body text under the mono ink
+                // target. The separator blank line inherits the context look.
+                let mut context_format = CHARFORMATW {
+                    cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
+                    dwMask: CFM_SIZE | CFM_COLOR,
+                    dwEffects: CFE_EFFECTS(0),
+                    yHeight: 240, // 12px muted context
+                    crTextColor: POPUP_MUTED,
+                    ..Default::default()
+                };
+                let _ = SendMessageW(
+                    hwnd,
+                    EM_SETSEL,
+                    Some(WPARAM(target_units)),
+                    Some(LPARAM(total_units as isize)),
+                );
+                let _ = SendMessageW(
+                    hwnd,
+                    EM_SETCHARFORMAT,
+                    Some(WPARAM(SCF_SELECTION)),
+                    Some(LPARAM((&mut context_format as *const CHARFORMATW) as isize)),
+                );
+            }
+            let _ = SendMessageW(hwnd, EM_SETSEL, Some(WPARAM(0)), Some(LPARAM(0)));
+            let current_first_line = SendMessageW(
+                hwnd,
+                EM_GETFIRSTVISIBLELINE,
+                Some(WPARAM(0)),
+                Some(LPARAM(0)),
+            )
+            .0 as i32;
+            let line_delta = first_visible_line.saturating_sub(current_first_line);
+            if line_delta != 0 {
+                let _ = SendMessageW(
+                    hwnd,
+                    EM_LINESCROLL,
+                    Some(WPARAM(0)),
+                    Some(LPARAM(line_delta as isize)),
+                );
+            }
+            let _ = SendMessageW(hwnd, WM_SETREDRAW, Some(WPARAM(1)), Some(LPARAM(0)));
+            let _ = InvalidateRect(Some(hwnd), None, false);
         }
     }
 
@@ -1856,6 +1987,10 @@ mod windows_impl {
         for button in data.buttons {
             set_control_visible(button, visible);
         }
+        // Header chrome icons belong to the result layout; in the compact
+        // rail strip they would overlap the More… item.
+        set_control_visible(data.pin_icon, visible);
+        set_control_visible(data.close_icon, visible);
     }
 
     fn clear_profile_buttons(data: &mut PopupData) {
@@ -1938,6 +2073,7 @@ mod windows_impl {
                 font(10, 600, face),      // caps eyebrows
                 font(13, 400, mono_face), // mono target text
                 font(13, 600, face),      // semibold title
+                font(28, 600, face),      // 文 logo mark fills the accent chip
             ];
             let edit_style = WS_CHILD
                 | WS_VISIBLE
@@ -1947,11 +2083,19 @@ mod windows_impl {
             let input_style = WS_CHILD
                 | WS_VISIBLE
                 | WS_TABSTOP
+                | WS_VSCROLL
                 | WINDOW_STYLE((ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL) as u32);
+            // msftedit.dll is part of Windows; loading it dynamically keeps the
+            // resident independent of a bundled UI runtime. Older systems fall
+            // back to the standard EDIT control below.
+            let rich_edit_module = unsafe { LoadLibraryW(w!("msftedit.dll")).ok() };
+            let rich_class = rich_edit_module.map(|_| RICH_EDIT_CLASS);
+            // Target and context share one RichEdit area so they wrap and
+            // scroll together while keeping distinct fonts and colors.
             data.input = unsafe {
                 CreateWindowExW(
                     Default::default(),
-                    w!("EDIT"),
+                    rich_class.unwrap_or(w!("EDIT")),
                     w!(""),
                     input_style,
                     0,
@@ -1970,7 +2114,7 @@ mod windows_impl {
                     Default::default(),
                     w!("EDIT"),
                     w!(""),
-                    input_style,
+                    WS_CHILD | WINDOW_STYLE((ES_MULTILINE | ES_READONLY) as u32),
                     0,
                     0,
                     1,
@@ -1982,11 +2126,11 @@ mod windows_impl {
                 )
             }
             .unwrap_or_default();
-            // msftedit.dll is part of Windows; loading it dynamically keeps the
-            // resident independent of a bundled UI runtime. Older systems fall
-            // back to the standard EDIT control below.
-            let rich_edit_module = unsafe { LoadLibraryW(w!("msftedit.dll")).ok() };
-            let rich_class = rich_edit_module.map(|_| RICH_EDIT_CLASS);
+            unsafe {
+                // The context pane is merged into the shared input area and
+                // must never appear as a separate control.
+                let _ = ShowWindow(data.context_input, SW_HIDE);
+            }
             data.output = unsafe {
                 CreateWindowExW(
                     Default::default(),
@@ -2039,6 +2183,17 @@ mod windows_impl {
                         EM_SETBKGNDCOLOR,
                         Some(WPARAM(0)),
                         Some(LPARAM(POPUP_SECTION_BG.0 as isize)),
+                    );
+                    // Selection-change notifications let the popup take
+                    // keyboard focus after the user selects result text, so
+                    // Ctrl+C copies it without activation side effects.
+                    let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
+                        data.output,
+                        EM_SETEVENTMASK,
+                        Some(WPARAM(0)),
+                        Some(LPARAM(
+                            windows::Win32::UI::Controls::RichEdit::ENM_SELCHANGE as isize,
+                        )),
                     );
                 }
             }
@@ -2601,9 +2756,13 @@ mod windows_impl {
             POPUP_ACCENT,
             None,
         );
+        // 文 fills the accent chip: dedicated mark font at the full chip size.
+        let mark_font = data_mut(hwnd)
+            .map(|data| data.fonts[5])
+            .filter(|font| !font.0.is_null());
         paint_section_label(
             hdc,
-            title_font,
+            mark_font,
             "文",
             RECT {
                 left,
@@ -3197,6 +3356,25 @@ mod windows_impl {
                     }
                 }
             }
+            WM_NOTIFY => {
+                // The user selected text inside the result: move keyboard
+                // focus to the RichEdit so Ctrl+C copies it. The popup is
+                // tool-window styled, so activation stays visually silent.
+                if lparam.0 != 0 {
+                    let nmh = &*(lparam.0 as *const windows::Win32::UI::Controls::NMHDR);
+                    if nmh.code == windows::Win32::UI::Controls::RichEdit::EN_SELCHANGE {
+                        let output = data_mut(hwnd).map(|data| data.output);
+                        if let Some(output) = output {
+                            if nmh.hwndFrom == output {
+                                unsafe {
+                                    let _ = SetForegroundWindow(hwnd);
+                                    let _ = SetFocus(Some(output));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             // EDIT/RichEdit ask their parent for the background and text
             // colors. Return the process-lifetime class brush: Windows keeps
             // using it after this callback. The Selection card's target stays
@@ -3314,6 +3492,7 @@ mod windows_impl {
                             if width >= min.0 && height >= min.1 {
                                 if let Some(data) = data_mut(hwnd) {
                                     data.window_size = Some((width, height));
+                                    remember_window_size((width, height));
                                 }
                             }
                         }
@@ -3980,10 +4159,10 @@ mod tests {
             .map(|label| chooser_button_width(label))
             .collect();
         let size = chooser_size(Point { x: 200, y: 200 }, &widths, 96);
-        assert_eq!(size.1, 44, "chooser rail must stay a compact pill strip");
+        assert_eq!(size.1, 34, "chooser rail must stay a compact strip");
 
         let (row_top, row_height, rects) = chooser_strip_layout(size.0, 400, &widths, 96);
-        assert_eq!(row_height, 44);
+        assert_eq!(row_height, 34);
         assert!(
             row_top > 100,
             "strip is vertically centered in a tall client"
@@ -4081,9 +4260,9 @@ mod tests {
             button_fill, popup_corner_radius, scaled_size, ButtonVisualState, POPUP_BUTTON_BG,
             POPUP_BUTTON_HOVER,
         };
-        assert_eq!(scaled_size((440, 480), 96), (440, 480));
-        assert_eq!(scaled_size((440, 480), 144), (660, 720));
-        assert_eq!(scaled_size((440, 480), 192), (880, 960));
+        assert_eq!(scaled_size((440, 380), 96), (440, 380));
+        assert_eq!(scaled_size((440, 380), 144), (660, 570));
+        assert_eq!(scaled_size((440, 380), 192), (880, 760));
         assert_eq!(popup_corner_radius(96), 12);
         assert_eq!(popup_corner_radius(144), 18);
         assert_eq!(popup_corner_radius(192), 24);
