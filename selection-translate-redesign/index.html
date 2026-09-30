@@ -1,0 +1,1152 @@
+<!-- AI生成 -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Selection Translate — UI Redesign</title>
+  <style>
+    :root {
+      --void: #0B0E13;
+      --surface: #12171F;
+      --raised: #1A2230;
+      --lex: #1E2634;
+      --line: #2C3646;
+      --ink: #F0F4FA;
+      --muted: #8B97A8;
+      --accent: #8BACFF;
+      --gold: #D4B56A;
+      --ok: #4FD1A5;
+      --err: #F07178;
+      --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+      --mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
+      --cjk: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* One scrollbar for every scrollable area */
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--line) transparent;
+    }
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: var(--line);
+      border-radius: 999px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--void);
+      color: var(--ink);
+      line-height: 1.5;
+      padding: 40px 28px 80px;
+    }
+
+    .doc-title {
+      max-width: 960px;
+      margin: 0 auto 36px;
+    }
+    .doc-title h1 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .doc-title p {
+      font-size: 13px;
+      color: var(--muted);
+      max-width: 640px;
+    }
+
+    .screen {
+      max-width: 960px;
+      margin: 0 auto 48px;
+    }
+    .screen > h2 {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--gold);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    /* —— Shared controls (no card wrappers) —— */
+    .rail {
+      display: inline-flex;
+      gap: 4px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px;
+    }
+    .pill {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font: 500 13px var(--font);
+      padding: 8px 14px;
+      border-radius: 999px;
+    }
+    .pill.on { background: var(--accent); color: var(--void); }
+    .pill.on.lex { background: var(--gold); color: #1a1408; }
+    .pill.more {
+      color: var(--ink);
+      background: var(--raised);
+      border: 1px solid var(--line);
+    }
+
+    .menu {
+      margin-top: 8px;
+      width: 176px;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 6px;
+    }
+    .menu div {
+      padding: 9px 10px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .menu div.hot {
+      background: rgba(139, 172, 255, 0.12);
+      color: var(--accent);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--raised);
+      color: var(--ink);
+      font: 500 13px var(--font);
+    }
+    .btn.primary {
+      background: var(--accent);
+      border-color: transparent;
+      color: var(--void);
+      font-weight: 600;
+    }
+    .btn.danger {
+      color: var(--err);
+      border-color: rgba(240, 113, 120, 0.35);
+      background: rgba(240, 113, 120, 0.08);
+    }
+    .btn.ghost { background: transparent; }
+    .btn.sm { height: 32px; padding: 0 12px; font-size: 12px; }
+
+    .input {
+      width: 100%;
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--ink);
+      font: 12px var(--mono);
+      padding: 10px 12px;
+      min-height: 40px;
+    }
+    .input.ui { font: 13px var(--font); }
+    .input.muted { color: var(--muted); }
+    .input.area {
+      min-height: 96px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      overflow: auto;
+    }
+    .input.area.tall { min-height: 148px; }
+    .input.pair-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-family: var(--font);
+    }
+
+    .label {
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    /* Flat form rows — no cards */
+    .row {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .row.top { align-items: start; }
+    .row.top .label { padding-top: 10px; }
+    .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* —— Popup (single) —— */
+    .popup {
+      width: 420px;
+      max-width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .popup-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: var(--accent);
+      color: var(--void);
+      font-weight: 700;
+      font-size: 13px;
+      display: grid;
+      place-items: center;
+    }
+    .popup-top strong { display: block; font-size: 13px; }
+    .popup-top span { font-size: 11px; color: var(--muted); }
+    .popup-top .grow { flex: 1; min-width: 0; }
+    .icon {
+      width: 28px;
+      height: 28px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      border-radius: 6px;
+    }
+
+    .popup-body .sel .cap { margin-bottom: 6px; }
+    .popup-body {
+      padding: 12px 14px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-height: min(78vh, 600px);
+      overflow: hidden;
+    }
+    .popup-body .result {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border-radius: 10px;
+    }
+    .popup-body .result .md {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
+      overflow: auto;
+    }
+    .popup-foot {
+      display: flex;
+      gap: 8px;
+      padding: 12px 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    /* Selection — same card language as History Output (.box.out) */
+    .sel {
+      background: var(--void);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 8px 10px;
+      flex-shrink: 0;
+      min-height: 0;
+      overflow: auto;
+    }
+    .sel .cap {
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .sel .target {
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--ink);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .sel .ctx {
+      font: 12px/1.5 var(--cjk);
+      color: var(--muted);
+      margin-top: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* Popup Selection — aligned peer of Result card */
+    .popup-body .sel {
+      background: var(--raised);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 12px 10px;
+      max-height: 30%;
+      flex: 0 1 auto;
+      overflow: auto;
+    }
+    .popup-body .sel .cap {
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+    .popup-body .sel .target {
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.5;
+      color: var(--ink);
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .popup-body .sel .ctx {
+      font: 12px/1.5 var(--cjk);
+      color: var(--muted);
+      margin-top: 8px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* Result — markdown body; Selection uses the same chrome in popup */
+    .result {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--raised);
+      padding: 8px 12px 10px;
+    }
+    .result-label {
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 6px;
+      flex-shrink: 0;
+    }
+    .md {
+      max-height: 280px;
+      overflow: auto;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--ink);
+    }
+    .md h2 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 14px 0 6px;
+      color: var(--ink);
+    }
+    .md h2:first-child { margin-top: 0; }
+    .md p {
+      margin: 0 0 8px;
+      font-family: var(--cjk);
+    }
+    .md p:last-child { margin-bottom: 0; }
+    .md ul {
+      margin: 0 0 8px;
+      padding-left: 18px;
+    }
+    .md li {
+      margin-bottom: 4px;
+      font-family: var(--cjk);
+    }
+    .md code {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--gold);
+    }
+
+    /* —— Manager window (own border; horizontal tabs) —— */
+    .shell {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--void);
+    }
+    .shell-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--ink);
+    }
+    .shell-title i {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      background: var(--accent);
+      display: block;
+      flex-shrink: 0;
+    }
+    .shell-body {
+      display: block;
+      min-height: 520px;
+      height: 720px;
+    }
+    /* Horizontal tab bar */
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+    .tabs button {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font: 500 13px var(--font);
+      padding: 8px 14px;
+      border-radius: 8px;
+    }
+    .tabs button.on {
+      background: rgba(139, 172, 255, 0.14);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .tabs .live {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-right: 4px;
+    }
+    .tabs .live i {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+      display: block;
+    }
+    .shell-body > .page {
+      height: calc(100% - 45px);
+      min-height: 0;
+      overflow: hidden;
+    }
+    .shell-body > .page:not(.fill):not(.hist-page):not(.prompts-page) {
+      overflow: auto;
+    }
+    .nav {
+      border-right: 1px solid var(--line);
+      padding: 20px 12px;
+      background: var(--surface);
+    }
+    .nav .brand {
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      padding: 4px 10px 16px;
+    }
+    .nav button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font: 13px var(--font);
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 2px;
+    }
+    .nav button.on {
+      background: rgba(139, 172, 255, 0.14);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .nav .live {
+      margin-top: 28px;
+      padding: 0 10px;
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .nav .live i {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+      display: block;
+    }
+
+    .page { padding: 28px 32px 36px; }
+    .page h2 {
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .page .sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 4px 0 22px;
+    }
+
+    /* Manager field groups — same visual language as popup areas */
+    .mfield {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--raised);
+      padding: 10px 12px 12px;
+      margin-bottom: 10px;
+    }
+    .mfield > .cap {
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .mfield .stack { display: flex; flex-direction: column; gap: 8px; }
+    .mfield .label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      display: block;
+    }
+    .mfield .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .mfield .pair label { display: block; }
+    .mfield .input {
+      min-height: 36px;
+      padding: 8px 10px;
+    }
+    /* Space is allocated to editors / Output — not fixed padding */
+    .page.fill,
+    .hist-page {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+    }
+    .page.fill > .sub,
+    .hist-page > .sub { flex-shrink: 0; margin-bottom: 12px; }
+    .mfield.shrink { flex-shrink: 0; }
+    .mfield.grow {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    .page.fill > .actions,
+    .hist-page > .row-actions {
+      flex-shrink: 0;
+      margin-top: auto;
+      padding-top: 8px;
+    }
+
+    /* Prompts: Instructions take remaining height; two editors share it */
+    .instr-grid {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .instr-grid .col {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .instr-grid .col .label { flex-shrink: 0; }
+    .instr-grid .col .input.area {
+      flex: 1 1 auto;
+      min-height: 0;
+      height: 100%;
+    }
+
+    /* Prompts page — meta on top, editors fill below */
+    .prompts-page {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      gap: 10px;
+      padding: 16px 20px 16px;
+    }
+    .prompts-page > .prompt-bottom {
+      flex-shrink: 0;
+      order: 0;
+    }
+    .prompts-page > .prompt-editors {
+      flex: 1 1 auto;
+      min-height: 0;
+      order: 1;
+    }
+    .prompt-editors .ed {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--raised);
+      overflow: hidden;
+    }
+    .prompt-editors .ed > label {
+      flex-shrink: 0;
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-weight: 600;
+      color: var(--muted);
+      padding: 10px 12px 6px;
+    }
+    .prompt-editors .ed > .body {
+      flex: 1 1 auto;
+      min-height: 0;
+      margin: 0 10px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--void);
+      color: var(--ink);
+      font: 12px/1.55 var(--mono);
+      padding: 10px 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+
+    /* Prompt editors — bottom of page, share remaining height */
+    .prompt-editors {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    /* Meta row — top of prompts page */
+    .prompt-bottom {
+      flex-shrink: 0;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: end;
+      gap: 10px;
+    }
+    .prompt-bottom .meta {
+      display: grid;
+      grid-template-columns: 140px minmax(160px, 1fr) minmax(120px, 160px) 100px 110px;
+      gap: 8px;
+      flex: 1 1 480px;
+    }
+    .prompt-bottom .meta label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .prompt-bottom .hint {
+      flex: 1 1 100%;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .prompt-bottom .hint code {
+      font-family: var(--mono);
+      color: var(--gold);
+      font-size: 11px;
+    }
+
+    .mfield.grow > .hint { flex-shrink: 0; margin-top: 8px; }
+    .mfield.grow > .cap { flex-shrink: 0; }
+
+    .ctx-mark {
+      flex-shrink: 0;
+      font: 10px var(--mono);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: rgba(139, 172, 255, 0.12);
+      border: 1px solid rgba(139, 172, 255, 0.25);
+      border-radius: 4px;
+      padding: 1px 5px;
+      margin-top: 1px;
+    }
+
+    .note {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .note code {
+      font-family: var(--mono);
+      color: var(--gold);
+      font-size: 11px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-top: 4px;
+    }
+
+    /* History chrome */
+    .hist-bar {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      gap: 8px;
+    }
+    .hist-filters {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .hist-split {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 10px;
+    }
+    .hist-list {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--void);
+      overflow: auto;
+      min-height: 0;
+      height: 100%;
+    }
+    .hist-item {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+    .hist-item:last-child { border-bottom: none; }
+    .hist-item.on { background: rgba(139, 172, 255, 0.1); }
+    .hist-item .t { font-family: var(--mono); font-size: 13px; }
+    .hist-item .p {
+      font: 12px var(--cjk);
+      color: var(--muted);
+      margin-top: 2px;
+    }
+    .hist-item .m {
+      font: 10px var(--mono);
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .hist-item .m b { color: var(--accent); font-weight: 500; }
+
+    .hist-detail {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      gap: 8px;
+    }
+    .hist-detail label {
+      display: block;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+    /* Selection card shares Output card chrome */
+    .hist-detail .sel {
+      flex: 0 0 auto;
+      max-height: 36%;
+    }
+    .hist-detail .box.out {
+      height: auto;
+      min-height: 0;
+      max-height: none;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: var(--void);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--ink);
+      line-height: 1.55;
+      padding: 8px 10px;
+      flex: 1 1 auto;
+      overflow: auto;
+    }
+
+    .row-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .pager {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .pager .count {
+      font: 12px var(--mono);
+      color: var(--muted);
+      margin-right: 4px;
+    }
+
+    @media (max-width: 800px) {
+      .shell-body { grid-template-columns: 1fr; }
+      .nav { border-right: none; border-bottom: 1px solid var(--line); }
+      .pair, .instr-grid,
+      .prompt-editors,
+      .prompt-bottom .meta,
+      .hist-bar, .hist-filters, .hist-split, .hist-detail .meta-row {
+        grid-template-columns: 1fr;
+      }
+      .shell-body { height: auto; min-height: 0; }
+      .shell-body > .page,
+      .shell-body > .page.fill,
+      .shell-body > .page.hist-page,
+      .shell-body > .page.prompts-page {
+        height: auto;
+        max-height: none;
+      }
+      .prompt-editors .ed > .body { min-height: 180px; }
+      .tabs { flex-wrap: wrap; }
+      .popup { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+<p data-aigc-mark="1" style="margin:0 0 8px;font-size:10px;line-height:1.3;color:#6b6560;font-weight:400;">AI生成</p>
+
+
+  <div class="doc-title">
+    <h1>Selection Translate — redesign</h1>
+    <p>Profile bar is standalone only (§1). Popup has no profile pills — Selection + Result + actions only.</p>
+  </div>
+
+  <!-- 1. Profile bar -->
+  <section class="screen">
+    <h2>1 · Profile bar</h2>
+    <div class="rail">
+      <button class="pill on" type="button">Translate</button>
+      <button class="pill" type="button">Expert</button>
+      <button class="pill" type="button">Program</button>
+      <button class="pill" type="button">Concise</button>
+      <button class="pill more" type="button">More…</button>
+    </div>
+    <div class="menu" style="width:200px">
+      <div class="hot">Contextual</div>
+      <div>Word</div>
+      <div>Wiki</div>
+      <div>Rewrite</div>
+    </div>
+  </section>
+
+  <!-- 2. Popup — only one -->
+  <section class="screen">
+    <h2>2 · Popup</h2>
+    <div class="popup">
+      <div class="popup-top">
+        <div class="mark">文</div>
+        <div class="grow">
+          <strong>Selection Translate</strong>
+          <span>Resident</span>
+        </div>
+        <button class="icon" type="button">⌖</button>
+        <button class="icon" type="button">✕</button>
+      </div>
+      <!-- No profile bar in the popup — profile lives in the standalone bar (§1) only -->
+      <div class="popup-body">
+        <!-- Integrated Selection: Target + Context in one area -->
+        <div class="sel">
+          <div class="cap">Selection</div>
+          <div class="target">The change applies immediately to the popup/optioner and is saved to config.toml — change</div>
+          <div class="ctx">The change applies immediately to the popup/optioner and is saved to config.toml. The resident reloads settings when the file changes; no restart is required for most fields. Long selections and long context both scroll in this card the same way Output does.</div>
+        </div>
+        <!-- Result as markdown -->
+        <div class="result">
+          <div class="result-label">Result</div>
+          <div class="md">
+            <h2>Translation</h2>
+            <p>Chinese: 变更</p>
+            <p>English: None</p>
+            <p>Words:</p>
+            <ul>
+              <li>change <code>/tʃeɪndʒ/</code> (n.) 改变，变更；(v.) 改变，更换</li>
+            </ul>
+            <p>Error check: None</p>
+            <h2>Idioms and Grammar</h2>
+            <ul>
+              <li>change of mind — 改变主意</li>
+              <li>for a change — 换换花样</li>
+            </ul>
+            <p>Countable as a noun; also transitive/intransitive as a verb.</p>
+            <h2>Other Forms</h2>
+            <p>changeable (adj.), changer (n.), changeably (adv.)</p>
+            <h2>Reasoning</h2>
+            <p>Context treats <code>change</code> as a config mutation, so 变更 is more precise than 改变.</p>
+          </div>
+        </div>
+      </div>
+      <div class="popup-foot">
+        <button class="btn primary" type="button">Copy</button>
+        <button class="btn" type="button">Retry</button>
+        <button class="btn" type="button">Prompt</button>
+        <button class="btn ghost" type="button">Pin</button>
+        <button class="btn ghost" type="button">Close</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. Settings -->
+  <section class="screen">
+    <h2>3 · Settings</h2>
+    <div class="shell">
+      <div class="shell-title"><i></i> Selection Translate — Manager</div>
+      <div class="shell-body">
+      <div class="tabs">
+        <button class="on" type="button">Settings</button>
+        <button type="button">Prompts</button>
+        <button type="button">History</button>
+        <div class="live"><i></i> Resident is running</div>
+      </div>
+      <div class="page">
+        <h2>Settings</h2>
+        <div class="sub">Provider, credentials, defaults</div>
+
+        <div class="mfield">
+          <div class="cap">Provider</div>
+          <div class="stack">
+            <div>
+              <span class="label">Endpoint</span>
+              <div class="input">https://llm-nj3xhngcgye0zp75.cn-beijing.maas.aliyuncs.com/compatible-mode/v1</div>
+            </div>
+            <div>
+              <span class="label">Model</span>
+              <div class="input">qwen3.7-flash-2026-07-15</div>
+            </div>
+            <div>
+              <span class="label">Credential target</span>
+              <div class="input">SelectionTranslate/OpenAI</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mfield">
+          <div class="cap">Credentials</div>
+          <div class="stack">
+            <div>
+              <span class="label">API key</span>
+              <div class="input muted">••••••••••••••••</div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn primary" type="button">Save key</button>
+            <button class="btn danger" type="button">Delete saved key</button>
+            <span class="note"><strong style="color:var(--ok);font-weight:500">Key present</strong> · value hidden</span>
+          </div>
+          <div class="hint">Keys are held by Windows Credential Manager; they never enter config.toml.</div>
+        </div>
+
+        <div class="mfield">
+          <div class="cap">Defaults</div>
+          <div class="stack">
+            <div>
+              <span class="label">Selection profile</span>
+              <div class="input ui pair-row">Translate — translate <span style="color:var(--muted);font-size:10px">▼</span></div>
+            </div>
+            <div>
+              <span class="label">Hover profile</span>
+              <div class="input ui pair-row">Word explanation — word-explanation <span style="color:var(--muted);font-size:10px">▼</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn primary" type="button">Save settings</button>
+        </div>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. Prompts — fields only -->
+  <section class="screen">
+    <h2>4 · Prompts</h2>
+    <div class="shell">
+      <div class="shell-title"><i></i> Selection Translate — Manager</div>
+      <div class="shell-body">
+      <div class="tabs">
+        <button type="button">Settings</button>
+        <button class="on" type="button">Prompts</button>
+        <button type="button">History</button>
+        <div class="live"><i></i> History refreshed.</div>
+      </div>
+      <div class="page prompts-page">
+        <!-- Top: ID dropdown + fields + Save -->
+        <div class="prompt-bottom">
+          <div class="meta">
+            <div>
+              <label>ID</label>
+              <div class="input ui pair-row">contextual-zh-en <span style="color:var(--muted);font-size:10px">▼</span></div>
+            </div>
+            <div>
+              <label>Name</label>
+              <div class="input ui">Contextual Chinese-English translation</div>
+            </div>
+            <div>
+              <label>Model override</label>
+              <div class="input ui muted"></div>
+            </div>
+            <div>
+              <label>Temperature</label>
+              <div class="input ui">0.2</div>
+            </div>
+            <div>
+              <label>Max tokens</label>
+              <div class="input ui">512</div>
+            </div>
+          </div>
+          <button class="btn primary" type="button">Save prompt</button>
+          <div class="hint">
+            Use <code>{target}</code>, <code>{context}</code>, and <code>{source}</code>; every user template needs <code>{target}</code>.
+            ID dropdown lists all profiles — switch to load another prompt.
+          </div>
+        </div>
+
+        <!-- Bottom: editors take remaining height -->
+        <div class="prompt-editors">
+          <div class="ed">
+            <label>System prompt</label>
+            <div class="body">Translate Chinese and English naturally, preserving meaning and context. Return only the translation.</div>
+          </div>
+          <div class="ed">
+            <label>User template</label>
+            <div class="body">Translate only Target. Use Context only to disambiguate:
+Target:
+{target}
+Context:
+{context}</div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. History — fields only -->
+  <section class="screen">
+    <h2>5 · History</h2>
+    <div class="shell">
+      <div class="shell-title"><i></i> Selection Translate — Manager</div>
+      <div class="shell-body">
+      <div class="tabs">
+        <button type="button">Settings</button>
+        <button type="button">Prompts</button>
+        <button class="on" type="button">History</button>
+        <div class="live"><i></i> History refreshed.</div>
+      </div>
+      <div class="page hist-page">
+        <h2>History</h2>
+        <div class="sub">Search recent translations without keeping the database open</div>
+
+        <div class="mfield shrink">
+          <div class="cap">Search</div>
+          <div class="hist-bar" style="margin-bottom:0">
+            <div class="input ui muted">Search target/output</div>
+            <button class="btn primary sm" type="button">Refresh</button>
+            <button class="btn sm" type="button">Copy output</button>
+          </div>
+          <div class="hist-filters" style="margin-top:8px">
+            <div class="input ui pair-row">All prompts <span style="color:var(--muted);font-size:10px">▼</span></div>
+            <div class="input ui pair-row">All sources <span style="color:var(--muted);font-size:10px">▼</span></div>
+            <div class="input ui pair-row">Newest <span style="color:var(--muted);font-size:10px">▼</span></div>
+          </div>
+        </div>
+
+        <!-- Entries: list left, Output owns the rest of the height -->
+        <div class="mfield grow">
+          <div class="cap">Entries</div>
+          <div class="hist-split">
+            <div class="hist-list">
+              <div class="hist-item on">
+                <div class="t">change</div>
+                <div class="p">变更</div>
+                <div class="m">14:22 · <b>linguist-analysis</b></div>
+              </div>
+              <div class="hist-item">
+                <div class="t">endless</div>
+                <div class="p">无尽的；无穷尽的</div>
+                <div class="m">14:18 · <b>translate</b></div>
+              </div>
+              <div class="hist-item">
+                <div class="t">uncommitted</div>
+                <div class="p">未提交的</div>
+                <div class="m">14:11 · <b>translate</b></div>
+              </div>
+              <div class="hist-item">
+                <div class="t">opacity</div>
+                <div class="p">不透明度</div>
+                <div class="m">13:54 · <b>word-explanation</b></div>
+              </div>
+              <div class="hist-item">
+                <div class="t">mockup</div>
+                <div class="p">原型图 / 模型图</div>
+                <div class="m">13:22 · <b>translate</b></div>
+              </div>
+              <div class="hist-item">
+                <div class="t">Mirage</div>
+                <div class="p">海市蜃楼；幻影</div>
+                <div class="m">13:05 · <b>linguist-analysis</b></div>
+              </div>
+            </div>
+
+            <div class="hist-detail">
+              <div class="sel" style="margin-bottom:8px">
+                <div class="cap">Selection</div>
+                <div class="target">The change applies immediately to the popup/optioner and is saved to config.toml — change</div>
+                <div class="ctx">The change applies immediately to the popup/optioner and is saved to config.toml. The resident reloads settings when the file changes; long context scrolls here like Output.</div>
+              </div>
+              <div class="out-wrap" style="flex:1 1 auto;min-height:0;display:flex;flex-direction:column">
+                <label>Output</label>
+                <div class="box out">Translation
+变更
+
+Words
+change /tʃeɪndʒ/
+(n.) 改变，变更; (v.) 改变，更换
+
+Idioms and Grammar
+change of mind · for a change
+
+Error check
+None</div>
+              </div>
+            </div>
+          </div>
+          <div class="hint">History is loaded only while this tab is open; the database is never held open.</div>
+        </div>
+
+        <div class="row-actions">
+          <span class="note">104 entries</span>
+          <button class="btn danger sm" type="button">Delete selected</button>
+        </div>
+      </div>
+      </div>
+    </div>
+  </section>
+
+</body>
+</html>

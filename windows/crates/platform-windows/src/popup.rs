@@ -135,14 +135,14 @@ mod windows_impl {
     const BUTTON_GAP: i32 = 8;
     const MARK_SIZE: i32 = 28;
     const ICON_SIZE: i32 = 28;
-    const CHOOSER_HEIGHT: i32 = 34;
-    const CHOOSER_MARGIN: i32 = 4;
+    const CHOOSER_HEIGHT: i32 = 26;
+    const CHOOSER_MARGIN: i32 = 2;
     const CHOOSER_BUTTON_GAP: i32 = 4;
     const CHOOSER_POINTER_GAP: i32 = 8;
-    const CHOOSER_MIN_BUTTON_WIDTH: i32 = 56;
+    const CHOOSER_MIN_BUTTON_WIDTH: i32 = 30;
     const CHOOSER_MAX_BUTTON_WIDTH: i32 = 160;
-    const MENU_WIDTH: i32 = 200;
-    const MENU_ITEM_HEIGHT: i32 = 34;
+    const MENU_WIDTH: i32 = 45;
+    const MENU_ITEM_HEIGHT: i32 = 20;
     /// Invisible edge used for custom resize. Frameless so the OS does not
     /// paint a light non-client border over the dark popup.
     const RESIZE_BORDER: i32 = 6;
