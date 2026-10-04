@@ -1151,7 +1151,7 @@ mod windows_impl {
     }
 
     pub(super) fn chooser_button_width(label: &str) -> i32 {
-        ((label.chars().count() as i32).saturating_mul(8) + 28)
+        ((label.chars().count() as i32).saturating_mul(8) + 20)
             .clamp(CHOOSER_MIN_BUTTON_WIDTH, CHOOSER_MAX_BUTTON_WIDTH)
     }
 
@@ -4420,10 +4420,10 @@ mod tests {
         assert_eq!(compact_profile_label("code-specialist"), "code");
         assert_eq!(compact_profile_label("简洁解释"), "简洁解释");
         assert_eq!(compact_profile_label("abcdefghijklmnop"), "abcdefghijk…");
-        assert_eq!(chooser_button_width("Contextual"), 108);
-        assert_eq!(chooser_button_width("Word"), 60);
-        assert_eq!(chooser_button_width("Wiki"), 60);
-        assert_eq!(chooser_button_width("More…"), 68);
+        assert_eq!(chooser_button_width("Contextual"), 100);
+        assert_eq!(chooser_button_width("Word"), 52);
+        assert_eq!(chooser_button_width("Wiki"), 52);
+        assert_eq!(chooser_button_width("More…"), 60);
     }
 
     #[test]

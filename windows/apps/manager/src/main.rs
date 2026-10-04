@@ -3145,7 +3145,8 @@ mod windows_app {
                 item.hDC,
                 &mut text[..drawn],
                 &mut rect,
-                DRAW_TEXT_FORMAT(0x0001 | 0x0020 | 0x0100 | 0x0800),
+                // DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX
+                DRAW_TEXT_FORMAT(0x0001 | 0x0004 | 0x0020 | 0x0100 | 0x0800),
             );
             if focused {
                 rect.left += scale_for_dpi(4, state.dpi);
