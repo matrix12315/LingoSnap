@@ -2573,7 +2573,7 @@ mod windows_impl {
                 &mut text_buffer[..length.max(0) as usize],
                 &mut text_rect,
                 // DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX
-                DRAW_TEXT_FORMAT(0x0001 | 0x0020 | 0x0100 | 0x0800),
+                DRAW_TEXT_FORMAT(0x0001 | 0x0004 | 0x0020 | 0x0100 | 0x0800),
             );
             let _ = SetBkMode(item.hDC, BACKGROUND_MODE(old_bk as u32));
             if focused && !matches!(style, ButtonStyle::Icon { .. }) {
@@ -3195,7 +3195,7 @@ mod windows_impl {
                                     &mut text,
                                     &mut rect,
                                     // DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX
-                                    DRAW_TEXT_FORMAT(0x0020 | 0x0100 | 0x0800),
+                                    DRAW_TEXT_FORMAT(0x0004 | 0x0020 | 0x0100 | 0x0800),
                                 );
                             }
                             let _ = SetBkMode(hdc, BACKGROUND_MODE(old_bk as u32));
