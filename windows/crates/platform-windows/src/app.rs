@@ -2508,11 +2508,25 @@ mod windows_impl {
         }
 
         let id = allocate_popup_id(state);
-        let popup = match popup::Popup::show(hwnd, id, anchor) {
-            Ok(popup) => popup,
-            Err(_) => {
-                runtime_trace::record("popup_show_failure");
-                return None;
+        // With reveal=false the caller replaces the content before the next
+        // presentation (the profile chooser), so the popup must be created
+        // hidden: Popup::show would present result-mode geometry for tens of
+        // milliseconds and flash before the rail appears.
+        let popup = if reveal {
+            match popup::Popup::show(hwnd, id, anchor) {
+                Ok(popup) => popup,
+                Err(_) => {
+                    runtime_trace::record("popup_show_failure");
+                    return None;
+                }
+            }
+        } else {
+            match popup::Popup::stage(hwnd, id, anchor) {
+                Ok(popup) => popup,
+                Err(_) => {
+                    runtime_trace::record("popup_stage_failure");
+                    return None;
+                }
             }
         };
         state.popups.push(PopupEntry {
