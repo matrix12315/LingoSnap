@@ -128,7 +128,7 @@ mod windows_impl {
     const DRAG_BAND_HEIGHT: i32 = HEADER_HEIGHT;
     const CARD_GAP: i32 = 10;
     const CAP_HEIGHT: i32 = 13;
-    const TARGET_HEIGHT: i32 = 20;
+    const TARGET_HEIGHT: i32 = 18;
     const CONTEXT_HEIGHT: i32 = 18;
     const FOOT_HEIGHT: i32 = 60;
     const BUTTON_HEIGHT: i32 = 36;
@@ -1402,7 +1402,7 @@ mod windows_impl {
         // spacing, not a blank line between separate blocks.
         let sel_card_top = (header + scale(12, dpi)).max(header);
         let target_top = sel_card_top + scale(8, dpi) + cap_height + scale(6, dpi);
-        let context_top = target_top + preferred_target + scale(4, dpi);
+        let context_top = target_top + preferred_target + scale(2, dpi);
         let sel_card_bottom = context_top + preferred_context + scale(8, dpi);
 
         let result_card_top = (sel_card_bottom + card_gap).max(sel_card_top + scale(48, dpi));
