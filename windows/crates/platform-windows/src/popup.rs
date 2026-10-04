@@ -341,6 +341,9 @@ mod windows_impl {
         /// More… list is expanded below the rail row.
         rail_expanded: bool,
         choosing_profile: bool,
+        /// The context pane holds sentence context for this target. When
+        /// false the target pane expands over the whole raw area.
+        has_context: bool,
         /// Only a user close should notify the resident. Replacement and
         /// cancellation destroy the window silently.
         notify_owner: bool,
@@ -405,6 +408,7 @@ mod windows_impl {
                 menu_panel: HWND::default(),
                 rail_expanded: false,
                 choosing_profile: false,
+                has_context: false,
                 notify_owner: true,
                 in_native_move: false,
                 render_pending: false,
@@ -534,6 +538,33 @@ mod windows_impl {
             }
             record_topology(self.hwnd);
             runtime_trace::record("popup_reanchor_success");
+            true
+        }
+
+        /// Move an existing popup to the anchor of an accepted replacement
+        /// without presenting it, for flows that replace the content before
+        /// the next reveal (the profile chooser). A visible popup is hidden
+        /// first so its stale content never flashes at the new anchor.
+        /// Returns `false` when the native window has already been destroyed,
+        /// allowing the resident to discard the stale wrapper and create a
+        /// fresh popup.
+        pub fn reanchor_hidden(&mut self, anchor: Point) -> bool {
+            let Some(data) = data_mut(self.hwnd) else {
+                runtime_trace::record("popup_reanchor_failure");
+                return false;
+            };
+            if data.output.0.is_null() {
+                runtime_trace::record("popup_reanchor_failure");
+                return false;
+            }
+            let dpi = dpi_for_window(self.hwnd);
+            data.anchor = anchor;
+            data.dpi = dpi;
+            unsafe {
+                let _ = ShowWindow(self.hwnd, SW_HIDE);
+            }
+            apply_layout(self.hwnd, anchor, dpi);
+            runtime_trace::record("popup_reanchor_hidden");
             true
         }
 
@@ -708,9 +739,10 @@ mod windows_impl {
             presented
         }
 
-        /// Target and context share one wrapping, scrolling RichEdit area;
-        /// the parts stay distinguishable through font family, size, and
-        /// color rather than separate panes.
+        /// Fill the selection card's two panes: the target in the primary
+        /// pane and its sentence context in the muted pane below. An absent
+        /// or duplicate context leaves the context pane empty; the target
+        /// pane then expands over the whole raw area at layout time.
         pub fn set_input(&mut self, target: &str, context: Option<&str>) {
             if let Some(data) = data_mut(self.hwnd) {
                 let target_text = bounded_input(target);
@@ -718,7 +750,9 @@ mod windows_impl {
                     Some(value) if !value.is_empty() && value != target => bounded_input(value),
                     _ => String::new(),
                 };
-                set_combined_input(data.input, &target_text, &context_text);
+                data.has_context = !context_text.is_empty();
+                set_control_text(data.input, &target_text);
+                set_control_text(data.context_input, &context_text);
             }
         }
 
@@ -736,6 +770,28 @@ mod windows_impl {
 
         pub fn is_pinned(&self) -> bool {
             data_mut(self.hwnd).is_some_and(|data| data.pinned)
+        }
+
+        /// Test-only: current selection-card pane texts and the context flag.
+        #[cfg(test)]
+        pub fn input_panes_for_test(&self) -> (String, String, bool) {
+            let pane_text = |hwnd: HWND| -> String {
+                if hwnd.0.is_null() {
+                    return String::new();
+                }
+                let length = unsafe { GetWindowTextLengthW(hwnd) };
+                let mut buffer = vec![0u16; (length.max(0) + 1) as usize];
+                let written = unsafe { GetWindowTextW(hwnd, &mut buffer) };
+                String::from_utf16_lossy(&buffer[..written.max(0) as usize])
+            };
+            match data_mut(self.hwnd) {
+                Some(data) => (
+                    pane_text(data.input),
+                    pane_text(data.context_input),
+                    data.has_context,
+                ),
+                None => (String::new(), String::new(), false),
+            }
         }
 
         /// Test-only: park the hover state on a profile rail pill so the
@@ -779,7 +835,19 @@ mod windows_impl {
                     y: point.y,
                 })
             };
-            self.owns_window(candidate)
+            if self.owns_window(candidate) {
+                return true;
+            }
+            // The More… dropdown panel is a separate top-level window, so its
+            // root window is itself. A click on it still belongs to this
+            // popup's interaction and must never count as an outside click;
+            // the resident would otherwise dismiss the source popup before the
+            // item's selection message is processed.
+            data_mut(self.hwnd).is_some_and(|data| {
+                !data.menu_panel.0.is_null()
+                    && !candidate.0.is_null()
+                    && unsafe { GetAncestor(candidate, GA_ROOT) } == data.menu_panel
+            })
         }
 
         pub fn contains_completed_output_point(&self, point: Point) -> bool {
@@ -1391,22 +1459,37 @@ mod windows_impl {
             return;
         }
         let layout = compute_layout(client.right, client.bottom, dpi, data.buttons.len() as i32);
-        // One shared area wraps and scrolls target + context together; the
-        // hidden context control keeps its legacy rect but stays invisible.
-        move_child(
-            data.input,
-            layout.margin + scale(12, dpi),
-            layout.target_top,
-            layout.content_width - scale(24, dpi),
-            layout.context_top + layout.context_height - layout.target_top,
-        );
-        move_child(
-            data.context_input,
-            layout.margin + scale(12, dpi),
-            layout.context_top,
-            layout.content_width - scale(24, dpi),
-            layout.context_height,
-        );
+        // Selection card: the target pane sits above the muted context pane.
+        // Without context the target pane expands over the whole raw area.
+        let raw_left = layout.margin + scale(12, dpi);
+        let raw_width = layout.content_width - scale(24, dpi);
+        let raw_bottom = layout.context_top + layout.context_height;
+        if data.has_context {
+            move_child(
+                data.input,
+                raw_left,
+                layout.target_top,
+                raw_width,
+                layout.target_height,
+            );
+            set_control_visible(data.context_input, true);
+            move_child(
+                data.context_input,
+                raw_left,
+                layout.context_top,
+                raw_width,
+                raw_bottom - layout.context_top,
+            );
+        } else {
+            set_control_visible(data.context_input, false);
+            move_child(
+                data.input,
+                raw_left,
+                layout.target_top,
+                raw_width,
+                raw_bottom - layout.target_top,
+            );
+        }
         move_child(
             data.output,
             layout.margin + scale(12, dpi),
@@ -1694,15 +1777,6 @@ mod windows_impl {
     /// Fill the shared input area with raw text: the target line, then the
     /// context after a single blank line. One plain EDIT control wraps and
     /// scrolls both parts together — no rich rendering, 12px compact font.
-    fn set_combined_input(hwnd: HWND, target: &str, context: &str) {
-        let combined = if context.is_empty() {
-            target.to_owned()
-        } else {
-            format!("{target}\n\n{context}")
-        };
-        set_control_text(hwnd, &combined);
-    }
-
     pub(super) fn set_output(hwnd: HWND, raw: &str, markdown: bool) {
         // RichEdit automatically follows the caret when text is replaced. The
         // old implementation explicitly selected the final character after
@@ -1997,8 +2071,9 @@ mod windows_impl {
             // back to the standard EDIT control below.
             let rich_edit_module = unsafe { LoadLibraryW(w!("msftedit.dll")).ok() };
             let rich_class = rich_edit_module.map(|_| RICH_EDIT_CLASS);
-            // Target and context share one raw-text area: plain EDIT, 12px,
-            // wrapping with a vertical scrollbar, no rich rendering.
+            // Selection card panes: the target pane and the muted context
+            // pane are separate wrapping EDIT controls so the extracted
+            // target always reads as its own line of primary data.
             data.input = unsafe {
                 CreateWindowExW(
                     Default::default(),
@@ -2034,8 +2109,8 @@ mod windows_impl {
             }
             .unwrap_or_default();
             unsafe {
-                // The context pane is merged into the shared input area and
-                // must never appear as a separate control.
+                // The context pane starts hidden; layout_children shows it
+                // only when the current job carries sentence context.
                 let _ = ShowWindow(data.context_input, SW_HIDE);
             }
             data.output = unsafe {
@@ -2177,14 +2252,15 @@ mod windows_impl {
                     data.close_icon = icon;
                 }
             }
-            // Raw input text uses the compact 12px body face; result uses the
+            // Target pane uses the mono target face so the extracted target
+            // reads as primary data; the context pane and result use the
             // body face.
-            if !data.input.0.is_null() && !data.fonts[6].0.is_null() {
+            if !data.input.0.is_null() && !data.fonts[3].0.is_null() {
                 unsafe {
                     let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                         data.input,
                         0x0030,
-                        Some(WPARAM(data.fonts[6].0 as usize)),
+                        Some(WPARAM(data.fonts[3].0 as usize)),
                         Some(LPARAM(1)),
                     );
                 }
@@ -3589,6 +3665,161 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn set_input_splits_target_and_context_panes() {
+        use super::windows_impl::Popup;
+        use windows::core::w;
+        use windows::Win32::Foundation::HINSTANCE;
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::UI::WindowsAndMessaging::{CreateWindowExW, DestroyWindow, WS_POPUP};
+
+        let instance = unsafe { GetModuleHandleW(None) }.expect("module");
+        let parent = unsafe {
+            CreateWindowExW(
+                Default::default(),
+                w!("STATIC"),
+                w!(""),
+                WS_POPUP,
+                80,
+                80,
+                200,
+                200,
+                None,
+                None,
+                Some(HINSTANCE(instance.0)),
+                None,
+            )
+        }
+        .expect("parent");
+        let mut popup = Popup::show(parent, 71, super::Point { x: 130, y: 130 }).expect("popup");
+
+        popup.set_input(
+            "quick",
+            Some("The quick brown fox jumps over the lazy dog."),
+        );
+        let (target, context, has_context) = popup.input_panes_for_test();
+        assert_eq!(target, "quick", "target pane holds the target only");
+        assert_eq!(
+            context, "The quick brown fox jumps over the lazy dog.",
+            "context pane holds the sentence context only"
+        );
+        assert!(has_context);
+
+        // A target without usable context empties the context pane and
+        // clears the flag so the target pane expands over the raw area.
+        popup.set_input("word", None);
+        let (target, context, has_context) = popup.input_panes_for_test();
+        assert_eq!(target, "word");
+        assert_eq!(context, "");
+        assert!(!has_context);
+
+        // A context equal to the target carries no extra information and
+        // must not be shown twice.
+        popup.set_input("word", Some("word"));
+        let (_, context, has_context) = popup.input_panes_for_test();
+        assert_eq!(context, "");
+        assert!(!has_context);
+
+        popup.dismiss();
+        unsafe {
+            let _ = DestroyWindow(parent);
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn more_menu_panel_clicks_count_as_inside_the_popup() {
+        use super::windows_impl::Popup;
+        use windows::core::w;
+        use windows::Win32::Foundation::{HINSTANCE, LPARAM, RECT, WPARAM};
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DestroyWindow, FindWindowW, GetWindowRect, SendMessageW, WM_COMMAND,
+            WS_POPUP,
+        };
+
+        let instance = unsafe { GetModuleHandleW(None) }.expect("module");
+        let parent = unsafe {
+            CreateWindowExW(
+                Default::default(),
+                w!("STATIC"),
+                w!(""),
+                WS_POPUP,
+                80,
+                80,
+                200,
+                200,
+                None,
+                None,
+                Some(HINSTANCE(instance.0)),
+                None,
+            )
+        }
+        .expect("parent");
+        let mut popup = Popup::show(parent, 72, super::Point { x: 140, y: 140 }).expect("popup");
+
+        let names: Vec<String> = ["Expert", "Program", "Concise", "Contextual", "Word", "Wiki"]
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect();
+        assert!(popup.show_profile_choices(&names, Some(0)));
+
+        // The resident classifies every click through contains_window_point
+        // before the dropdown receives it. A point on the detached More…
+        // panel must still count as inside, or the outside-click dismissal
+        // destroys the source popup before the item selection is processed.
+        let popup_class: Vec<u16> = "SelectionTranslatePopup\0".encode_utf16().collect();
+        let popup_hwnd = unsafe { FindWindowW(windows::core::PCWSTR(popup_class.as_ptr()), None) }
+            .expect("popup window");
+        unsafe {
+            SendMessageW(
+                popup_hwnd,
+                WM_COMMAND,
+                Some(WPARAM(900)), // PROFILE_MORE_ID
+                Some(LPARAM(0)),
+            );
+        }
+        for _ in 0..20 {
+            let mut msg = windows::Win32::UI::WindowsAndMessaging::MSG::default();
+            while unsafe {
+                windows::Win32::UI::WindowsAndMessaging::PeekMessageW(
+                    &mut msg,
+                    None,
+                    0,
+                    0,
+                    windows::Win32::UI::WindowsAndMessaging::PM_REMOVE,
+                )
+                .as_bool()
+            } {
+                unsafe {
+                    let _ = windows::Win32::UI::WindowsAndMessaging::TranslateMessage(&msg);
+                    let _ = windows::Win32::UI::WindowsAndMessaging::DispatchMessageW(&msg);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let panel_class: Vec<u16> = "SelectionTranslateMenuPanel\0".encode_utf16().collect();
+        let panel_hwnd = unsafe { FindWindowW(windows::core::PCWSTR(panel_class.as_ptr()), None) }
+            .expect("open menu panel");
+        let mut rect = RECT::default();
+        unsafe { GetWindowRect(panel_hwnd, &mut rect) }.expect("panel rect");
+        let center = super::Point {
+            x: (rect.left + rect.right) / 2,
+            y: (rect.top + rect.bottom) / 2,
+        };
+        assert!(
+            popup.contains_window_point(center),
+            "a click on the More… dropdown panel belongs to the popup"
+        );
+
+        unsafe {
+            let _ = DestroyWindow(panel_hwnd);
+            popup.dismiss();
+            let _ = DestroyWindow(parent);
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn delayed_provider_keeps_loading_state_until_output_completes() {
         use super::windows_impl::PopupState;
 
@@ -4067,10 +4298,10 @@ mod tests {
             .map(|label| chooser_button_width(label))
             .collect();
         let size = chooser_size(Point { x: 200, y: 200 }, &widths, 96);
-        assert_eq!(size.1, 34, "chooser rail must stay a compact strip");
+        assert_eq!(size.1, 26, "chooser rail must stay a compact strip");
 
         let (row_top, row_height, rects) = chooser_strip_layout(size.0, 400, &widths, 96);
-        assert_eq!(row_height, 34);
+        assert_eq!(row_height, 26);
         assert!(
             row_top > 100,
             "strip is vertically centered in a tall client"

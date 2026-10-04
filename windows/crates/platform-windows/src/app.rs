@@ -1957,7 +1957,7 @@ mod windows_impl {
             let highlight = profile_ids
                 .iter()
                 .position(|id| *id == pending.spec.prompt_id);
-            let admission = ensure_popup(hwnd, state, anchor, None, None, false);
+            let admission = ensure_popup(hwnd, state, anchor, None, None, false, false);
             let popup_id = admission.map(|admission| admission.popup_id);
             let shown = popup_id
                 .and_then(|id| popup_entry_mut(state, id))
@@ -2418,11 +2418,17 @@ mod windows_impl {
         destination: Option<popup::PopupId>,
         parent: Option<popup::PopupId>,
         force_new: bool,
+        reveal: bool,
     ) -> Option<PopupAdmission> {
         runtime_trace::record("result_surface_ensure_begin");
         if let Some(id) = destination {
-            let alive =
-                popup_entry_mut(state, id).is_some_and(|entry| entry.popup.reanchor(anchor));
+            let alive = popup_entry_mut(state, id).is_some_and(|entry| {
+                if reveal {
+                    entry.popup.reanchor(anchor)
+                } else {
+                    entry.popup.reanchor_hidden(anchor)
+                }
+            });
             if alive {
                 return Some(PopupAdmission {
                     popup_id: id,
@@ -2442,8 +2448,13 @@ mod windows_impl {
                 .find(|entry| popup_can_be_reused(entry.popup.is_pinned()))
                 .map(|entry| entry.id)
             {
-                let alive =
-                    popup_entry_mut(state, id).is_some_and(|entry| entry.popup.reanchor(anchor));
+                let alive = popup_entry_mut(state, id).is_some_and(|entry| {
+                    if reveal {
+                        entry.popup.reanchor(anchor)
+                    } else {
+                        entry.popup.reanchor_hidden(anchor)
+                    }
+                });
                 if alive {
                     return Some(PopupAdmission {
                         popup_id: id,
@@ -2555,6 +2566,7 @@ mod windows_impl {
             spec.destination_popup_id,
             spec.source_popup_id,
             force_new,
+            true,
         )
         .ok_or(ResultSurfaceError::Unavailable)?;
         let available = admission.staged_entry.as_ref().map_or_else(
@@ -2679,7 +2691,7 @@ mod windows_impl {
         anchor: popup::Point,
         message: &str,
     ) {
-        if let Some(admission) = ensure_popup(hwnd, state, anchor, None, None, false) {
+        if let Some(admission) = ensure_popup(hwnd, state, anchor, None, None, false, true) {
             let mut surface = ResultSurfaceReady {
                 popup_id: admission.popup_id,
                 staged_entry: admission.staged_entry,

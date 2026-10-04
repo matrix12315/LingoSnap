@@ -44,16 +44,17 @@ mod windows_app {
     use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
-        GetMessageW, GetParent, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW,
-        IsDialogMessageW, MessageBoxW, PostQuitMessage, RegisterClassW, SendMessageW,
-        SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow, TranslateMessage,
-        BS_OWNERDRAW, BS_PUSHBUTTON, CREATESTRUCTW, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE,
-        ES_PASSWORD, GWLP_USERDATA, IDYES, MB_DEFBUTTON2, MB_ICONWARNING, MB_YESNO, MINMAXINFO,
-        SWP_NOACTIVATE, SWP_NOZORDER, SW_HIDE, SW_SHOW, WINDOW_STYLE, WM_CLOSE, WM_COMMAND,
-        WM_CREATE, WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ERASEBKGND, WM_GETMINMAXINFO,
-        WM_MEASUREITEM, WM_NOTIFY, WM_PAINT, WM_SETFONT, WM_SIZE, WNDCLASSW, WS_BORDER, WS_CAPTION,
-        WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU,
-        WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+        GetDlgCtrlID, GetMessageW, GetParent, GetWindowLongPtrW, GetWindowRect,
+        GetWindowTextLengthW, GetWindowTextW, IsDialogMessageW, MessageBoxW, PostQuitMessage,
+        RegisterClassW, SendMessageW, SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow,
+        TranslateMessage, BS_OWNERDRAW, BS_PUSHBUTTON, CREATESTRUCTW, ES_AUTOHSCROLL,
+        ES_AUTOVSCROLL, ES_MULTILINE, ES_PASSWORD, GWLP_USERDATA, IDYES, MB_DEFBUTTON2,
+        MB_ICONWARNING, MB_YESNO, MINMAXINFO, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SW_HIDE,
+        SW_SHOW, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DPICHANGED,
+        WM_DRAWITEM, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_MEASUREITEM, WM_NOTIFY, WM_PAINT,
+        WM_SETFONT, WM_SIZE, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN,
+        WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+        WS_VSCROLL,
     };
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslateManager");
@@ -130,10 +131,14 @@ mod windows_app {
     const LB_GETCURSEL: u32 = 0x0188;
     const LBN_SELCHANGE: usize = 1;
     const CBN_SELCHANGE: usize = 1;
+    const CBN_DROPDOWN: usize = 7;
+    const CBN_CLOSEUP: usize = 8;
     const CB_ADDSTRING: u32 = 0x0143;
     const CB_RESETCONTENT: u32 = 0x014B;
     const CB_SETCURSEL: u32 = 0x014E;
     const CB_GETCURSEL: u32 = 0x0147;
+    const CB_GETCOUNT: u32 = 0x0146;
+    const CB_GETITEMHEIGHT: u32 = 0x0154;
     const LBS_NOTIFY: u32 = 0x0001;
     const LBS_OWNERDRAWFIXED: u32 = 0x0010;
     const LBS_NOINTEGRALHEIGHT: u32 = 0x0100;
@@ -857,6 +862,19 @@ mod windows_app {
         draft_prompt: Option<PromptConfig>,
         history_entries: Vec<HistoryEntry>,
         history_loaded: bool,
+        /// True when the selected history entry carries sentence context;
+        /// drives the target/context pane split in the Selection well.
+        history_has_context: bool,
+        /// Last laid-out Selection well bands (target, context) in window
+        /// pixels, so selection changes can re-split without recomputing
+        /// page geometry.
+        history_band_rects: Option<(RECT, RECT)>,
+        /// Compact (closed) heights of comboboxes while their dropdown list
+        /// is expanded, keyed by control id. The responsive layout gives
+        /// combos only the closed selection-field height, and Windows derives
+        /// the dropped-list height from the window height, so the list must
+        /// be given room while it is open.
+        combo_compact_heights: Vec<(i32, i32)>,
         resident_start: ResidentStartOutcome,
         credential_status: CredentialStatusState,
         theme: ThemeResources,
@@ -924,6 +942,9 @@ mod windows_app {
             draft_prompt: None,
             history_entries: Vec::new(),
             history_loaded: false,
+            history_has_context: false,
+            history_band_rects: None,
+            combo_compact_heights: Vec::new(),
             resident_start,
             credential_status: CredentialStatusState::Absent,
             theme: ThemeResources::new(dpi),
@@ -1064,7 +1085,7 @@ mod windows_app {
                 scale_for_dpi(760, window_dpi),
                 SWP_NOACTIVATE | SWP_NOZORDER,
             );
-            apply_manager_layout(hwnd, &*state);
+            apply_manager_layout(hwnd, &mut *state);
             return LRESULT(0);
         }
         let state = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut ManagerState;
@@ -1072,9 +1093,9 @@ mod windows_app {
             return DefWindowProcW(hwnd, message, wparam, lparam);
         }
         match message {
-            WM_COMMAND => handle_command(hwnd, &mut *state, wparam.0),
+            WM_COMMAND => handle_command(hwnd, &mut *state, wparam.0, HWND(lparam.0 as *mut _)),
             WM_SIZE => {
-                apply_manager_layout(hwnd, &*state);
+                apply_manager_layout(hwnd, &mut *state);
                 LRESULT(0)
             }
             WM_DPICHANGED => {
@@ -1092,7 +1113,7 @@ mod windows_app {
                 (*state).dpi = dpi;
                 (*state).theme = ThemeResources::new(dpi);
                 apply_control_fonts(&*state);
-                apply_manager_layout(hwnd, &*state);
+                apply_manager_layout(hwnd, &mut *state);
                 let _ = InvalidateRect(Some(hwnd), None, true);
                 LRESULT(0)
             }
@@ -1537,8 +1558,8 @@ mod windows_app {
             Slot::HistoryContext,
             true,
         )?;
-        // Context is merged into the shared target area; keep the legacy
-        // control hidden for its automation handle.
+        // The context pane starts hidden; apply_history_detail_split shows
+        // it only while the selected entry carries sentence context.
         unsafe {
             let _ = ShowWindow(h.history_context, SW_HIDE);
         }
@@ -1958,6 +1979,67 @@ mod windows_app {
         }
     }
 
+    /// Stack the Selection well panes for the selected history entry: with
+    /// sentence context the muted context editor takes the lower band;
+    /// without context the mono target editor expands over the whole well
+    /// so no dead strip is left behind.
+    fn apply_history_detail_split(state: &ManagerState) {
+        let Some((target_band, context_band)) = state.history_band_rects else {
+            return;
+        };
+        let target = state.handles.history_target;
+        let context = state.handles.history_context;
+        if target.0.is_null() || context.0.is_null() {
+            return;
+        }
+        let RECT {
+            left: tl,
+            top: tt,
+            right: trr,
+            bottom: tb,
+        } = target_band;
+        let RECT {
+            left: cl,
+            top: ct,
+            right: crr,
+            bottom: cb,
+        } = context_band;
+        unsafe {
+            if state.history_has_context {
+                let _ = ShowWindow(context, SW_SHOW);
+                let _ = SetWindowPos(
+                    target,
+                    None,
+                    tl,
+                    tt,
+                    (trr - tl).max(1),
+                    (tb - tt).max(1),
+                    SWP_NOACTIVATE | SWP_NOZORDER,
+                );
+                let _ = SetWindowPos(
+                    context,
+                    None,
+                    cl,
+                    ct,
+                    (crr - cl).max(1),
+                    (cb - ct).max(1),
+                    SWP_NOACTIVATE | SWP_NOZORDER,
+                );
+            } else {
+                let _ = ShowWindow(context, SW_HIDE);
+                let _ = SetWindowPos(
+                    target,
+                    None,
+                    tl,
+                    tt,
+                    (trr - tl).max(1),
+                    (cb - tt).max(1),
+                    SWP_NOACTIVATE | SWP_NOZORDER,
+                );
+            }
+        }
+    }
+
     fn place_control(hwnd: HWND, rect: RECT, dpi: u32) {
         let rect = scaled_rect(rect, dpi);
         unsafe {
@@ -1973,7 +2055,7 @@ mod windows_app {
         }
     }
 
-    fn apply_manager_layout(hwnd: HWND, state: &ManagerState) {
+    fn apply_manager_layout(hwnd: HWND, state: &mut ManagerState) {
         let mut client = RECT::default();
         if unsafe { GetClientRect(hwnd, &mut client) }.is_err() {
             return;
@@ -2032,6 +2114,31 @@ mod windows_app {
                     state.dpi,
                 );
             }
+        }
+        // Remember the laid-out Selection well bands so a selection change
+        // can re-split target/context panes without recomputing geometry.
+        if state.view == View::History {
+            let band = |slot: Slot| {
+                geometry.slots.iter().find_map(|(candidate, rect)| {
+                    (*candidate == slot).then(|| {
+                        scaled_rect(
+                            RECT {
+                                left: CONTENT_PADDING + rect.left,
+                                top: rect.top,
+                                right: CONTENT_PADDING + rect.right,
+                                bottom: rect.bottom,
+                            },
+                            state.dpi,
+                        )
+                    })
+                })
+            };
+            if let (Some(target), Some(context)) =
+                (band(Slot::HistoryTarget), band(Slot::HistoryContext))
+            {
+                state.history_band_rects = Some((target, context));
+            }
+            apply_history_detail_split(state);
         }
         unsafe {
             for button in [
@@ -2151,65 +2258,74 @@ mod windows_app {
                         },
                     ));
                 }
-                // Credentials: key row, action row, hint — evenly spread.
-                let rows = distributed_tops(
-                    3,
-                    content_top + tops[1] + 28,
-                    content_top + tops[1] + heights[1] - 12,
-                    field_block,
-                );
+                // Credentials: key row, action row, hint. The rows have
+                // different heights (field 44, buttons 28, hint 16), so they
+                // distribute with their real blocks; uniform 44px blocks
+                // would pool the hint's slack below it and stack the action
+                // row directly against the field.
+                let cred_blocks = [field_block, 28, 16];
+                let cred_used: i32 = cred_blocks.iter().sum();
+                let cred_top = content_top + tops[1] + 28;
+                let cred_bottom = content_top + tops[1] + heights[1] - 12;
+                let cred_gap = (cred_bottom - cred_top - cred_used).max(0) / 4;
+                let mut cred_rows = [0i32; 3];
+                let mut cred_offset = 0;
+                for (index, block) in cred_blocks.iter().enumerate() {
+                    cred_rows[index] = cred_top + cred_gap * (index as i32 + 1) + cred_offset;
+                    cred_offset += block;
+                }
                 slots.push((
                     Slot::ApiKeyLabel,
                     RECT {
                         left: 12,
-                        top: rows[0],
+                        top: cred_rows[0],
                         right: 12 + inner_width,
-                        bottom: rows[0] + 14,
+                        bottom: cred_rows[0] + 14,
                     },
                 ));
                 slots.push((
                     Slot::ApiKey,
                     RECT {
                         left: 12,
-                        top: rows[0] + 16,
+                        top: cred_rows[0] + 16,
                         right: 12 + inner_width,
-                        bottom: rows[0] + 44,
+                        bottom: cred_rows[0] + 44,
                     },
                 ));
                 slots.push((
                     Slot::SaveKey,
                     RECT {
                         left: 12,
-                        top: rows[1],
+                        top: cred_rows[1],
                         right: 122,
-                        bottom: rows[1] + 28,
+                        bottom: cred_rows[1] + 28,
                     },
                 ));
                 slots.push((
                     Slot::DeleteKey,
                     RECT {
                         left: 132,
-                        top: rows[1],
+                        top: cred_rows[1],
                         right: 282,
-                        bottom: rows[1] + 28,
+                        bottom: cred_rows[1] + 28,
                     },
                 ));
                 slots.push((
                     Slot::CredentialStatus,
                     RECT {
                         left: 294,
-                        top: rows[1] + 4,
+                        top: cred_rows[1] + 4,
                         right: content_width - 12,
-                        bottom: rows[1] + 24,
+                        bottom: cred_rows[1] + 24,
                     },
                 ));
                 slots.push((
                     Slot::CredentialHint,
                     RECT {
                         left: 12,
-                        top: rows[2],
+                        top: cred_rows[2],
                         right: content_width - 12,
-                        bottom: rows[2] + 16,
+                        bottom: cred_rows[2] + 16,
                     },
                 ));
                 let rows = distributed_tops(
@@ -2490,30 +2606,44 @@ mod windows_app {
                 ));
                 let detail_left = 12 + list_width + 10;
                 let detail_right = content_width - 12;
+                // Selection detail: caption, then one well holding the target
+                // pane above the muted context pane. The well and its editors
+                // span exactly the same x-range as the Output well below, so
+                // both detail areas read as one aligned column.
+                extra_caps.push((
+                    RECT {
+                        left: detail_left,
+                        top: card_top + 25,
+                        right: detail_right,
+                        bottom: card_top + 38,
+                    },
+                    TextKey::Selection,
+                ));
                 wells.push(RECT {
                     left: detail_left,
-                    top: card_top + 25,
+                    top: card_top + 41,
                     right: detail_right,
                     bottom: card_top + 111,
                 });
                 slots.push((
                     Slot::HistoryTarget,
                     RECT {
-                        left: detail_left + 12,
-                        top: card_top + 49,
-                        right: detail_right - 12,
-                        // One shared raw-text area spans the target and
-                        // context rows, same as the popup's selection card.
-                        bottom: card_top + 101,
+                        left: detail_left,
+                        top: card_top + 44,
+                        right: detail_right,
+                        // Upper band of the Selection well; the context pane
+                        // takes the lower band. With no context the target
+                        // editor expands over both bands at selection time.
+                        bottom: card_top + 71,
                     },
                 ));
                 slots.push((
                     Slot::HistoryContext,
                     RECT {
-                        left: detail_left + 12,
-                        top: card_top + 77,
-                        right: detail_right - 12,
-                        bottom: card_top + 101,
+                        left: detail_left,
+                        top: card_top + 75,
+                        right: detail_right,
+                        bottom: card_top + 108,
                     },
                 ));
                 extra_caps.push((
@@ -2600,9 +2730,11 @@ mod windows_app {
         set_font(state.handles.status, note);
         for placement in &state.handles.placements {
             let font = match placement.slot {
-                // History detail shares the popup's raw 12px body treatment.
+                // History detail shares the popup's treatment: mono target
+                // pane, body context pane, mono output.
                 Slot::SystemPrompt | Slot::UserTemplate | Slot::HistoryOutput => mono,
-                Slot::HistoryTarget => note,
+                Slot::HistoryTarget => mono,
+                Slot::HistoryContext => note,
                 Slot::CredentialHint
                 | Slot::PromptHint
                 | Slot::HistoryHint
@@ -3124,9 +3256,92 @@ mod windows_app {
         WS_VISIBLE
     }
 
-    fn handle_command(hwnd: HWND, state: &mut ManagerState, command: usize) -> LRESULT {
+    /// Give the dropped list room. The responsive layout sizes a combobox to
+    /// its closed selection-field height, and Windows derives the dropped-list
+    /// height from the window height, so without this the list opens as a
+    /// two-pixel sliver. CBN_DROPDOWN arrives before the list is measured, so
+    /// growing the window here is reflected in the open list.
+    fn expand_combo_for_dropdown(state: &mut ManagerState, control: HWND) {
+        if control.0.is_null() {
+            return;
+        }
+        unsafe {
+            let mut rect = RECT::default();
+            if GetWindowRect(control, &mut rect).is_err() {
+                return;
+            }
+            let compact = rect.bottom - rect.top;
+            let key = GetDlgCtrlID(control);
+            if !state
+                .combo_compact_heights
+                .iter()
+                .any(|(existing, _)| *existing == key)
+            {
+                state.combo_compact_heights.push((key, compact));
+            }
+            let items = SendMessageW(control, CB_GETCOUNT, Some(WPARAM(0)), Some(LPARAM(0))).0;
+            let item_height =
+                SendMessageW(control, CB_GETITEMHEIGHT, Some(WPARAM(0)), Some(LPARAM(0))).0 as i32;
+            if item_height <= 0 {
+                return;
+            }
+            let visible = items.clamp(1, 8) as i32;
+            let target = compact + item_height * visible + scale_for_dpi(4, state.dpi);
+            let _ = SetWindowPos(
+                control,
+                None,
+                0,
+                0,
+                (rect.right - rect.left).max(1),
+                target,
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+        }
+    }
+
+    /// Restore the compact closed height once the dropdown list is gone.
+    fn restore_combo_after_dropdown(state: &mut ManagerState, control: HWND) {
+        if control.0.is_null() {
+            return;
+        }
+        let key = unsafe { GetDlgCtrlID(control) };
+        if let Some(position) = state
+            .combo_compact_heights
+            .iter()
+            .position(|(existing, _)| *existing == key)
+        {
+            let (_, compact) = state.combo_compact_heights.remove(position);
+            unsafe {
+                let mut rect = RECT::default();
+                if GetWindowRect(control, &mut rect).is_ok() {
+                    let _ = SetWindowPos(
+                        control,
+                        None,
+                        0,
+                        0,
+                        (rect.right - rect.left).max(1),
+                        compact,
+                        SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+                    );
+                }
+            }
+        }
+    }
+
+    fn handle_command(
+        hwnd: HWND,
+        state: &mut ManagerState,
+        command: usize,
+        control: HWND,
+    ) -> LRESULT {
         let id = command & 0xffff;
         let notification = (command >> 16) & 0xffff;
+        if notification == CBN_DROPDOWN {
+            expand_combo_for_dropdown(state, control);
+        }
+        if notification == CBN_CLOSEUP {
+            restore_combo_after_dropdown(state, control);
+        }
         if id == ID_HISTORY_LIST && notification == LBN_SELCHANGE {
             history_selection_changed(state);
             return LRESULT(0);
@@ -3508,7 +3723,7 @@ mod windows_app {
         }
     }
 
-    fn populate_history_list(state: &ManagerState) {
+    fn populate_history_list(state: &mut ManagerState) {
         unsafe {
             let _ = SendMessageW(
                 state.handles.history_list,
@@ -3527,15 +3742,16 @@ mod windows_app {
         let index = selected_history_index(state.handles.history_list, state.history_entries.len());
         if let Some(index) = index {
             if let Some(entry) = state.history_entries.get(index) {
-                // Target and context share one raw-text area, same as the
-                // popup: target line first, context after a blank line.
-                let detail = match entry.context.as_deref() {
-                    Some(context) if !context.trim().is_empty() => {
-                        format!("{}\n\n{}", entry.target, context)
-                    }
-                    _ => entry.target.clone(),
+                // Two panes, same as the popup's selection card: the mono
+                // target pane above the muted context pane.
+                let context = match entry.context.as_deref() {
+                    Some(context) if !context.trim().is_empty() => context.to_owned(),
+                    _ => String::new(),
                 };
-                set_text(state.handles.history_target, &detail);
+                state.history_has_context = !context.is_empty();
+                set_text(state.handles.history_target, &entry.target);
+                set_text(state.handles.history_context, &context);
+                apply_history_detail_split(state);
                 set_text(state.handles.history_output, &entry.output);
                 set_text(
                     state.handles.history_meta,
@@ -3561,9 +3777,11 @@ mod windows_app {
         clear_history_detail(state);
     }
 
-    fn clear_history_detail(state: &ManagerState) {
+    fn clear_history_detail(state: &mut ManagerState) {
+        state.history_has_context = false;
         set_text(state.handles.history_target, "");
         set_text(state.handles.history_context, "");
+        apply_history_detail_split(state);
         set_text(state.handles.history_output, "");
         if state.history_loaded {
             set_text(
