@@ -70,15 +70,15 @@ mod windows_impl {
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{
         FreeLibrary, GlobalFree, COLORREF, HANDLE, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT,
-        WPARAM,
+        SIZE, WPARAM,
     };
     use windows::Win32::Graphics::Gdi::{
         BeginPaint, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DeleteObject, DrawFocusRect,
-        DrawTextW, EndPaint, FillRect, FillRgn, FrameRect, FrameRgn, GetMonitorInfoW,
-        InvalidateRect, MonitorFromPoint, MonitorFromWindow, SelectObject, SetBkColor, SetBkMode,
-        SetTextColor, BACKGROUND_MODE, DRAW_TEXT_FORMAT, FONT_CHARSET, FONT_CLIP_PRECISION,
-        FONT_OUTPUT_PRECISION, FONT_QUALITY, HBRUSH, HFONT, HGDIOBJ, HRGN, MONITORINFO,
-        MONITOR_DEFAULTTONEAREST, TRANSPARENT,
+        DrawTextW, EndPaint, FillRect, FillRgn, FrameRect, FrameRgn, GetDC, GetMonitorInfoW,
+        GetTextExtentPoint32W, InvalidateRect, MonitorFromPoint, MonitorFromWindow, ReleaseDC,
+        SelectObject, SetBkColor, SetBkMode, SetTextColor, BACKGROUND_MODE, DRAW_TEXT_FORMAT,
+        FONT_CHARSET, FONT_CLIP_PRECISION, FONT_OUTPUT_PRECISION, FONT_QUALITY, HBRUSH, HFONT,
+        HGDIOBJ, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST, TRANSPARENT,
     };
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
@@ -128,8 +128,8 @@ mod windows_impl {
     const DRAG_BAND_HEIGHT: i32 = HEADER_HEIGHT;
     const CARD_GAP: i32 = 10;
     const CAP_HEIGHT: i32 = 13;
-    const TARGET_HEIGHT: i32 = 32;
-    const CONTEXT_HEIGHT: i32 = 24;
+    const TARGET_HEIGHT: i32 = 24;
+    const CONTEXT_HEIGHT: i32 = 20;
     const FOOT_HEIGHT: i32 = 60;
     const BUTTON_HEIGHT: i32 = 36;
     const BUTTON_GAP: i32 = 8;
@@ -673,9 +673,14 @@ mod windows_impl {
             if data.profile_labels.len() > INLINE_PROFILE_LIMIT {
                 visible_labels.push("More…".to_owned());
             }
+            // Pill widths follow the actual label text (measured with the
+            // pill's medium font), so short words make narrow pills and CJK
+            // labels get the room they need.
+            let dpi = data.dpi;
+            let rail_font = data.fonts[1];
             data.profile_button_widths = visible_labels
                 .iter()
-                .map(|label| chooser_button_width(label))
+                .map(|label| chooser_label_width(label, rail_font, dpi))
                 .collect();
             for (index, name) in visible_labels.iter().enumerate() {
                 let command_id = if index == INLINE_PROFILE_LIMIT {
@@ -711,7 +716,6 @@ mod windows_impl {
             }
             data.choosing_profile = true;
             let anchor = data.anchor;
-            let dpi = data.dpi;
             let size = chooser_size(anchor, &data.profile_button_widths, dpi);
             let origin = chooser_origin(anchor, size, dpi).unwrap_or(anchor);
             let presented = present_popup(self.hwnd, origin, size);
@@ -1153,6 +1157,34 @@ mod windows_impl {
     pub(super) fn chooser_button_width(label: &str) -> i32 {
         ((label.chars().count() as i32).saturating_mul(8) + 20)
             .clamp(CHOOSER_MIN_BUTTON_WIDTH, CHOOSER_MAX_BUTTON_WIDTH)
+    }
+
+    /// Measure a rail pill's width from its actual label with the pill's
+    /// medium font, so proportional and CJK text fit exactly — the
+    /// chars-based estimate cannot do either. Returns the width in logical
+    /// units (the layout scales it again), padded 12 logical px per side.
+    fn chooser_label_width(label: &str, font: HFONT, dpi: u32) -> i32 {
+        if font.0.is_null() {
+            return chooser_button_width(label);
+        }
+        let screen = unsafe { GetDC(None) };
+        if screen.0.is_null() {
+            return chooser_button_width(label);
+        }
+        let wide: Vec<u16> = label.encode_utf16().collect();
+        let mut extent = SIZE::default();
+        let old = unsafe { SelectObject(screen, HGDIOBJ(font.0 as *mut _)) };
+        let measured = unsafe { GetTextExtentPoint32W(screen, &wide, &mut extent) };
+        unsafe {
+            SelectObject(screen, old);
+            ReleaseDC(None, screen);
+        }
+        if !measured.as_bool() || extent.cx <= 0 {
+            return chooser_button_width(label);
+        }
+        let physical = extent.cx + 2 * scale(12, dpi);
+        let logical = (physical * 96 + dpi as i32 / 2) / dpi as i32;
+        logical.clamp(CHOOSER_MIN_BUTTON_WIDTH, CHOOSER_MAX_BUTTON_WIDTH)
     }
 
     pub(super) fn compact_profile_label(name: &str) -> String {
