@@ -1957,7 +1957,7 @@ mod windows_impl {
             let highlight = profile_ids
                 .iter()
                 .position(|id| *id == pending.spec.prompt_id);
-            let admission = ensure_popup(hwnd, state, anchor, None, None, false, false);
+            let admission = ensure_popup(hwnd, state, anchor, None, None, false);
             let popup_id = admission.map(|admission| admission.popup_id);
             let shown = popup_id
                 .and_then(|id| popup_entry_mut(state, id))
@@ -2167,6 +2167,16 @@ mod windows_impl {
             prepared.context(),
             cached_output.as_deref(),
         );
+        // Content is set: only now may the popup become visible. The
+        // staged path presented the default frame to reserve the surface;
+        // this re-present is a no-op for it and the first real frame for
+        // every reused surface.
+        if let Some(entry) = popup_entry_mut(state, surface.popup_id) {
+            if !entry.popup.present_result() && !state.popup_failure_reported {
+                state.popup_failure_reported = true;
+                show_diagnostic(ResidentDiagnostic::ResultWindowUnavailable);
+            }
+        }
 
         // This is the commit point for a candidate replacement: extraction
         // produced a valid target, coordination and RequestGate admitted it,
@@ -2418,17 +2428,13 @@ mod windows_impl {
         destination: Option<popup::PopupId>,
         parent: Option<popup::PopupId>,
         force_new: bool,
-        reveal: bool,
     ) -> Option<PopupAdmission> {
         runtime_trace::record("result_surface_ensure_begin");
         if let Some(id) = destination {
-            let alive = popup_entry_mut(state, id).is_some_and(|entry| {
-                if reveal {
-                    entry.popup.reanchor(anchor)
-                } else {
-                    entry.popup.reanchor_hidden(anchor)
-                }
-            });
+            // Every admission stays hidden: callers set the content first
+            // and present explicitly, so no stale or empty frame ever shows.
+            let alive =
+                popup_entry_mut(state, id).is_some_and(|entry| entry.popup.reanchor_hidden(anchor));
             if alive {
                 return Some(PopupAdmission {
                     popup_id: id,
@@ -2448,13 +2454,8 @@ mod windows_impl {
                 .find(|entry| popup_can_be_reused(entry.popup.is_pinned()))
                 .map(|entry| entry.id)
             {
-                let alive = popup_entry_mut(state, id).is_some_and(|entry| {
-                    if reveal {
-                        entry.popup.reanchor(anchor)
-                    } else {
-                        entry.popup.reanchor_hidden(anchor)
-                    }
-                });
+                let alive = popup_entry_mut(state, id)
+                    .is_some_and(|entry| entry.popup.reanchor_hidden(anchor));
                 if alive {
                     return Some(PopupAdmission {
                         popup_id: id,
@@ -2508,25 +2509,16 @@ mod windows_impl {
         }
 
         let id = allocate_popup_id(state);
-        // With reveal=false the caller replaces the content before the next
-        // presentation (the profile chooser), so the popup must be created
-        // hidden: Popup::show would present result-mode geometry for tens of
-        // milliseconds and flash before the rail appears.
-        let popup = if reveal {
-            match popup::Popup::show(hwnd, id, anchor) {
-                Ok(popup) => popup,
-                Err(_) => {
-                    runtime_trace::record("popup_show_failure");
-                    return None;
-                }
-            }
-        } else {
-            match popup::Popup::stage(hwnd, id, anchor) {
-                Ok(popup) => popup,
-                Err(_) => {
-                    runtime_trace::record("popup_stage_failure");
-                    return None;
-                }
+        // Every new popup is created hidden. Callers set the content first
+        // (chooser rail, loading state, local error) and present explicitly,
+        // so a popup never becomes visible with stale or default content:
+        // Popup::show would present result-mode geometry for tens of
+        // milliseconds and flash before the real content appears.
+        let popup = match popup::Popup::stage(hwnd, id, anchor) {
+            Ok(popup) => popup,
+            Err(_) => {
+                runtime_trace::record("popup_stage_failure");
+                return None;
             }
         };
         state.popups.push(PopupEntry {
@@ -2580,7 +2572,6 @@ mod windows_impl {
             spec.destination_popup_id,
             spec.source_popup_id,
             force_new,
-            true,
         )
         .ok_or(ResultSurfaceError::Unavailable)?;
         let available = admission.staged_entry.as_ref().map_or_else(
@@ -2705,7 +2696,7 @@ mod windows_impl {
         anchor: popup::Point,
         message: &str,
     ) {
-        if let Some(admission) = ensure_popup(hwnd, state, anchor, None, None, false, true) {
+        if let Some(admission) = ensure_popup(hwnd, state, anchor, None, None, false) {
             let mut surface = ResultSurfaceReady {
                 popup_id: admission.popup_id,
                 staged_entry: admission.staged_entry,
@@ -2728,6 +2719,10 @@ mod windows_impl {
                 entry.popup.show_local_error(message);
                 entry.presented_trigger = None;
                 entry.guard_root_window = 0;
+                if !entry.popup.present_result() && !state.popup_failure_reported {
+                    state.popup_failure_reported = true;
+                    show_diagnostic(ResidentDiagnostic::ResultWindowUnavailable);
+                }
             }
             state.active_popup_id = Some(id);
             state.popup_failure_reported = false;

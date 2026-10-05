@@ -75,10 +75,11 @@ mod windows_impl {
     use windows::Win32::Graphics::Gdi::{
         BeginPaint, CreateFontW, CreateRoundRectRgn, CreateSolidBrush, DeleteObject, DrawFocusRect,
         DrawTextW, EndPaint, FillRect, FillRgn, FrameRect, FrameRgn, GetDC, GetMonitorInfoW,
-        GetTextExtentPoint32W, InvalidateRect, MonitorFromPoint, MonitorFromWindow, ReleaseDC,
-        SelectObject, SetBkColor, SetBkMode, SetTextColor, BACKGROUND_MODE, DRAW_TEXT_FORMAT,
-        FONT_CHARSET, FONT_CLIP_PRECISION, FONT_OUTPUT_PRECISION, FONT_QUALITY, HBRUSH, HFONT,
-        HGDIOBJ, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST, TRANSPARENT,
+        GetTextExtentPoint32W, InvalidateRect, MonitorFromPoint, MonitorFromWindow, RedrawWindow,
+        ReleaseDC, SelectObject, SetBkColor, SetBkMode, SetTextColor, BACKGROUND_MODE,
+        DRAW_TEXT_FORMAT, FONT_CHARSET, FONT_CLIP_PRECISION, FONT_OUTPUT_PRECISION, FONT_QUALITY,
+        HBRUSH, HFONT, HGDIOBJ, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST, RDW_ALLCHILDREN,
+        RDW_ERASE, RDW_FRAME, RDW_INVALIDATE, RDW_UPDATENOW, TRANSPARENT,
     };
     use windows::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
@@ -105,8 +106,8 @@ mod windows_impl {
         CS_HREDRAW, CS_VREDRAW, ES_AUTOVSCROLL, ES_MULTILINE, ES_NOHIDESEL, ES_READONLY, GA_ROOT,
         GWLP_USERDATA, GWLP_WNDPROC, GWL_EXSTYLE, GW_OWNER, HMENU, HTBOTTOM, HTBOTTOMLEFT,
         HTBOTTOMRIGHT, HTCLIENT, HTLEFT, HTRIGHT, HTTOP, HTTOPLEFT, HTTOPRIGHT, HWND_TOPMOST,
-        MA_NOACTIVATE, MINMAXINFO, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
-        SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND,
+        MA_NOACTIVATE, MINMAXINFO, SWP_NOACTIVATE, SWP_NOCOPYBITS, SWP_NOMOVE, SWP_NOSIZE,
+        SWP_NOZORDER, SW_HIDE, SW_SHOWNOACTIVATE, WINDOW_STYLE, WM_APP, WM_CLOSE, WM_COMMAND,
         WM_CREATE, WM_DESTROY, WM_DPICHANGED, WM_DRAWITEM, WM_ENTERSIZEMOVE, WM_ERASEBKGND,
         WM_EXITSIZEMOVE, WM_GETMINMAXINFO, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MEASUREITEM,
         WM_MOUSEACTIVATE, WM_MOUSEMOVE, WM_NCCREATE, WM_NCDESTROY, WM_NCHITTEST, WM_NCLBUTTONDOWN,
@@ -568,6 +569,26 @@ mod windows_impl {
             true
         }
 
+        /// Present the result surface with its current content. Callers must
+        /// set the content (loading state, local error, cached output) before
+        /// calling this, so the first visible frame is already meaningful —
+        /// presenting before the content exists flashes a stale or empty
+        /// surface for a vsync.
+        pub fn present_result(&mut self) -> bool {
+            let Some(data) = data_mut(self.hwnd) else {
+                return false;
+            };
+            let dpi = data.dpi;
+            let size = resolve_window_size(self.hwnd, dpi);
+            let origin = origin_for(data.anchor, size).unwrap_or(data.anchor);
+            if !present_popup(self.hwnd, origin, size) {
+                return false;
+            }
+            record_topology(self.hwnd);
+            runtime_trace::record("popup_result_presented");
+            true
+        }
+
         pub fn show_loading(&mut self) {
             let layout = if let Some(data) = data_mut(self.hwnd) {
                 leave_profile_chooser(data);
@@ -963,9 +984,17 @@ mod windows_impl {
     /// native presentation invariants. A successful SetWindowPos call alone
     /// is insufficient: another window manager or a stale HWND can leave the
     /// surface hidden behind the foreground application.
+    ///
+    /// The window must be moved, resized, and fully repainted BEFORE it
+    /// becomes visible. The DWM redirection surface keeps whatever was last
+    /// presented — an old result, or the rail stretched to a result-sized
+    /// window — and showing first flashes that stale frame for one or more
+    /// vsyncs (intermittently, depending on paint timing). SWP_NOCOPYBITS
+    /// discards the blitted old pixels on resize; the synchronous
+    /// RedrawWindow paints window and children into the surface while still
+    /// hidden, so the first visible frame is already the new content.
     fn present_popup(hwnd: HWND, origin: Point, size: (i32, i32)) -> bool {
         unsafe {
-            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
             if SetWindowPos(
                 hwnd,
                 Some(HWND_TOPMOST),
@@ -973,12 +1002,19 @@ mod windows_impl {
                 origin.y,
                 size.0,
                 size.1,
-                SWP_NOACTIVATE | SWP_SHOWWINDOW,
+                SWP_NOACTIVATE | SWP_NOCOPYBITS,
             )
             .is_err()
             {
                 return false;
             }
+            let _ = RedrawWindow(
+                Some(hwnd),
+                None,
+                None,
+                RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN | RDW_UPDATENOW,
+            );
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
             if !IsWindow(Some(hwnd)).as_bool() || !IsWindowVisible(hwnd).as_bool() {
                 return false;
             }
@@ -1402,7 +1438,7 @@ mod windows_impl {
         // spacing, not a blank line between separate blocks.
         let sel_card_top = (header + scale(12, dpi)).max(header);
         let target_top = sel_card_top + scale(8, dpi) + cap_height + scale(6, dpi);
-        let context_top = target_top + preferred_target + scale(2, dpi);
+        let context_top = target_top + preferred_target + scale(1, dpi);
         let sel_card_bottom = context_top + preferred_context + scale(8, dpi);
 
         let result_card_top = (sel_card_bottom + card_gap).max(sel_card_top + scale(48, dpi));
