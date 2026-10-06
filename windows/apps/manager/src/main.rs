@@ -40,11 +40,10 @@ mod windows_app {
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
     use windows::Win32::System::Ole::CF_UNICODETEXT;
     use windows::Win32::UI::Controls::RichEdit::{
-        CFE_BOLD, CFE_EFFECTS, CFE_ITALIC, CFE_STRIKEOUT, CFM_BOLD, CFM_COLOR, CFM_ITALIC,
-        CFM_STRIKEOUT, CHARFORMATW, EM_SETCHARFORMAT, SCF_ALL, SCF_SELECTION,
+        CFE_EFFECTS, CFM_COLOR, CHARFORMATW, EM_SETCHARFORMAT, SCF_ALL,
     };
     use windows::Win32::UI::Controls::{
-        SetWindowTheme, DRAWITEMSTRUCT, EM_SETSEL, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_LISTBOX,
+        SetWindowTheme, DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_LISTBOX,
     };
     use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -57,9 +56,9 @@ mod windows_app {
         MB_ICONWARNING, MB_YESNO, MINMAXINFO, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SW_HIDE,
         SW_SHOW, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DPICHANGED,
         WM_DRAWITEM, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_MEASUREITEM, WM_NOTIFY, WM_PAINT,
-        WM_SETFONT, WM_SETREDRAW, WM_SIZE, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
-        WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU,
-        WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+        WM_SETFONT, WM_SIZE, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN,
+        WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+        WS_VSCROLL,
     };
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslateManager");
@@ -135,7 +134,6 @@ mod windows_app {
     const LB_RESETCONTENT: u32 = 0x0184;
     const LB_GETCURSEL: u32 = 0x0188;
     const LBN_SELCHANGE: usize = 1;
-    const EN_CHANGE: usize = 0x0300;
     const EM_SETBKGNDCOLOR: u32 = 0x0443;
 
     /// msftedit.dll hosts the RICHEDIT50W class used by the markdown-aware
