@@ -1108,12 +1108,16 @@ mod windows_impl {
         }
     }
 
+    /// Popups are a family: interacting with any popup keeps every popup on
+    /// screen, so the user can read, copy, or self-translate across several
+    /// results. Only a press outside the whole popup family dismisses the
+    /// unpinned ones; pinned popups always stay until Retry/Prompt/Pin.
     fn should_dismiss_for_outside_click(
         clicked: Option<popup::PopupId>,
-        candidate: popup::PopupId,
+        _candidate: popup::PopupId,
         pinned: bool,
     ) -> bool {
-        Some(candidate) != clicked && !pinned
+        clicked.is_none() && !pinned
     }
 
     fn popup_can_be_reused(pinned: bool) -> bool {
@@ -1275,15 +1279,17 @@ mod windows_impl {
             dismiss_unpinned_outside(state, clicked_popup);
             runtime_trace::record("popup_outside_click_dismiss");
         }
-        // Popup controls keep their native click behavior. Only completed
-        // result output participates in recursive Hover extraction.
-        let popup_text_hover = raw.kind == windows::Win32::UI::WindowsAndMessaging::WM_MOUSEMOVE
-            && state.hover_enabled
-            && state
-                .popups
-                .iter()
-                .any(|entry| entry.popup.contains_completed_output_point(native_point));
-        if process_id == resident_process_id && !popup_text_hover {
+        // Popup controls keep their native click behavior. A press or move
+        // over a completed result's output participates in recursive
+        // extraction: selection gestures inside the output run the normal
+        // pipeline, so the program works inside result popups too. Buttons,
+        // rail pills, and the selection card never trigger it — the point
+        // must land on the output surface itself.
+        let in_popup_output = state
+            .popups
+            .iter()
+            .any(|entry| entry.popup.contains_completed_output_point(native_point));
+        if process_id == resident_process_id && !in_popup_output {
             return;
         }
         if button_down && raw.kind != WM_LBUTTONDOWN {
@@ -3251,7 +3257,7 @@ mod windows_impl {
         }
 
         #[test]
-        fn outside_click_retains_only_the_clicked_or_pinned_popups() {
+        fn outside_click_dismisses_unpinned_only_when_no_popup_was_clicked() {
             assert!(is_pointer_button_down(WM_LBUTTONDOWN));
             assert!(is_pointer_button_down(WM_RBUTTONDOWN));
             assert!(is_pointer_button_down(WM_MBUTTONDOWN));
@@ -3259,10 +3265,14 @@ mod windows_impl {
             assert!(!is_pointer_button_down(
                 windows::Win32::UI::WindowsAndMessaging::WM_MOUSEMOVE
             ));
+            // A press outside the popup family dismisses unpinned popups…
             assert!(should_dismiss_for_outside_click(None, 1, false));
+            // …but never pinned ones.
             assert!(!should_dismiss_for_outside_click(None, 1, true));
+            // A press on any popup keeps the whole family: the clicked
+            // popup, other unpinned popups, and pinned popups.
             assert!(!should_dismiss_for_outside_click(Some(2), 2, false));
-            assert!(should_dismiss_for_outside_click(Some(2), 1, false));
+            assert!(!should_dismiss_for_outside_click(Some(2), 1, false));
             assert!(!should_dismiss_for_outside_click(Some(2), 1, true));
         }
 
