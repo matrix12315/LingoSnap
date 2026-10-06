@@ -91,8 +91,7 @@ mod windows_impl {
         CFM_FACE, CFM_ITALIC, CFM_SIZE, CFM_STRIKEOUT, CHARFORMATW,
     };
     use windows::Win32::UI::Controls::{
-        SetWindowTheme, DRAWITEMSTRUCT, EM_GETLINECOUNT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_MENU,
-        WM_MOUSELEAVE,
+        SetWindowTheme, DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_MENU, WM_MOUSELEAVE,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
@@ -130,12 +129,11 @@ mod windows_impl {
     const DRAG_BAND_HEIGHT: i32 = HEADER_HEIGHT;
     const CARD_GAP: i32 = 10;
     const CAP_HEIGHT: i32 = 13;
-    // Panes size to their content: one line each plus padding, growing with
-    // the wrapped line count up to MAX_INPUT_LINES, so a long selection is
-    // never invisibly clipped.
-    const TARGET_LINE_HEIGHT: i32 = 18;
-    const CONTEXT_LINE_HEIGHT: i32 = 18;
-    const MAX_INPUT_LINES: i32 = 4;
+    // Fixed pane heights: three target lines and two context lines. Both
+    // panes scroll (visible scrollbar on the target pane), so any selection
+    // length works inside a predictable card.
+    const TARGET_HEIGHT: i32 = 54;
+    const CONTEXT_HEIGHT: i32 = 36;
     const FOOT_HEIGHT: i32 = 60;
     const BUTTON_HEIGHT: i32 = 36;
     const BUTTON_GAP: i32 = 8;
@@ -350,10 +348,6 @@ mod windows_impl {
         /// The context pane holds sentence context for this target. When
         /// false the target pane expands over the whole raw area.
         has_context: bool,
-        /// Wrapped line counts from the last layout: paint and layout must
-        /// agree on the selection card's geometry.
-        target_lines: i32,
-        context_lines: i32,
         /// Only a user close should notify the resident. Replacement and
         /// cancellation destroy the window silently.
         notify_owner: bool,
@@ -419,8 +413,6 @@ mod windows_impl {
                 rail_expanded: false,
                 choosing_profile: false,
                 has_context: false,
-                target_lines: 1,
-                context_lines: 1,
                 notify_owner: true,
                 in_native_move: false,
                 render_pending: false,
@@ -806,25 +798,6 @@ mod windows_impl {
 
         pub fn is_pinned(&self) -> bool {
             data_mut(self.hwnd).is_some_and(|data| data.pinned)
-        }
-
-        /// Test-only: physical pixel heights of the target and context panes.
-        #[cfg(test)]
-        pub fn input_pane_heights_for_test(&self) -> (i32, i32) {
-            let pane_height = |hwnd: HWND| -> i32 {
-                if hwnd.0.is_null() {
-                    return 0;
-                }
-                let mut rect = RECT::default();
-                if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
-                    return 0;
-                }
-                rect.bottom - rect.top
-            };
-            match data_mut(self.hwnd) {
-                Some(data) => (pane_height(data.input), pane_height(data.context_input)),
-                None => (0, 0),
-            }
         }
 
         /// Test-only: current selection-card pane texts and the context flag.
@@ -1493,17 +1466,13 @@ mod windows_impl {
         client_height: i32,
         dpi: u32,
         button_count: i32,
-        target_lines: i32,
-        context_lines: i32,
     ) -> PopupLayout {
         let margin = scale(MARGIN, dpi);
         let header = scale(HEADER_HEIGHT, dpi);
         let cap_height = scale(CAP_HEIGHT, dpi);
         let card_gap = scale(CARD_GAP, dpi);
-        let preferred_target =
-            scale(TARGET_LINE_HEIGHT, dpi).max(1) * target_lines.clamp(1, MAX_INPUT_LINES);
-        let preferred_context =
-            scale(CONTEXT_LINE_HEIGHT, dpi).max(1) * context_lines.clamp(1, MAX_INPUT_LINES);
+        let preferred_target = scale(TARGET_HEIGHT, dpi).max(1);
+        let preferred_context = scale(CONTEXT_HEIGHT, dpi).max(1);
         let button_height = scale(BUTTON_HEIGHT, dpi);
         let foot_height = scale(FOOT_HEIGHT, dpi);
         let icon_size = scale(ICON_SIZE, dpi);
@@ -1614,58 +1583,11 @@ mod windows_impl {
             }
             return;
         }
-        // Pane heights follow the wrapped line counts of the text they
-        // hold, so the complete selection stays visible without scrollbars.
-        // Wrapping depends on the pane's final WIDTH, so both panes are
-        // parked at single-line height in that column first and measured
-        // only afterwards; measuring at a stale width produces bogus counts
-        // and stale overlapping panes.
-        let probe = compute_layout(
-            client.right,
-            client.bottom,
-            dpi,
-            data.buttons.len() as i32,
-            1,
-            1,
-        );
-        let raw_left = probe.margin + scale(12, dpi);
-        let raw_width = probe.content_width - scale(24, dpi);
-        move_child(
-            data.input,
-            raw_left,
-            probe.target_top,
-            raw_width,
-            probe.target_height,
-        );
-        if data.has_context {
-            set_control_visible(data.context_input, true);
-            move_child(
-                data.context_input,
-                raw_left,
-                probe.context_top,
-                raw_width,
-                probe.context_height,
-            );
-        }
-        let target_lines = edit_line_count(data.input);
-        let context_lines = edit_line_count(data.context_input);
-        let (target_lines, context_lines) = if data.has_context {
-            (target_lines, context_lines)
-        } else {
-            (target_lines, target_lines)
-        };
-        data.target_lines = target_lines;
-        data.context_lines = context_lines;
-        let layout = compute_layout(
-            client.right,
-            client.bottom,
-            dpi,
-            data.buttons.len() as i32,
-            target_lines,
-            context_lines,
-        );
+        let layout = compute_layout(client.right, client.bottom, dpi, data.buttons.len() as i32);
         // Selection card: the target pane sits above the muted context pane.
         // Without context the target pane expands over the whole raw area.
+        let raw_left = layout.margin + scale(12, dpi);
+        let raw_width = layout.content_width - scale(24, dpi);
         let raw_bottom = layout.context_top + layout.context_height;
         if data.has_context {
             move_child(
@@ -1743,16 +1665,6 @@ mod windows_impl {
 
     pub(super) fn bounded_input(text: &str) -> String {
         text.chars().take(MAX_INPUT_CHARS).collect()
-    }
-
-    /// Wrapped display line count of a multiline edit control (min 1).
-    fn edit_line_count(hwnd: HWND) -> i32 {
-        if hwnd.0.is_null() {
-            return 1;
-        }
-        let count = unsafe { SendMessageW(hwnd, EM_GETLINECOUNT, Some(WPARAM(0)), Some(LPARAM(0))) }
-            .0 as i32;
-        count.max(1)
     }
 
     pub(super) fn state_text(state: &PopupState) -> &str {
@@ -2355,14 +2267,12 @@ mod windows_impl {
                 | WS_TABSTOP
                 | WS_VSCROLL
                 | WINDOW_STYLE((ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | ES_NOHIDESEL) as u32);
-            // The selection card panes are short (20/18 logical px), far too
-            // small for a native scrollbar to render legibly — it collapses
-            // into stacked arrow buttons. Wheel scrolling still works via
-            // ES_AUTOVSCROLL, so no visible scrollbar on these panes. The
-            // result card keeps its scrollbar; it is tall enough.
+            // The selection panes scroll: three target lines and two context
+            // lines are tall enough for a legible native scrollbar.
             let input_style = WS_CHILD
                 | WS_VISIBLE
                 | WS_TABSTOP
+                | WS_VSCROLL
                 | WINDOW_STYLE((ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL) as u32);
             // msftedit.dll is part of Windows; loading it dynamically keeps the
             // resident independent of a bundled UI runtime. Older systems fall
@@ -2394,7 +2304,7 @@ mod windows_impl {
                     Default::default(),
                     w!("EDIT"),
                     w!(""),
-                    WS_CHILD | WINDOW_STYLE((ES_MULTILINE | ES_READONLY) as u32),
+                    WS_CHILD | WS_VSCROLL | WINDOW_STYLE((ES_MULTILINE | ES_READONLY) as u32),
                     0,
                     0,
                     1,
@@ -3011,17 +2921,7 @@ mod windows_impl {
             let _ = FrameRect(hdc, &client, border);
             let _ = DeleteObject(border.into());
         }
-        let (paint_target_lines, paint_context_lines) = data_mut(hwnd)
-            .map(|data| (data.target_lines, data.context_lines))
-            .unwrap_or((1, 1));
-        let layout = compute_layout(
-            client.right,
-            client.bottom,
-            dpi,
-            5,
-            paint_target_lines,
-            paint_context_lines,
-        );
+        let layout = compute_layout(client.right, client.bottom, dpi, 5);
         let card_radius = scale(10, dpi).max(6);
         let left = layout.margin;
         let right = client.right - layout.margin;
@@ -4070,20 +3970,6 @@ plain - text
         assert_eq!(context, "");
         assert!(!has_context);
 
-        // The target pane grows with its wrapped line count: a long
-        // selection is fully visible instead of clipped after one line.
-        popup.set_input("word", None);
-        popup.show_loading();
-        let (short_height, _) = popup.input_pane_heights_for_test();
-        let long_target = "The quick brown fox jumps over the lazy dog. ".repeat(6);
-        popup.set_input(&long_target, None);
-        popup.show_loading();
-        let (long_height, _) = popup.input_pane_heights_for_test();
-        assert!(
-            long_height >= short_height * 2,
-            "target pane must grow for wrapped lines: short={short_height} long={long_height}"
-        );
-
         popup.dismiss();
         unsafe {
             let _ = DestroyWindow(parent);
@@ -4717,7 +4603,7 @@ plain - text
     fn layout_stacks_selection_result_cards_over_left_aligned_footer() {
         use super::windows_impl::{compute_layout, footer_button_width};
 
-        let base = compute_layout(440, 480, 96, 5, 1, 1);
+        let base = compute_layout(440, 480, 96, 5);
         // Header, Selection card, Result card, footer, in order.
         assert!(base.header_height < base.sel_card_top);
         assert!(base.sel_card_bottom < base.result_card_top);
@@ -4730,7 +4616,7 @@ plain - text
         assert!(base.target_top < base.context_top);
         assert!(base.context_top + base.context_height <= base.sel_card_bottom);
         // The result pane absorbs extra height; the Selection card keeps its size.
-        let tall = compute_layout(440, 640, 96, 5, 1, 1);
+        let tall = compute_layout(440, 640, 96, 5);
         assert!(tall.output_height > base.output_height);
         assert_eq!(
             tall.sel_card_bottom - tall.sel_card_top,
