@@ -1625,6 +1625,15 @@ mod windows_impl {
                     source_root_window as *mut core::ffi::c_void,
                 ));
             }
+            // SetForegroundWindow resets thread focus to the popup window:
+            // put keyboard focus back on the output control.
+            if let Some(entry) = state
+                .popups
+                .iter()
+                .find(|entry| entry.popup.is_root_window(source_root_window))
+            {
+                entry.popup.focus_output();
+            }
             return;
         }
         let _ = now;

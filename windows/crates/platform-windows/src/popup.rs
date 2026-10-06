@@ -877,6 +877,19 @@ mod windows_impl {
             }
         }
 
+        /// Give the output control keyboard focus. Used after the resident
+        /// hands the foreground to the popup following an in-popup
+        /// selection, so a following Ctrl+C reaches this control.
+        pub fn focus_output(&self) {
+            if let Some(data) = data_mut(self.hwnd) {
+                if !data.output.0.is_null() {
+                    unsafe {
+                        let _ = SetFocus(Some(data.output));
+                    }
+                }
+            }
+        }
+
         pub fn is_root_window(&self, root: isize) -> bool {
             !self.hwnd.0.is_null() && self.hwnd.0 as isize == root
         }
