@@ -59,10 +59,6 @@
     --ledger:   #7CBE97;
     --desk:     #14110E;
     --btn-fill: rgba(255, 255, 255, .05);
-    --btn-primary-bg:
-      radial-gradient(120% 70% at 18% 0%, rgba(255, 251, 243, .22), rgba(255, 251, 243, 0) 45%),
-      linear-gradient(180deg, rgba(240, 233, 219, .92), rgba(214, 204, 188, .88));
-    --btn-primary-ink: #221D16;
     --btn-danger-fill: rgba(224, 101, 74, .12);
     --panel-fill: rgba(255, 255, 255, .04);
     --rim: rgba(255, 244, 230, .22);
@@ -187,7 +183,7 @@
   /* ——— Quotation: target + context in one glass panel (button material) ——— */
   .sourcepanel {
     margin: 12px 14px 2px;
-    padding: 13px 16px 12px;
+    padding: 8px 14px 8px;
     border-radius: 8px;
     background: var(--panel-fill);
     -webkit-backdrop-filter: blur(1px) saturate(1.05);
@@ -219,20 +215,13 @@
   .target::after  { content: "”"; color: var(--seal); font-size: 17px; }
 
   .context {
-    margin-top: 9px;
-    padding: 8px 0 0 20px;
+    margin-top: 6px;
+    padding: 6px 0 0 20px;
     border-top: 1px solid var(--rule-soft);
     font: 12px/1.6 var(--ui);
     color: var(--ink-soft);
     white-space: pre-wrap;
     word-break: break-word;
-  }
-  .context .from {
-    font: 500 10px var(--ui);
-    letter-spacing: .09em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-    margin-right: 6px;
   }
 
   .rulemark {
@@ -244,46 +233,43 @@
   .rulemark i { font: 12px var(--serif); font-style: normal; color: var(--seal); }
 
   /* ——— Result manuscript ——— */
-  .manuscript { padding: 132px 18px 46px 20px; max-height: 500px; overflow: auto; }
+  .manuscript { padding: 114px 18px 46px 20px; max-height: 500px; overflow: auto; scrollbar-width: none; }
+  .manuscript::-webkit-scrollbar { display: none; }
 
   .sec { padding: 8px 0 10px; }
   .sec + .sec { border-top: 1px solid var(--rule-soft); }
 
   .sec > h3 {
     display: flex; align-items: baseline; gap: 8px;
-    font: 600 10.5px var(--ui);
-    letter-spacing: .1em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
+    font: 600 14.5px/1.3 var(--serif);
+    color: var(--ink);
     margin-bottom: 7px;
   }
   .sec > h3 .rm {
-    font: 12.5px var(--serif);
+    font: 600 15px var(--serif);
     color: var(--seal);
-    letter-spacing: 0;
-    text-transform: none;
   }
-  .sec > h3 .rm:lang(zh) { font-family: var(--cjk); font-weight: 400; }
 
+  /* Latin runs take Georgia; CJK falls through to SimSun — no typewriter Latin. */
   .trans {
-    font: 16px/1.6 var(--cjk);
-    letter-spacing: .02em;
+    font: 17px/1.7 var(--serif);
+    letter-spacing: .01em;
   }
-  .trans .alt { color: var(--ink-soft); font-size: 13.5px; }
+  .trans .alt { font: 500 13px var(--mono); color: var(--ink-soft); }
   .trans .pair-en { font: 14px/1.55 var(--serif); color: var(--ink-soft); }
 
-  .word { padding: 6px 0; }
+  .word { padding: 5px 0 6px; }
   .word + .word { border-top: 1px solid var(--rule-soft); }
-  .word .lemma { font: 600 13.5px var(--serif); }
+  .word .lemma { font: 600 14px var(--serif); }
   .word .ipa { font: 12px var(--mono); color: var(--seal); margin-left: 7px; letter-spacing: .01em; }
   .word .pos { font: italic 12px var(--serif); color: var(--ink-faint); margin-left: 6px; }
-  .word .sense { font: 13px/1.65 var(--cjk); color: var(--ink); margin-top: 2px; }
+  .word .sense { font: 13.5px/1.7 var(--serif); color: var(--ink); margin-top: 2px; }
 
-  .idiom { display: flex; gap: 8px; padding: 4.5px 0; font: 13px/1.6 var(--cjk); }
-  .idiom .en { font: 13px var(--serif); white-space: nowrap; }
+  .idiom { display: flex; gap: 8px; padding: 4.5px 0; font: 13.5px/1.6 var(--serif); }
+  .idiom .en { font: inherit; font-weight: 400; white-space: nowrap; }
   .idiom .dash { color: var(--rule); }
 
-  .fineprint { font: 12px/1.6 var(--cjk); color: var(--ink-soft); }
+  .fineprint { font: italic 12.5px/1.6 var(--serif); color: var(--ink-soft); }
 
   .checkline { display: flex; align-items: baseline; gap: 7px; font: 12.5px/1.6 var(--ui); color: var(--ink-soft); }
   .checkline .tick { color: var(--ledger); font: 600 11px var(--ui); letter-spacing: .05em; }
@@ -297,7 +283,7 @@
     margin: 2px 0 4px;
   }
   .manuscript ul li, .houtput ul li {
-    font: 13px/1.65 var(--cjk);
+    font: 13.5px/1.7 var(--serif);
     padding: 2px 0 2px 16px;
     position: relative;
   }
@@ -332,40 +318,6 @@
     font: 12.5px var(--ui);
     padding: 5px 8px 5px 0;
     border-bottom: 1px solid var(--rule-soft);
-  }
-
-  /* The seal that closes the fair copy — set at the end, like a letter's signature */
-  .seal-done {
-    position: absolute;
-    right: 16px; bottom: 58px;
-    z-index: 1;
-    pointer-events: none;
-  }
-  .seal-done .stamp {
-    position: relative;
-    width: 42px; height: 42px;
-    border-radius: 6px;
-    background: var(--seal);
-    color: var(--paper);
-    font: 23px/1 var(--cjk);
-    display: grid; place-items: center;
-    box-shadow: inset 0 0 0 1.5px rgba(255, 244, 230, .28), 0 2px 6px rgba(30, 20, 10, .22);
-    opacity: .92;
-    animation: stamp .55s cubic-bezier(.2, .8, .3, 1) 1s both;
-  }
-  .seal-done small {
-    position: absolute; bottom: 3px;
-    font: 5.5px/1 var(--ui); letter-spacing: .18em;
-    opacity: .8;
-  }
-  @keyframes stamp {
-    0%   { opacity: 0; transform: scale(1.7) rotate(-11deg); }
-    55%  { opacity: 1; transform: scale(.94) rotate(-3deg); }
-    100% { opacity: .92; transform: scale(1) rotate(-3deg); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .seal-done .stamp { animation: none; }
-    .caret { animation: none; }
   }
 
   /* ——— Footer actions ——— */
@@ -416,48 +368,10 @@
   }
   .btn:active { transform: scale(.97); filter: brightness(.985); }
   .btn:disabled { filter: saturate(.6); opacity: .55; pointer-events: none; }
-  .btn.primary {
-    color: var(--btn-primary-ink);
-    font-weight: 600;
-    background: var(--btn-primary-bg);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 244, 230, .30),
-      inset 0 2px 8px rgba(255, 244, 230, .16),
-      inset 0 -1px 0 rgba(0, 0, 0, .20),
-      0 1px 2px rgba(15, 12, 8, .16),
-      0 8px 20px rgba(15, 12, 8, .22);
-  }
-  .btn.primary:hover { filter: brightness(1.09); }
-  .btn.primary:active { filter: brightness(.97); }
-  .btn.primary.copied {
-    background: linear-gradient(180deg, rgba(72, 122, 96, .95), rgba(61, 107, 82, .93));
-    box-shadow:
-      inset 0 1px 0 rgba(242, 246, 240, .28),
-      inset 0 -1px 0 rgba(0, 0, 0, .16),
-      0 1px 2px rgba(15, 12, 8, .16),
-      0 8px 20px rgba(15, 12, 8, .20);
-  }
-  .btn.danger {
-    color: var(--seal-deep);
-    background:
-      radial-gradient(120% 70% at 18% 0%, rgba(255, 255, 255, .22), rgba(255, 255, 255, 0) 45%),
-      var(--btn-danger-fill);
-    box-shadow:
-      inset 0 0 0 1.5px rgba(255, 248, 244, .8),
-      inset 0 2px 10px rgba(143, 46, 29, .06),
-      0 0 0 1px rgba(143, 46, 29, .22),
-      0 2px 8px rgba(143, 46, 29, .10),
-      0 12px 28px rgba(143, 46, 29, .14);
-  }
-  .btn.danger:hover {
-    filter: brightness(1.02);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 248, 244, .95),
-      inset 0 -1px 0 rgba(143, 46, 29, .10),
-      0 0 0 1px rgba(143, 46, 29, .24),
-      0 2px 4px rgba(143, 46, 29, .10),
-      0 10px 24px rgba(143, 46, 29, .16);
-  }
+  /* Primary is the same glass as every button — only weight 600 marks it. */
+  .btn.primary { font-weight: 600; }
+  /* One glass material, one smoked emphasis — semantics live in text color. */
+  .btn.danger { color: var(--seal-deep); }
   .btn.sm { height: 30px; padding: 0 13px; font-size: 12px; }
   .foot .push { margin-left: auto; }
   .btn svg { flex-shrink: 0; }
@@ -501,22 +415,14 @@
   .rmore { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
   .rmenu {
     background: var(--paper);
-    border-radius: 8px;
+    border-radius: 10px;
     box-shadow: var(--lift);
-    padding: 4px;
+    padding: 5px 6px;
     min-width: 128px;
-    align-self: flex-end;   /* hangs beneath the More… pill */
+    align-self: flex-end;
+    display: flex; flex-direction: column; gap: 2px;
   }
-  .rmenu div {
-    display: flex; align-items: baseline; gap: 8px;
-    padding: 5px 10px;
-    border-radius: 5px;
-    font: 12px var(--ui);
-    color: var(--ink);
-  }
-  .rmenu div:hover { background: var(--paper-2); }
-  .rmenu .hot { background: var(--paper-2); color: var(--seal-deep); font-weight: 600; }
-  .rmenu .hot::before { content: "※"; font: 11px var(--serif); color: var(--seal); }
+  .rmenu .rpill { width: 100%; justify-content: flex-start; }
 
   /* ——— Streaming state ——— */
   .caret {

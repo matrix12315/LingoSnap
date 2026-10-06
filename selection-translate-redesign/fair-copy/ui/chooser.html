@@ -24,18 +24,18 @@
       <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg>
     </button>
   </div>
-  <div class="rmenu" role="menu" aria-label="More profiles">
-    <div class="hot" role="menuitem">Contextual</div>
-    <div role="menuitem">Word</div>
-    <div role="menuitem">Wiki</div>
-    <div role="menuitem">Rewrite</div>
-  </div>
+  <div class="rmenu">
+      <button class="rpill" type="button" role="menuitem">Contextual</button>
+      <button class="rpill" type="button" role="menuitem">Word</button>
+      <button class="rpill" type="button" role="menuitem">Wiki</button>
+      <button class="rpill" type="button" role="menuitem">Rewrite</button>
+    </div>
 </div>
 
 <script>
-  document.querySelectorAll('#chooser .rpill').forEach(pill => {
+  document.querySelectorAll("#chooser .rail .rpill").forEach(pill => {
     pill.addEventListener('click', () => {
-      document.querySelectorAll('#chooser .rpill').forEach(p => p.classList.remove('on'));
+      document.querySelectorAll("#chooser .rail .rpill").forEach(p => p.classList.remove('on'));
       pill.classList.add('on');
     });
   });
