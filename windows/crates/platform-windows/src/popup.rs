@@ -132,8 +132,8 @@ mod windows_impl {
     // Fixed pane heights: three target lines and two context lines. Both
     // panes scroll (visible scrollbar on the target pane), so any selection
     // length works inside a predictable card.
-    const TARGET_HEIGHT: i32 = 54;
-    const CONTEXT_HEIGHT: i32 = 36;
+    const TARGET_HEIGHT: i32 = 36;
+    const CONTEXT_HEIGHT: i32 = 18;
     const FOOT_HEIGHT: i32 = 60;
     const BUTTON_HEIGHT: i32 = 36;
     const BUTTON_GAP: i32 = 8;
