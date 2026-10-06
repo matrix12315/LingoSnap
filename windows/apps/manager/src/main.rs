@@ -42,7 +42,7 @@ mod windows_app {
     use windows::Win32::System::Ole::CF_UNICODETEXT;
     use windows::Win32::UI::Controls::RichEdit::{
         CFE_BOLD, CFE_EFFECTS, CFE_ITALIC, CFE_STRIKEOUT, CFM_BOLD, CFM_COLOR, CFM_ITALIC,
-        CFM_STRIKEOUT, CHARFORMATW, EM_SETCHARFORMAT, SCF_SELECTION,
+        CFM_STRIKEOUT, CHARFORMATW, EM_SETCHARFORMAT, SCF_ALL, SCF_SELECTION,
     };
     use windows::Win32::UI::Controls::{
         SetWindowTheme, DRAWITEMSTRUCT, EM_SETSEL, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_LISTBOX,
@@ -138,6 +138,7 @@ mod windows_app {
     const LBN_SELCHANGE: usize = 1;
     const EN_CHANGE: usize = 0x0300;
     const EM_EXGETSEL: u32 = 0x0434;
+    const EM_SETBKGNDCOLOR: u32 = 0x0443;
 
     /// msftedit.dll hosts the RICHEDIT50W class used by the markdown-aware
     /// fields. Loaded once per process; when missing those fields fall back
@@ -1595,6 +1596,31 @@ mod windows_app {
         }
         h.history_output =
             add_readonly_rich_edit(hwnd, &mut h, Some(View::History), Slot::HistoryOutput, true)?;
+        // RichEdit ignores WM_CTLCOLOREDIT: its dark surface and ink must be
+        // set through its own messages or it renders as a white box.
+        for rich in [h.system_prompt, h.user_template, h.history_output] {
+            unsafe {
+                let _ = SendMessageW(
+                    rich,
+                    EM_SETBKGNDCOLOR,
+                    Some(WPARAM(0)),
+                    Some(LPARAM(MANAGER_BG.0 as isize)),
+                );
+                let ink = CHARFORMATW {
+                    cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
+                    dwMask: CFM_COLOR,
+                    dwEffects: CFE_EFFECTS(0),
+                    crTextColor: TEXT,
+                    ..Default::default()
+                };
+                let _ = SendMessageW(
+                    rich,
+                    EM_SETCHARFORMAT,
+                    Some(WPARAM(SCF_ALL as usize)),
+                    Some(LPARAM(&ink as *const CHARFORMATW as isize)),
+                );
+            }
+        }
         add_label(
             hwnd,
             &mut h,

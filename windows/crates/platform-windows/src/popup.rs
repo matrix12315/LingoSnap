@@ -350,6 +350,10 @@ mod windows_impl {
         /// The context pane holds sentence context for this target. When
         /// false the target pane expands over the whole raw area.
         has_context: bool,
+        /// Wrapped line counts from the last layout: paint and layout must
+        /// agree on the selection card's geometry.
+        target_lines: i32,
+        context_lines: i32,
         /// Only a user close should notify the resident. Replacement and
         /// cancellation destroy the window silently.
         notify_owner: bool,
@@ -415,6 +419,8 @@ mod windows_impl {
                 rail_expanded: false,
                 choosing_profile: false,
                 has_context: false,
+                target_lines: 1,
+                context_lines: 1,
                 notify_owner: true,
                 in_native_move: false,
                 render_pending: false,
@@ -1648,6 +1654,8 @@ mod windows_impl {
         } else {
             (target_lines, target_lines)
         };
+        data.target_lines = target_lines;
+        data.context_lines = context_lines;
         let layout = compute_layout(
             client.right,
             client.bottom,
@@ -3004,7 +3012,17 @@ mod windows_impl {
             let _ = FrameRect(hdc, &client, border);
             let _ = DeleteObject(border.into());
         }
-        let layout = compute_layout(client.right, client.bottom, dpi, 5, 1, 1);
+        let (paint_target_lines, paint_context_lines) = data_mut(hwnd)
+            .map(|data| (data.target_lines, data.context_lines))
+            .unwrap_or((1, 1));
+        let layout = compute_layout(
+            client.right,
+            client.bottom,
+            dpi,
+            5,
+            paint_target_lines,
+            paint_context_lines,
+        );
         let card_radius = scale(10, dpi).max(6);
         let left = layout.margin;
         let right = client.right - layout.margin;
