@@ -2550,15 +2550,14 @@ mod windows_impl {
                     data.close_icon = icon;
                 }
             }
-            // Target pane uses the mono target face so the extracted target
-            // reads as primary data; the context pane and result use the
-            // body face.
-            if !data.input.0.is_null() && !data.fonts[3].0.is_null() {
+            // Target pane uses the body face so the selection card reads
+            // like the result card; the context pane stays body + muted.
+            if !data.input.0.is_null() && !data.fonts[0].0.is_null() {
                 unsafe {
                     let _ = windows::Win32::UI::WindowsAndMessaging::SendMessageW(
                         data.input,
                         0x0030,
-                        Some(WPARAM(data.fonts[3].0 as usize)),
+                        Some(WPARAM(data.fonts[0].0 as usize)),
                         Some(LPARAM(1)),
                     );
                 }
