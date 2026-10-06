@@ -106,6 +106,6 @@
     el.style.backdropFilter = 'url(#ll-' + id + ')';
   };
 
-  document.querySelectorAll('.btn, .rpill, .mnav button, .iconbtn')
+  document.querySelectorAll('.btn, .rpill, .mnav button, .iconbtn, .sourcepanel')
     .forEach((el, i) => buildFilter(el, i));
 })();

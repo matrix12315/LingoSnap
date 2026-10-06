@@ -30,6 +30,7 @@
       linear-gradient(180deg, rgba(66, 59, 48, .88), rgba(34, 29, 22, .84));
     --btn-primary-ink: var(--paper);
     --btn-danger-fill: rgba(255, 240, 233, .14);
+    --panel-fill: rgba(255, 253, 247, .08);
     --rim: rgba(255, 255, 252, .75);
     --inner-shade: rgba(34, 29, 22, .05);
     --edge: rgba(34, 29, 22, .16);
@@ -63,6 +64,7 @@
       linear-gradient(180deg, rgba(240, 233, 219, .92), rgba(214, 204, 188, .88));
     --btn-primary-ink: #221D16;
     --btn-danger-fill: rgba(224, 101, 74, .12);
+    --panel-fill: rgba(255, 255, 255, .04);
     --rim: rgba(255, 244, 230, .22);
     --inner-shade: rgba(0, 0, 0, .2);
     --edge: rgba(0, 0, 0, .4);
@@ -182,10 +184,30 @@
   .iconbtn[aria-pressed="true"] { color: var(--seal); }
   .iconbtn svg { display: block; }
 
-  /* ——— Quotation: target + context ——— */
-  .quote { padding: 14px 18px 12px 20px; }
+  /* ——— Quotation: target + context in one glass panel (button material) ——— */
+  .sourcepanel {
+    margin: 12px 14px 2px;
+    padding: 13px 16px 12px;
+    border-radius: 8px;
+    background: var(--panel-fill);
+    -webkit-backdrop-filter: blur(1px) saturate(1.05);
+    backdrop-filter: blur(1px) saturate(1.05);
+    box-shadow:
+      inset 0 0 0 1.5px var(--rim),
+      inset 0 2px 10px var(--inner-shade),
+      0 0 0 1px var(--edge),
+      0 2px 8px rgba(15, 12, 8, .08);
+  }
+  /* Floating variant: hovers over the scrolling manuscript — the result text
+     passes beneath it and is covered by the glass as you scroll. */
+  .sourcepanel.float {
+    position: absolute;
+    top: 62px; left: 14px; right: 14px;
+    margin: 0;
+    z-index: 2;
+  }
   .target {
-    font: 15px/1.62 var(--serif);
+    font: 500 14.5px/1.55 var(--serif);
     letter-spacing: .005em;
     padding-left: 20px;
     text-indent: -20px;
@@ -197,8 +219,8 @@
   .target::after  { content: "”"; color: var(--seal); font-size: 17px; }
 
   .context {
-    margin-top: 10px;
-    padding: 9px 0 0 20px;
+    margin-top: 9px;
+    padding: 8px 0 0 20px;
     border-top: 1px solid var(--rule-soft);
     font: 12px/1.6 var(--ui);
     color: var(--ink-soft);
@@ -222,7 +244,7 @@
   .rulemark i { font: 12px var(--serif); font-style: normal; color: var(--seal); }
 
   /* ——— Result manuscript ——— */
-  .manuscript { padding: 12px 18px 52px 20px; max-height: 480px; overflow: auto; }
+  .manuscript { padding: 132px 18px 46px 20px; max-height: 500px; overflow: auto; }
 
   .sec { padding: 8px 0 10px; }
   .sec + .sec { border-top: 1px solid var(--rule-soft); }
@@ -269,6 +291,49 @@
   .reason { font: italic 12.5px/1.65 var(--serif); color: var(--ink-soft); }
   .reason code { font: 11.5px var(--mono); color: var(--seal); font-style: normal; }
 
+  /* Any markdown maps into the manuscript: lists, emphasis, quotes, code. */
+  .manuscript ul, .houtput ul {
+    list-style: none;
+    margin: 2px 0 4px;
+  }
+  .manuscript ul li, .houtput ul li {
+    font: 13px/1.65 var(--cjk);
+    padding: 2px 0 2px 16px;
+    position: relative;
+  }
+  .manuscript ul li::before, .houtput ul li::before {
+    content: "—";
+    position: absolute; left: 0;
+    color: var(--seal);
+  }
+  .manuscript strong, .houtput strong { font-weight: 600; }
+  .manuscript blockquote, .houtput blockquote {
+    margin: 4px 0;
+    padding: 3px 0 3px 12px;
+    border-left: 1px solid var(--rule);
+    color: var(--ink-soft);
+    font-style: italic;
+  }
+  .manuscript table, .houtput table {
+    width: 100%;
+    border-collapse: collapse;
+    font: 12px/1.5 var(--ui);
+    margin: 2px 0 4px;
+  }
+  .manuscript th, .houtput th {
+    font: 600 10.5px var(--ui);
+    letter-spacing: .08em; text-transform: uppercase;
+    color: var(--ink-faint);
+    text-align: left;
+    padding: 4px 8px 4px 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .manuscript td, .houtput td {
+    font: 12.5px var(--ui);
+    padding: 5px 8px 5px 0;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+
   /* The seal that closes the fair copy — set at the end, like a letter's signature */
   .seal-done {
     position: absolute;
@@ -304,13 +369,14 @@
   }
 
   /* ——— Footer actions ——— */
-  /* The action bar floats over the manuscript's bottom edge — the liquid lens
-     needs content beneath it to bend. The seal rests just above the bar. */
+  /* The action buttons float over the manuscript's bottom edge — the glass
+     buttons are the only material here; the text bends beneath them. The
+     seal rests just above the bar. */
   .foot {
     display: flex; align-items: center; gap: 6px;
-    padding: 0 6px;
-    position: absolute;
-    left: 12px; right: 12px; bottom: 10px;
+    padding: 0 14px 12px 20px;
+    margin-top: -30px;
+    position: relative;
     z-index: 2;
   }
   /* Liquid glass — action chrome only; warm glass pressed over paper,
@@ -349,7 +415,7 @@
       0 14px 32px rgba(15, 12, 8, .18);
   }
   .btn:active { transform: scale(.97); filter: brightness(.985); }
-  .btn:disabled { filter: saturate(.6); }
+  .btn:disabled { filter: saturate(.6); opacity: .55; pointer-events: none; }
   .btn.primary {
     color: var(--btn-primary-ink);
     font-weight: 600;
@@ -493,21 +559,20 @@
     background: var(--ledger); display: block;
   }
 
-  .mbody { display: flex; min-height: 470px; }
+  .mbody { display: block; }
   .mnav {
-    width: 176px; flex-shrink: 0;
-    border-right: 1px solid var(--rule-soft);
-    padding: 14px 8px;
+    display: flex; align-items: center; gap: 6px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--rule-soft);
     background: var(--nav-bg);
   }
   .mnav button {
     display: flex; align-items: baseline; gap: 8px;
-    width: 100%;
     border: none;
     text-align: left;
     font: 13px var(--ui);
     color: var(--ink);
-    padding: 8px 12px;
+    padding: 7px 14px;
     border-radius: 6px;
     background:
       radial-gradient(120% 70% at 18% 0%, var(--glare1), rgba(255, 255, 255, 0) 45%),
@@ -530,9 +595,8 @@
       0 2px 8px rgba(15, 12, 8, .16);
   }
   .mnav button.on .mark { visibility: visible; }
-  .mnav .foot-note { margin-top: 26px; padding: 0 12px; font-size: 11.5px; color: var(--ink-faint); line-height: 1.6; }
 
-  .mpage { flex: 1; min-width: 0; padding: 22px 28px 26px; overflow: auto; max-height: 560px; }
+  .mpage { padding: 22px 28px 26px; overflow: auto; max-height: 560px; }
   .mpage > h2, .pagehead h2 { font: 600 21px/1.3 var(--serif); letter-spacing: .005em; }
   .mpage > .sub { font-size: 12.5px; color: var(--ink-soft); margin: 3px 0 18px; }
   .pagehead { display: flex; align-items: baseline; gap: 12px; }
@@ -556,10 +620,76 @@
   }
   .group > .glabel .rm { font: 12px var(--serif); color: var(--seal); margin-right: 7px; text-transform: none; }
 
-  .frow { display: grid; grid-template-columns: 130px 1fr; gap: 12px; align-items: center; margin-bottom: 9px; }
-  .frow.top { align-items: start; }
-  .frow.top > label { padding-top: 8px; }
-  .frow > label { font-size: 12px; color: var(--ink-soft); }
+  /* Field anatomy: label above input, light function hint beneath. */
+  .fields2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; }
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .field > label {
+    display: flex; align-items: baseline; gap: 6px;
+    font: 500 11.5px var(--ui);
+    color: var(--ink-soft);
+  }
+  .fhint { font: 11px/1.45 var(--ui); color: var(--ink-faint); }
+  .field.span2 { grid-column: 1 / -1; }
+  /* Custom dropdown — native option lists can't wear the paper style. */
+  .pidbtn { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; cursor: pointer; }
+  .pidbtn svg { flex-shrink: 0; transition: transform .15s ease; }
+  .select.open .pidbtn svg { transform: rotate(180deg); }
+  .pmenu {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+    z-index: 6;
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    box-shadow: var(--lift);
+    padding: 4px;
+  }
+  .pmenu .pitem {
+    padding: 6px 10px;
+    border-radius: 5px;
+    font: 12px var(--ui);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .pmenu .pitem:hover { background: var(--paper-2); }
+  .pmenu .pitem.on { color: var(--seal-deep); }
+  .pmenu .pitem.on::before { content: "※ "; color: var(--seal); }
+
+  /* Profiles order — the user arranges the chooser rail. */
+  .orderlist {
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .orderrow {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 8px 6px 12px;
+    background: var(--paper);
+  }
+  .ogrip {
+    display: inline-flex; align-items: center;
+    color: var(--ink-faint);
+    cursor: grab;
+    padding: 2px 4px 2px 0;
+  }
+  .ogrip:hover { color: var(--ink-soft); }
+  .ogrip:active { cursor: grabbing; }
+  .orderrow.drop-above { box-shadow: inset 0 2px 0 var(--seal); }
+  .orderrow.drop-below { box-shadow: inset 0 -2px 0 var(--seal); }
+  .orderrow + .orderrow, .odivider + .orderrow { border-top: 1px solid var(--rule-soft); }
+  .orderrow .oname { font: 600 13px var(--serif); }
+  .orderrow .oid { font: 11px var(--mono); color: var(--ink-faint); }
+  .orderrow .omove { margin-left: auto; display: flex; gap: 2px; }
+  .orderrow .iconbtn { width: 22px; height: 22px; border-radius: 4px; }
+  .iconbtn:disabled { opacity: .35; }
+  .odivider {
+    font: 500 9.5px var(--mono);
+    letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-faint);
+    padding: 3px 12px;
+    background: var(--paper-2);
+  }
+  .ogrip svg { display: block; }
 
   .input {
     caret-color: var(--seal);
@@ -622,8 +752,16 @@
   .edcol .input.area { flex: 1; min-height: 150px; }
 
   /* History */
-  .hbar { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; margin-bottom: 8px; }
-  .hfilters { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+  /* History toolbar — search grows, filters and refresh ride the same row. */
+  .htoolbar { display: flex; gap: 8px; margin-bottom: 14px; }
+  .hsearch { position: relative; flex: 1; min-width: 0; }
+  .hsearch svg {
+    position: absolute; left: 10px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--ink-faint);
+  }
+  .hsearch .input { padding-left: 28px; }
+  .htoolbar .select { width: 128px; flex-shrink: 0; }
   .hsplit { display: grid; grid-template-columns: 272px 1fr; gap: 14px; align-items: start; }
   .hlist {
     border: 1px solid var(--rule);
@@ -632,47 +770,34 @@
     overflow: auto;
     max-height: 330px;
   }
-  .hitem { padding: 9px 12px; border-bottom: 1px solid var(--rule-soft); cursor: pointer; }
+  .hitem { padding: 8px 12px 9px; border-bottom: 1px solid var(--rule-soft); cursor: pointer; }
   .hitem:last-child { border-bottom: none; }
   .hitem:hover { background: var(--paper-2); }
   .hitem.on { background: var(--paper-2); }
-  .hitem.on .t {
-    text-decoration: underline;
-    text-decoration-color: var(--seal);
-    text-decoration-thickness: 1.5px;
-    text-underline-offset: 3px;
+  .hitem.on .ht::before { content: "※ "; color: var(--seal); }
+  .htop { display: flex; align-items: baseline; gap: 8px; }
+  .ht { font: 600 13px var(--serif); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .htime { font: 11px var(--serif); color: var(--ink-faint); }
+  .hp { font: 12px var(--cjk); color: var(--ink-soft); margin-top: 1px; }
+  .hmeta { display: flex; gap: 8px; margin-top: 4px; }
+  .hprof {
+    font: 500 9.5px var(--mono);
+    letter-spacing: .06em; text-transform: uppercase;
+    color: var(--seal);
   }
-  .hitem .t { font: 600 13px var(--serif); }
-  .hitem .p { font: 12px var(--cjk); color: var(--ink-soft); margin-top: 1px; }
-  .hitem .m { font: 11px var(--serif); color: var(--ink-faint); margin-top: 3px; }
-  .hitem .m b { color: var(--seal); font-weight: 500; font-family: var(--ui); font-size: 10.5px; letter-spacing: .03em; }
+  .hsrc { font: 10px var(--ui); color: var(--ink-faint); }
 
-  .hdetail .quote { padding: 12px 14px; border: 1px solid var(--rule); border-radius: 6px; background: #FBF8F1; }
+  .hhead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .hhead .htime { font: 11px var(--serif); color: var(--ink-faint); }
+  .hdetail .quote { padding: 12px 14px; border: 1px solid var(--rule); border-radius: 6px; background: var(--raised); }
   .hdetail .quote .context { border-top: none; padding-left: 20px; }
-  .outwrap { margin-top: 12px; }
-  .outwrap > label {
-    display: block;
-    font: 600 10.5px var(--ui); letter-spacing: .1em; text-transform: uppercase;
-    color: var(--ink-faint);
-    margin-bottom: 6px;
-  }
-  .outbox {
-    background: var(--paper-2);
-    border: 1px solid var(--rule);
-    border-radius: 6px;
-    font: 12px/1.65 var(--mono);
-    padding: 11px 13px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow: auto;
-    max-height: 260px;
-  }
+  /* The saved result, rendered as the fair copy it is — not a raw dump. */
+  .houtput { margin-top: 12px; border-top: 1px solid var(--rule-soft); padding-top: 6px; }
+  .houtput .sec:first-child { border-top: none; }
 
   @media (max-width: 900px) {
     .shell, .pop { width: 100%; }
-    .mbody { flex-direction: column; }
-    .mnav { width: 100%; border-right: none; border-bottom: 1px solid var(--rule-soft); }
-    .hsplit, .edgrid, .hbar, .hfilters { grid-template-columns: 1fr; }
+    .hsplit, .edgrid, .hbar, .hfilters, .fields2 { grid-template-columns: 1fr; }
   }
 
   /* ——— Spec-sheet theme toggle (desk-level control, both themes) ——— */
