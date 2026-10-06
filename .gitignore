@@ -19,3 +19,6 @@ desktop.ini
 # Secrets — never commit
 .env
 .env.*
+
+# Design tooling state and review renders (impeccable)
+selection-translate-redesign/.impeccable/

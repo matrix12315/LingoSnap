@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>LingoSnap — 05 Manager</title>
+<link rel="stylesheet" href="fair-copy.css" />
+<style>
+  body { display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 48px 32px 72px; }
+  .cap { font: 500 10.5px var(--mono); letter-spacing: .12em; color: rgba(241, 235, 223, .55); }
+  /* product shot: show the whole settings page, no inner scroll cap */
+  .mpage { max-height: none; }
+</style>
+</head>
+<body>
+
+<div class="caprow"><div class="cap">05 · MANAGER — SETTINGS · PROMPTS · HISTORY</div><button class="themebtn" type="button">Dark theme</button></div>
+
+<div class="card shell">
+  <div class="titlebar">
+    <div class="seal" aria-hidden="true">译</div>
+    <strong>Selection Translate — Manager</strong>
+    <span class="live"><i></i>Resident is running</span>
+  </div>
+  <div class="mbody">
+    <nav class="mnav" id="mnav">
+      <button class="on" type="button" data-page="settings"><span class="mark">※</span>Settings</button>
+      <button type="button" data-page="prompts"><span class="mark">※</span>Prompts</button>
+      <button type="button" data-page="history"><span class="mark">※</span>History</button>
+      <div class="foot-note">Keys are held by Windows Credential Manager;<br>they never enter <span style="font-family:var(--mono);font-size:10px">config.toml</span>.</div>
+    </nav>
+
+    <div class="mpage" id="page-settings">
+      <div class="pagehead">
+        <h2>Settings</h2>
+        <span class="savenote" id="saveNote">✓ Saved</span>
+      </div>
+      <div class="sub"><span class="req">＊</span> required — technical fields come prefilled with defaults; everything saves as you complete it</div>
+
+      <div class="group">
+        <div class="glabel"><span class="rm">＊</span>Provider</div>
+        <div class="frow top"><label for="endpoint">Endpoint<span class="req">＊</span></label>
+          <input class="input" id="endpoint" value="https://llm-nj3xhngcgye0zp75.cn-beijing.maas.aliyuncs.com/compatible-mode/v1" spellcheck="false"></div>
+        <div class="frow"><label for="model">Model<span class="req">＊</span></label>
+          <input class="input" id="model" value="qwen3.7-flash-2026-07-15" spellcheck="false"></div>
+      </div>
+
+      <div class="group">
+        <div class="glabel"><span class="rm">＊</span>Credentials</div>
+        <div class="frow"><label for="apikey">API key<span class="req">＊</span></label>
+          <input class="input" id="apikey" type="password" placeholder="Paste your key — stored only in Windows Credential Manager"></div>
+        <div class="frow"><label for="credtarget">Credential target<span class="deftag">default</span></label>
+          <input class="input" id="credtarget" value="SelectionTranslate/OpenAI" spellcheck="false"></div>
+        <div class="actions">
+          <button class="btn primary sm" type="button">Save key</button>
+          <button class="btn danger sm" type="button">Delete saved key</button>
+          <span class="statnote"><i style="background:transparent;border:1px solid var(--rule)"></i>No key saved yet</span>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="glabel"><span class="rm">＊</span>Defaults</div>
+        <div class="frow"><label for="selfprof">Selection profile</label>
+          <div class="select"><input class="input ui" id="selfprof" value="Translate — translate" readonly>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg></div></div>
+        <div class="frow"><label for="hoverprof">Hover profile</label>
+          <div class="select"><input class="input ui" id="hoverprof" value="Word explanation — word-explanation" readonly>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg></div></div>
+        <div class="frow"><label for="uilang">Interface language</label>
+          <div class="select"><input class="input ui" id="uilang" value="English" readonly>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg></div></div>
+        <div class="frow"><label for="uitheme">Theme</label>
+          <div class="select"><input class="input ui" id="uitheme" value="Light">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg></div></div>
+      </div>
+    </div>
+
+    <div class="mpage" id="page-prompts" hidden>
+      <h2>Prompts</h2>
+      <div class="sub">One system prompt and one user template per profile</div>
+
+      <div class="group">
+        <div class="glabel"><span class="rm">＊</span>Profile</div>
+        <div class="frow"><label for="pid">ID<span class="req">＊</span></label>
+          <div class="select"><input class="input ui" id="pid" value="contextual-zh-en" readonly>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg></div></div>
+        <div class="frow"><label for="pname">Name<span class="req">＊</span></label>
+          <input class="input ui" id="pname" value="Contextual Chinese–English translation"></div>
+        <div class="frow"><label for="pmodel">Model override<span class="deftag">default</span></label>
+          <input class="input ui" id="pmodel" value="" placeholder="Empty — uses the provider model from Settings"></div>
+        <div class="frow">
+          <label for="ptemp">Temperature<span class="deftag">default</span></label>
+          <input class="input ui" id="ptemp" value="0.2" style="max-width:110px">
+        </div>
+        <div class="frow"><label for="ptokens">Max tokens<span class="deftag">default</span></label>
+          <input class="input ui" id="ptokens" value="512" style="max-width:110px"></div>
+        <div class="actions">
+          <button class="btn primary sm" type="button">Save prompt</button>
+          <button class="btn sm" type="button">Restore default</button>
+        </div>
+        <div class="vaultnote">Use <code>{target}</code>, <code>{context}</code> and <code>{source}</code>; every user template needs <code>{target}</code>.</div>
+      </div>
+
+      <div class="edgrid">
+        <div class="edcol">
+          <label for="sysprompt">System prompt</label>
+          <textarea class="input area" id="sysprompt" spellcheck="false">Translate Chinese and English naturally, preserving meaning and context. Return only the translation.</textarea>
+        </div>
+        <div class="edcol">
+          <label for="usertpl">User template</label>
+          <textarea class="input area" id="usertpl" spellcheck="false">Translate only Target. Use Context only to disambiguate:
+Target:
+{target}
+Context:
+{context}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="mpage" id="page-history" hidden>
+      <h2>History</h2>
+      <div class="sub">Search recent translations without keeping the database open</div>
+
+      <div class="hbar">
+        <input class="input ui" placeholder="Search target or output">
+        <button class="btn primary sm" type="button">Refresh</button>
+        <button class="btn sm" type="button">Copy output</button>
+      </div>
+      <div class="hfilters">
+        <div class="select"><input class="input ui" value="All prompts" readonly>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg></div>
+        <div class="select"><input class="input ui" value="All sources" readonly>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg></div>
+        <div class="select"><input class="input ui" value="Newest first" readonly>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg></div>
+      </div>
+
+      <div class="hsplit">
+        <div class="hlist">
+          <div class="hitem on">
+            <div class="t">change</div>
+            <div class="p">更改</div>
+            <div class="m">14:22 · <b>translate</b></div>
+          </div>
+          <div class="hitem">
+            <div class="t">endless</div>
+            <div class="p">无尽的；无穷尽的</div>
+            <div class="m">14:18 · <b>translate</b></div>
+          </div>
+          <div class="hitem">
+            <div class="t">uncommitted</div>
+            <div class="p">未提交的</div>
+            <div class="m">14:11 · <b>translate</b></div>
+          </div>
+          <div class="hitem">
+            <div class="t">opacity</div>
+            <div class="p">不透明度</div>
+            <div class="m">13:54 · <b>word-explanation</b></div>
+          </div>
+          <div class="hitem">
+            <div class="t">mockup</div>
+            <div class="p">原型图；模型图</div>
+            <div class="m">13:22 · <b>translate</b></div>
+          </div>
+          <div class="hitem">
+            <div class="t">Mirage</div>
+            <div class="p">海市蜃楼；幻影</div>
+            <div class="m">13:05 · <b>expert</b></div>
+          </div>
+        </div>
+
+        <div class="hdetail">
+          <div class="quote">
+            <div class="target" style="font-size:13.5px">The change applies immediately to the popup and is saved to config.toml</div>
+            <div class="context"><span class="from">Context</span>The resident reloads settings when the file changes…</div>
+          </div>
+          <div class="outwrap">
+            <label>Output</label>
+            <div class="outbox">Translation
+更改会立即应用到弹窗，并保存至 config.toml
+
+Words
+change /tʃeɪndʒ/ (n.) 改变，变更; (v.) 更换，替换
+
+Idioms and Grammar
+change of mind — 改变主意
+for a change — 换换花样
+
+Error check
+✓ No issues found.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:14px">
+        <span class="statnote">104 entries</span>
+        <button class="btn danger sm" type="button">Delete selected</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('#mnav button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#mnav button').forEach(b => b.classList.remove('on'));
+      btn.classList.add('on');
+      ['settings', 'prompts', 'history'].forEach(p => {
+        document.getElementById('page-' + p).hidden = p !== btn.dataset.page;
+      });
+    });
+  });
+
+  {
+    const saveNote = document.getElementById('saveNote');
+    let saveTimer = null;
+    const flashSaved = () => {
+      saveNote.classList.add('show');
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => saveNote.classList.remove('show'), 1600);
+    };
+    document.querySelectorAll('#page-settings .input').forEach(field => {
+      field.addEventListener('input', flashSaved);
+      field.addEventListener('change', flashSaved);
+    });
+  }
+
+  // Theme select — live switch between paper and dark.
+  {
+    const themeSel = document.getElementById('uitheme');
+    if (themeSel) {
+      themeSel.removeAttribute('readonly');
+      themeSel.addEventListener('change', () => window.setTheme(themeSel.value.toLowerCase()));
+    }
+  }
+
+  const hashPage = location.hash.slice(1);
+  const deepTarget = hashPage && document.querySelector('#mnav button[data-page="' + hashPage + '"]');
+  if (deepTarget) deepTarget.click();
+</script>
+<script src="theme.js"></script>
+<script src="liquid-lens.js"></script>
+</body>
+</html>

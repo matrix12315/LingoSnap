@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>LingoSnap — 01 Chooser</title>
+<link rel="stylesheet" href="fair-copy.css" />
+<style>
+  body { display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 60px 32px 72px; }
+  .cap { font: 500 10.5px var(--mono); letter-spacing: .12em; color: rgba(241, 235, 223, .55); }
+</style>
+</head>
+<body>
+
+<div class="caprow"><div class="cap">01 · CHOOSER — THE PROFILE RAIL AT THE SELECTION</div><button class="themebtn" type="button">Dark theme</button></div>
+
+<div class="railwrap" id="chooser">
+  <div class="rail" role="tablist" aria-label="Profile">
+    <button class="rpill on" type="button">Translate</button>
+    <button class="rpill" type="button">Expert</button>
+    <button class="rpill" type="button">Program</button>
+    <button class="rpill" type="button">Concise</button>
+    <span class="rdiv" aria-hidden="true"></span>
+    <button class="rpill rmore" type="button" aria-haspopup="menu">More…
+      <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg>
+    </button>
+  </div>
+  <div class="rmenu" role="menu" aria-label="More profiles">
+    <div class="hot" role="menuitem">Contextual</div>
+    <div role="menuitem">Word</div>
+    <div role="menuitem">Wiki</div>
+    <div role="menuitem">Rewrite</div>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('#chooser .rpill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('#chooser .rpill').forEach(p => p.classList.remove('on'));
+      pill.classList.add('on');
+    });
+  });
+</script>
+<script src="theme.js"></script>
+<script src="liquid-lens.js"></script>
+</body>
+</html>
