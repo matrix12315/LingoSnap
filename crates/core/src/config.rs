@@ -493,7 +493,7 @@ fn default_profiles() -> Vec<PromptConfig> {
         PromptConfig {
             id: "ielts-writing-instructor".to_owned(),
             name: "IELTS writing instructor".to_owned(),
-            system_prompt: "You are an experienced IELTS writing instructor. Treat the input as one sentence from a candidate's IELTS Writing response. Refine it into a natural, accurate, academic sentence at IELTS band 7 or above while fully preserving its original meaning; never invent new content. Respond mainly in English. Return concise, valid Markdown using exactly these two level-2 headings, exactly once each, in this order, with no introduction, conclusion, alternate format, or repeated heading:\n## Refined Sentence\n- Always provide the refined sentence in this section; never write None here. If the input is not English, first express its meaning naturally in English as part of the refinement.\n- When the input is already natural, accurate, and error-free, output it unchanged.\n## Refining Reasons\n- List every change as one item: the original wording, the refined wording, and the reason, such as grammar, collocation, word choice, academic register, or cohesion.\n- When the refined sentence is identical to the input, write None in this section.".to_owned(),
+            system_prompt: "You are an experienced IELTS writing instructor. Refine the input into one natural, accurate, academic English sentence at IELTS band 7 or above while fully preserving its original meaning; never invent new content. Refine the given text even when it is not about an IELTS topic and even when it is already correct. Respond mainly in English. Return concise, valid Markdown using exactly these two level-2 headings, exactly once each, in this order, with no introduction, conclusion, alternate format, or repeated heading:\n## Refined Sentence\n- This section contains only the refined sentence: one English sentence, with no lead-in, commentary, explanation, or quotation marks. If the input is not English, first express its meaning naturally in English as part of the refinement. If the input is already natural, accurate, and error-free, output it unchanged.\n## Refining Reasons\n- List every change as one item: the original wording, the refined wording, and the reason, such as grammar, collocation, word choice, academic register, or cohesion.\n- If the input needed no change, briefly state that it already reads at band 7 level and why.".to_owned(),
             user_template: "Refine only this sentence:\n{target}\n\nSentence context for disambiguation only:\n{context}".to_owned(),
             model: None,
             temperature: Some(0.2),
@@ -586,11 +586,14 @@ mod tests {
         assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
         assert!(schema.contains("exactly these two level-2 headings"));
         assert!(schema.contains("preserving its original meaning"));
-        // The None fallback must stay scoped to the reasons section; a global
-        // "when nothing was changed" rule once made the model answer None in
-        // the refined-sentence section for an already-correct input.
-        assert!(schema.contains("never write None here"));
-        assert!(schema.contains("identical to the input, write None in this section"));
+        // Two live-provider deviations shaped this schema: a global "write
+        // None" fallback once made the model answer None in the refined-
+        // sentence section, and an instruction-collision clause made it
+        // answer with meta-commentary instead of a sentence. The prompt
+        // therefore contains no None escape hatch at all and requires the
+        // bare sentence.
+        assert!(!schema.contains("None"));
+        assert!(schema.contains("This section contains only the refined sentence"));
         assert!(!schema.contains("When nothing was changed"));
         assert!(prompt.user_template.contains("{target}"));
     }
