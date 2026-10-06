@@ -91,7 +91,8 @@ mod windows_impl {
         CFM_FACE, CFM_ITALIC, CFM_SIZE, CFM_STRIKEOUT, CHARFORMATW,
     };
     use windows::Win32::UI::Controls::{
-        SetWindowTheme, DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_MENU, WM_MOUSELEAVE,
+        SetWindowTheme, DRAWITEMSTRUCT, EM_GETLINECOUNT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_MENU,
+        WM_MOUSELEAVE,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
@@ -129,8 +130,12 @@ mod windows_impl {
     const DRAG_BAND_HEIGHT: i32 = HEADER_HEIGHT;
     const CARD_GAP: i32 = 10;
     const CAP_HEIGHT: i32 = 13;
-    const TARGET_HEIGHT: i32 = 18;
-    const CONTEXT_HEIGHT: i32 = 18;
+    // Panes size to their content: one line each plus padding, growing with
+    // the wrapped line count up to MAX_INPUT_LINES, so a long selection is
+    // never invisibly clipped.
+    const TARGET_LINE_HEIGHT: i32 = 18;
+    const CONTEXT_LINE_HEIGHT: i32 = 18;
+    const MAX_INPUT_LINES: i32 = 4;
     const FOOT_HEIGHT: i32 = 60;
     const BUTTON_HEIGHT: i32 = 36;
     const BUTTON_GAP: i32 = 8;
@@ -797,6 +802,25 @@ mod windows_impl {
             data_mut(self.hwnd).is_some_and(|data| data.pinned)
         }
 
+        /// Test-only: physical pixel heights of the target and context panes.
+        #[cfg(test)]
+        pub fn input_pane_heights_for_test(&self) -> (i32, i32) {
+            let pane_height = |hwnd: HWND| -> i32 {
+                if hwnd.0.is_null() {
+                    return 0;
+                }
+                let mut rect = RECT::default();
+                if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
+                    return 0;
+                }
+                rect.bottom - rect.top
+            };
+            match data_mut(self.hwnd) {
+                Some(data) => (pane_height(data.input), pane_height(data.context_input)),
+                None => (0, 0),
+            }
+        }
+
         /// Test-only: current selection-card pane texts and the context flag.
         #[cfg(test)]
         pub fn input_panes_for_test(&self) -> (String, String, bool) {
@@ -1411,13 +1435,17 @@ mod windows_impl {
         client_height: i32,
         dpi: u32,
         button_count: i32,
+        target_lines: i32,
+        context_lines: i32,
     ) -> PopupLayout {
         let margin = scale(MARGIN, dpi);
         let header = scale(HEADER_HEIGHT, dpi);
         let cap_height = scale(CAP_HEIGHT, dpi);
         let card_gap = scale(CARD_GAP, dpi);
-        let preferred_target = scale(TARGET_HEIGHT, dpi).max(1);
-        let preferred_context = scale(CONTEXT_HEIGHT, dpi).max(1);
+        let preferred_target =
+            scale(TARGET_LINE_HEIGHT, dpi).max(1) * target_lines.clamp(1, MAX_INPUT_LINES);
+        let preferred_context =
+            scale(CONTEXT_LINE_HEIGHT, dpi).max(1) * context_lines.clamp(1, MAX_INPUT_LINES);
         let button_height = scale(BUTTON_HEIGHT, dpi);
         let foot_height = scale(FOOT_HEIGHT, dpi);
         let icon_size = scale(ICON_SIZE, dpi);
@@ -1528,11 +1556,56 @@ mod windows_impl {
             }
             return;
         }
-        let layout = compute_layout(client.right, client.bottom, dpi, data.buttons.len() as i32);
+        // Pane heights follow the wrapped line counts of the text they
+        // hold, so the complete selection stays visible without scrollbars.
+        // Wrapping depends on the pane's final WIDTH, so both panes are
+        // parked at single-line height in that column first and measured
+        // only afterwards; measuring at a stale width produces bogus counts
+        // and stale overlapping panes.
+        let probe = compute_layout(
+            client.right,
+            client.bottom,
+            dpi,
+            data.buttons.len() as i32,
+            1,
+            1,
+        );
+        let raw_left = probe.margin + scale(12, dpi);
+        let raw_width = probe.content_width - scale(24, dpi);
+        move_child(
+            data.input,
+            raw_left,
+            probe.target_top,
+            raw_width,
+            probe.target_height,
+        );
+        if data.has_context {
+            set_control_visible(data.context_input, true);
+            move_child(
+                data.context_input,
+                raw_left,
+                probe.context_top,
+                raw_width,
+                probe.context_height,
+            );
+        }
+        let target_lines = edit_line_count(data.input);
+        let context_lines = edit_line_count(data.context_input);
+        let (target_lines, context_lines) = if data.has_context {
+            (target_lines, context_lines)
+        } else {
+            (target_lines, target_lines)
+        };
+        let layout = compute_layout(
+            client.right,
+            client.bottom,
+            dpi,
+            data.buttons.len() as i32,
+            target_lines,
+            context_lines,
+        );
         // Selection card: the target pane sits above the muted context pane.
         // Without context the target pane expands over the whole raw area.
-        let raw_left = layout.margin + scale(12, dpi);
-        let raw_width = layout.content_width - scale(24, dpi);
         let raw_bottom = layout.context_top + layout.context_height;
         if data.has_context {
             move_child(
@@ -1610,6 +1683,16 @@ mod windows_impl {
 
     pub(super) fn bounded_input(text: &str) -> String {
         text.chars().take(MAX_INPUT_CHARS).collect()
+    }
+
+    /// Wrapped display line count of a multiline edit control (min 1).
+    fn edit_line_count(hwnd: HWND) -> i32 {
+        if hwnd.0.is_null() {
+            return 1;
+        }
+        let count = unsafe { SendMessageW(hwnd, EM_GETLINECOUNT, Some(WPARAM(0)), Some(LPARAM(0))) }
+            .0 as i32;
+        count.max(1)
     }
 
     pub(super) fn state_text(state: &PopupState) -> &str {
@@ -2788,7 +2871,7 @@ mod windows_impl {
             let _ = FrameRect(hdc, &client, border);
             let _ = DeleteObject(border.into());
         }
-        let layout = compute_layout(client.right, client.bottom, dpi, 5);
+        let layout = compute_layout(client.right, client.bottom, dpi, 5, 1, 1);
         let card_radius = scale(10, dpi).max(6);
         let left = layout.margin;
         let right = client.right - layout.margin;
@@ -3793,6 +3876,20 @@ mod tests {
         assert_eq!(context, "");
         assert!(!has_context);
 
+        // The target pane grows with its wrapped line count: a long
+        // selection is fully visible instead of clipped after one line.
+        popup.set_input("word", None);
+        popup.show_loading();
+        let (short_height, _) = popup.input_pane_heights_for_test();
+        let long_target = "The quick brown fox jumps over the lazy dog. ".repeat(6);
+        popup.set_input(&long_target, None);
+        popup.show_loading();
+        let (long_height, _) = popup.input_pane_heights_for_test();
+        assert!(
+            long_height >= short_height * 2,
+            "target pane must grow for wrapped lines: short={short_height} long={long_height}"
+        );
+
         popup.dismiss();
         unsafe {
             let _ = DestroyWindow(parent);
@@ -4426,7 +4523,7 @@ mod tests {
     fn layout_stacks_selection_result_cards_over_left_aligned_footer() {
         use super::windows_impl::{compute_layout, footer_button_width};
 
-        let base = compute_layout(440, 480, 96, 5);
+        let base = compute_layout(440, 480, 96, 5, 1, 1);
         // Header, Selection card, Result card, footer, in order.
         assert!(base.header_height < base.sel_card_top);
         assert!(base.sel_card_bottom < base.result_card_top);
@@ -4439,7 +4536,7 @@ mod tests {
         assert!(base.target_top < base.context_top);
         assert!(base.context_top + base.context_height <= base.sel_card_bottom);
         // The result pane absorbs extra height; the Selection card keeps its size.
-        let tall = compute_layout(440, 640, 96, 5);
+        let tall = compute_layout(440, 640, 96, 5, 1, 1);
         assert!(tall.output_height > base.output_height);
         assert_eq!(
             tall.sel_card_bottom - tall.sel_card_top,
