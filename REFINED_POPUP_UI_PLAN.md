@@ -75,7 +75,17 @@ popup-ui → resident (commands):
 | `register_window` | `id, hwnd` | resident classifies clicks (inside/outside), clamps geometry |
 | `select_profile` | `id, index` | equals native `POPUP_PROFILE_SELECTED` |
 | `retry` / `show_prompt` / `toggle_pin` / `user_close` | `id` | equal native buttons |
+| `copy` | `id` | copies that popup's **raw** output (resident holds the raw buffer) |
+| `self_translate` | `id, text` | user selected/hovered text inside the completed output; the resident runs it through the normal pipeline (recursive-hover parity) |
 | `ping` | — | liveness for the resident's keep-warm logic |
+
+The result popup is a first-class surface, not a static view: every native
+result-popup capability — Copy, Retry, Prompt, Pin, Close, streaming text,
+markdown projection, text selection inside the output, and recursive
+self-translation of a selected word — must work identically in the refined
+skin. The UI displays rendered markdown but `copy` and `self_translate` act
+on the raw text the resident already holds; the UI never becomes the source
+of translation content.
 
 Each event/command carries a per-`id` monotonically increasing `seq` so the UI
 can drop out-of-order delivery; the resident keeps its existing
@@ -124,20 +134,31 @@ manager closed, database closed.
 - **Streaming:** deltas are appended in the DOM; markdown rendering is a
   bundled JS renderer (equivalent of the native markdown projection). The
   output buffer cap (`MAX_OUTPUT_UTF16_UNITS`) is enforced resident-side.
+- **Recursive self-translation:** the resident's mouse hook cannot see text
+  inside a WebView, so the refined popup reports candidate text itself: a
+  selection or hover-dwell inside the completed output card sends
+  `self_translate {id, text}`. The resident feeds it through the same
+  admission path as native self-hover (same gates, same priority, same
+  duplicate suppression), producing a NEW popup per the normal rules. The
+  JS bridge sends only the selected text — no positioning logic moves into
+  the UI process.
 
 ## 8. Milestones
 
 1. **M1 — Skeleton.** popup-ui creates one hidden-then-shown WebView2 popup
    from the adapted mockup assets; manual trigger shows it. Exit: the mockup
    is visible as a real topmost popup at the cursor.
-2. **M2 — Chooser + streaming end-to-end.** Protocol v1 implemented both
-   sides; select → refined rail → pick → loading → streamed result; outside
+2. **M2 — Chooser + streaming + result parity.** Protocol v1 implemented both
+   sides; select → refined rail → pick → loading → streamed result; Copy
+   copies the raw output; text selection inside the result works; outside
    click dismissal works via `register_window`. Exit: full flow against the
-   resident without the native popup.
+   resident without the native popup, with result-popup interactions
+   (Copy/selection) verified.
 3. **M3 — Lifecycle parity.** Pin, Retry, Prompt, More… overflow, pinned
-   retention, eviction, config + tray switch, keep-warm/kill, crash
-   recovery (resident relaunches popup-ui on next popup). Exit: feature
-   parity checklist in this document ticked.
+   retention, eviction, recursive self-translation (`self_translate`),
+   pinned suppression of automatic replacement, config + tray switch,
+   keep-warm/kill, crash recovery (resident relaunches popup-ui on next
+   popup). Exit: feature parity checklist in this document ticked.
 4. **M4 — Hardening.** DPI/multi-monitor clamping, memory verification,
    SETUP/TROUBLESHOOTING docs, packaging with assets, `quick-pack.ps1` builds
    popup-ui too.
