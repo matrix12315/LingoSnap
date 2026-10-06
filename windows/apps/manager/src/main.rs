@@ -15,6 +15,7 @@ mod windows_app {
             RefreshOutcome, ResidentStartOutcome,
         },
         credentials,
+        popup::{markdown_view_spans, render_markdown, FormatSpan, MarkdownStyle},
     };
     use selection_storage::{
         default_history_path, HistoryDatabase, HistoryEntry, HistoryOrder, HistoryQuery,
@@ -36,10 +37,15 @@ mod windows_app {
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
     };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::System::LibraryLoader::LoadLibraryW;
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
     use windows::Win32::System::Ole::CF_UNICODETEXT;
+    use windows::Win32::UI::Controls::RichEdit::{
+        CFE_BOLD, CFE_EFFECTS, CFE_ITALIC, CFE_STRIKEOUT, CFM_BOLD, CFM_COLOR, CFM_ITALIC,
+        CFM_STRIKEOUT, CHARFORMATW, EM_SETCHARFORMAT, SCF_SELECTION,
+    };
     use windows::Win32::UI::Controls::{
-        SetWindowTheme, DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_LISTBOX,
+        SetWindowTheme, DRAWITEMSTRUCT, EM_SETSEL, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_LISTBOX,
     };
     use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -52,9 +58,9 @@ mod windows_app {
         MB_ICONWARNING, MB_YESNO, MINMAXINFO, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SW_HIDE,
         SW_SHOW, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DPICHANGED,
         WM_DRAWITEM, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_MEASUREITEM, WM_NOTIFY, WM_PAINT,
-        WM_SETFONT, WM_SIZE, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN,
-        WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
-        WS_VSCROLL,
+        WM_SETFONT, WM_SETREDRAW, WM_SIZE, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
+        WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU,
+        WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
     };
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslateManager");
@@ -130,6 +136,29 @@ mod windows_app {
     const LB_RESETCONTENT: u32 = 0x0184;
     const LB_GETCURSEL: u32 = 0x0188;
     const LBN_SELCHANGE: usize = 1;
+    const EN_CHANGE: usize = 0x0300;
+    const EM_EXGETSEL: u32 = 0x0434;
+
+    /// msftedit.dll hosts the RICHEDIT50W class used by the markdown-aware
+    /// fields. Loaded once per process; when missing those fields fall back
+    /// to plain EDIT controls and render as raw text.
+    static RICH_EDIT_MODULE: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+
+    #[allow(clippy::upper_case_acronyms)]
+    #[repr(C)]
+    struct CHARRANGE {
+        cp_min: i32,
+        cp_max: i32,
+    }
+
+    fn rich_edit_class() -> windows::core::PCWSTR {
+        use windows::core::w;
+        if RICH_EDIT_MODULE.get().copied().unwrap_or(0) != 0 {
+            w!("RICHEDIT50W")
+        } else {
+            w!("EDIT")
+        }
+    }
     const CBN_SELCHANGE: usize = 1;
     const CBN_DROPDOWN: usize = 7;
     const CBN_CLOSEUP: usize = 8;
@@ -927,6 +956,9 @@ mod windows_app {
         if unsafe { RegisterClassW(&page_class) } == 0 {
             return Err(Error::from_win32());
         }
+        if let Ok(module) = unsafe { LoadLibraryW(w!("msftedit.dll")) } {
+            let _ = RICH_EDIT_MODULE.set(module.0 as isize);
+        }
         let (config, load_error, loaded_from_disk) = load_config();
         let initial_language = config.ui.manager_language;
         let window_title = wide(ui_text(initial_language, TextKey::WindowTitle));
@@ -1481,21 +1513,19 @@ mod windows_app {
             Some(View::Prompts),
             Slot::PromptHint,
         )?;
-        h.system_prompt = add_edit_with_id(
+        h.system_prompt = add_rich_edit(
             hwnd,
             &mut h,
             Some(View::Prompts),
             Slot::SystemPrompt,
-            false,
             true,
             ID_PROMPT_SYSTEM,
         )?;
-        h.user_template = add_edit_with_id(
+        h.user_template = add_rich_edit(
             hwnd,
             &mut h,
             Some(View::Prompts),
             Slot::UserTemplate,
-            false,
             true,
             ID_PROMPT_USER_TEMPLATE,
         )?;
@@ -1564,7 +1594,7 @@ mod windows_app {
             let _ = ShowWindow(h.history_context, SW_HIDE);
         }
         h.history_output =
-            add_readonly_edit(hwnd, &mut h, Some(View::History), Slot::HistoryOutput, true)?;
+            add_readonly_rich_edit(hwnd, &mut h, Some(View::History), Slot::HistoryOutput, true)?;
         add_label(
             hwnd,
             &mut h,
@@ -1808,6 +1838,79 @@ mod windows_app {
         Ok(hwnd)
     }
 
+    /// Rich (RICHEDIT50W) multiline control for markdown-aware surfaces.
+    /// Falls back to a plain EDIT when msftedit.dll is unavailable.
+    fn add_readonly_rich_edit(
+        parent: HWND,
+        h: &mut Handles,
+        view: Option<View>,
+        slot: Slot,
+        multiline: bool,
+    ) -> windows::core::Result<HWND> {
+        let hwnd = add_edit_with_class(
+            parent,
+            h,
+            view,
+            slot,
+            false,
+            multiline,
+            rich_edit_class(),
+            0,
+        )?;
+        unsafe {
+            let _ = SendMessageW(hwnd, EM_SETREADONLY, Some(WPARAM(1)), Some(LPARAM(0)));
+        }
+        Ok(hwnd)
+    }
+
+    fn add_rich_edit(
+        parent: HWND,
+        h: &mut Handles,
+        view: Option<View>,
+        slot: Slot,
+        multiline: bool,
+        id: usize,
+    ) -> windows::core::Result<HWND> {
+        add_edit_with_class(
+            parent,
+            h,
+            view,
+            slot,
+            false,
+            multiline,
+            rich_edit_class(),
+            id,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn add_edit_with_class(
+        parent: HWND,
+        h: &mut Handles,
+        view: Option<View>,
+        slot: Slot,
+        password: bool,
+        multiline: bool,
+        class: windows::core::PCWSTR,
+        id: usize,
+    ) -> windows::core::Result<HWND> {
+        let target = page_parent(parent, h, view);
+        let mut style =
+            WS_CHILD | WS_CLIPSIBLINGS | visibility_style(view) | WS_TABSTOP | WS_BORDER;
+        if multiline {
+            style |= WINDOW_STYLE(ES_MULTILINE as u32)
+                | WINDOW_STYLE(ES_AUTOVSCROLL as u32)
+                | WS_VSCROLL;
+        } else {
+            style |= WINDOW_STYLE(ES_AUTOHSCROLL as u32);
+        }
+        if password {
+            style |= WINDOW_STYLE(ES_PASSWORD as u32);
+        }
+        let hwnd = create_control(target, class, "", style, 0, 0, 100, 24, id)?;
+        Ok(add_control(h, hwnd, view, slot))
+    }
+
     fn add_combo(
         parent: HWND,
         h: &mut Handles,
@@ -2038,6 +2141,99 @@ mod windows_app {
                 );
             }
         }
+    }
+
+    /// Reset the body format of a rich field, then paint markdown spans
+    /// with the manager palette: headings bold gold, inline bold bold,
+    /// fenced code muted. The text itself is never modified.
+    fn apply_markdown_char_formats(control: HWND, spans: &[FormatSpan]) {
+        unsafe {
+            let mut selection = CHARRANGE {
+                cp_min: 0,
+                cp_max: 0,
+            };
+            let _ = SendMessageW(
+                control,
+                EM_EXGETSEL,
+                Some(WPARAM(0)),
+                Some(LPARAM(&mut selection as *mut CHARRANGE as isize)),
+            );
+            let _ = SendMessageW(control, WM_SETREDRAW, Some(WPARAM(0)), Some(LPARAM(0)));
+            let body = CHARFORMATW {
+                cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
+                dwMask: CFM_BOLD | CFM_COLOR,
+                dwEffects: CFE_EFFECTS(0),
+                crTextColor: TEXT,
+                ..Default::default()
+            };
+            let text_length = GetWindowTextLengthW(control).max(0) as usize;
+            let _ = SendMessageW(
+                control,
+                EM_SETSEL,
+                Some(WPARAM(0)),
+                Some(LPARAM(text_length as isize)),
+            );
+            let _ = SendMessageW(
+                control,
+                EM_SETCHARFORMAT,
+                Some(WPARAM(SCF_SELECTION as usize)),
+                Some(LPARAM(&body as *const CHARFORMATW as isize)),
+            );
+            for span in spans {
+                let (mask, effects, color) = match span.style {
+                    MarkdownStyle::Heading(_) => (CFM_BOLD | CFM_COLOR, CFE_BOLD, GOLD),
+                    MarkdownStyle::Bold => (CFM_BOLD, CFE_BOLD, TEXT),
+                    MarkdownStyle::Code => (CFM_COLOR, CFE_EFFECTS(0), MUTED),
+                    MarkdownStyle::Italic => (CFM_ITALIC, CFE_ITALIC, TEXT),
+                    MarkdownStyle::Strike => (CFM_STRIKEOUT, CFE_STRIKEOUT, TEXT),
+                };
+                let format = CHARFORMATW {
+                    cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
+                    dwMask: mask,
+                    dwEffects: effects,
+                    crTextColor: color,
+                    ..Default::default()
+                };
+                let _ = SendMessageW(
+                    control,
+                    EM_SETSEL,
+                    Some(WPARAM(span.start)),
+                    Some(LPARAM(span.end as isize)),
+                );
+                let _ = SendMessageW(
+                    control,
+                    EM_SETCHARFORMAT,
+                    Some(WPARAM(SCF_SELECTION as usize)),
+                    Some(LPARAM(&format as *const CHARFORMATW as isize)),
+                );
+            }
+            let _ = SendMessageW(
+                control,
+                EM_SETSEL,
+                Some(WPARAM(selection.cp_min.max(0) as usize)),
+                Some(LPARAM(selection.cp_max.max(0) as isize)),
+            );
+            let _ = SendMessageW(control, WM_SETREDRAW, Some(WPARAM(1)), Some(LPARAM(0)));
+            let _ = InvalidateRect(Some(control), None, true);
+        }
+    }
+
+    /// Live in-place markdown visualization for the editable prompt fields.
+    fn apply_markdown_view(control: HWND) {
+        if control.0.is_null() {
+            return;
+        }
+        let length = unsafe { GetWindowTextLengthW(control) };
+        if length <= 0 {
+            return;
+        }
+        let mut buffer = vec![0u16; length as usize + 1];
+        unsafe {
+            GetWindowTextW(control, &mut buffer);
+        }
+        let raw = String::from_utf16_lossy(&buffer[..length as usize]);
+        let spans = markdown_view_spans(&raw);
+        apply_markdown_char_formats(control, &spans);
     }
 
     fn place_control(hwnd: HWND, rect: RECT, dpi: u32) {
@@ -3337,6 +3533,12 @@ mod windows_app {
     ) -> LRESULT {
         let id = command & 0xffff;
         let notification = (command >> 16) & 0xffff;
+        if notification == EN_CHANGE && matches!(id, ID_PROMPT_SYSTEM | ID_PROMPT_USER_TEMPLATE) {
+            // The raw text stays untouched (it is what gets saved); markdown
+            // structure is visualized in place through character formatting.
+            apply_markdown_view(control);
+            return LRESULT(0);
+        }
         if notification == CBN_DROPDOWN {
             expand_combo_for_dropdown(state, control);
         }
@@ -3753,7 +3955,9 @@ mod windows_app {
                 set_text(state.handles.history_target, &entry.target);
                 set_text(state.handles.history_context, &context);
                 apply_history_detail_split(state);
-                set_text(state.handles.history_output, &entry.output);
+                let rendered = render_markdown(&entry.output);
+                set_text(state.handles.history_output, &rendered.text);
+                apply_markdown_char_formats(state.handles.history_output, &rendered.spans);
                 set_text(
                     state.handles.history_meta,
                     &format!(

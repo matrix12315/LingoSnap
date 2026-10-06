@@ -1763,7 +1763,7 @@ mod windows_impl {
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-    pub(super) enum MarkdownStyle {
+    pub enum MarkdownStyle {
         Heading(u32),
         Bold,
         Italic,
@@ -1772,16 +1772,16 @@ mod windows_impl {
     }
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-    pub(super) struct FormatSpan {
-        pub(super) start: usize,
-        pub(super) end: usize,
-        pub(super) style: MarkdownStyle,
+    pub struct FormatSpan {
+        pub start: usize,
+        pub end: usize,
+        pub style: MarkdownStyle,
     }
 
     #[derive(Clone, Debug, Eq, PartialEq)]
-    pub(super) struct RenderedMarkdown {
-        pub(super) text: String,
-        pub(super) spans: Vec<FormatSpan>,
+    pub struct RenderedMarkdown {
+        pub text: String,
+        pub spans: Vec<FormatSpan>,
     }
 
     fn append_inline(source: &str, output: &mut String, spans: &mut Vec<FormatSpan>) {
@@ -1839,7 +1839,88 @@ mod windows_impl {
         }
     }
 
-    pub(super) fn render_markdown(source: &str) -> RenderedMarkdown {
+    /// Char-format spans over the RAW text of an editable field. Unlike
+    /// [`render_markdown`], the text is never transformed - it stays exactly
+    /// as typed (and saved) - while headings, bold runs, and fenced code are
+    /// visualized in place. Offsets are UTF-16 units for EM_SETSEL.
+    pub fn markdown_view_spans(source: &str) -> Vec<FormatSpan> {
+        let mut spans = Vec::new();
+        let mut in_fence = false;
+        let mut offset = 0usize;
+        for line in source.split_inclusive('\n') {
+            let line_start = offset;
+            let line_len16 = line.encode_utf16().count();
+            offset += line_len16;
+            let body_end = if line.ends_with('\n') {
+                line_start + line_len16 - 1
+            } else {
+                line_start + line_len16
+            };
+            let trimmed = line.trim_start();
+            let content_start =
+                line_start + line[..line.len() - trimmed.len()].encode_utf16().count();
+            if trimmed.starts_with("```") {
+                in_fence = !in_fence;
+                spans.push(FormatSpan {
+                    start: content_start,
+                    end: body_end,
+                    style: MarkdownStyle::Code,
+                });
+                continue;
+            }
+            if in_fence {
+                spans.push(FormatSpan {
+                    start: content_start,
+                    end: body_end,
+                    style: MarkdownStyle::Code,
+                });
+                continue;
+            }
+            let hashes = trimmed.chars().take_while(|c| *c == '#').count();
+            if (1..=6).contains(&hashes) && trimmed[hash_len(trimmed, hashes)..].starts_with(' ') {
+                spans.push(FormatSpan {
+                    start: content_start,
+                    end: body_end,
+                    style: MarkdownStyle::Heading(1),
+                });
+                continue;
+            }
+            // Inline **bold** runs, tracked in UTF-16 offsets.
+            let mut bold_open: Option<usize> = None;
+            let mut utf16 = content_start;
+            let chars = trimmed.chars();
+            let mut prev_star = false;
+            for ch in chars {
+                let start16 = utf16;
+                utf16 += ch.len_utf16();
+                if ch == '*' {
+                    if prev_star {
+                        if let Some(open) = bold_open.take() {
+                            spans.push(FormatSpan {
+                                start: open,
+                                end: start16.saturating_sub(1),
+                                style: MarkdownStyle::Bold,
+                            });
+                        } else {
+                            bold_open = Some(start16 + 1);
+                        }
+                        prev_star = false;
+                        continue;
+                    }
+                    prev_star = true;
+                    continue;
+                }
+                prev_star = false;
+            }
+        }
+        spans
+    }
+
+    fn hash_len(trimmed: &str, hashes: usize) -> usize {
+        trimmed.chars().take(hashes).map(|c| c.len_utf16()).sum()
+    }
+
+    pub fn render_markdown(source: &str) -> RenderedMarkdown {
         let mut text = String::new();
         let mut spans = Vec::new();
         let mut fenced = false;
@@ -3871,6 +3952,50 @@ pub use windows_impl::*;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn markdown_view_spans_cover_headings_bold_and_fences() {
+        let spans = markdown_view_spans(
+            "## Title
+plain - text
+**bold** tail
+```
+code
+```
+",
+        );
+        // Heading covers the whole first line minus its newline.
+        assert!(spans.iter().any(|s| {
+            s.start == 0
+                && s.end == "## Title".encode_utf16().count()
+                && s.style == MarkdownStyle::Heading(1)
+        }));
+        // The fenced block (three lines) is Code; the fence markers included.
+        let code_count = spans
+            .iter()
+            .filter(|s| s.style == MarkdownStyle::Code)
+            .count();
+        assert_eq!(code_count, 3);
+        // Bold covers the inner word only.
+        let bold = spans
+            .iter()
+            .find(|s| s.style == MarkdownStyle::Bold)
+            .expect("bold span");
+        let text16: Vec<u16> = "## Title
+plain - text
+**bold** tail
+"
+        .encode_utf16()
+        .collect();
+        let inner: String = String::from_utf16_lossy(&text16[bold.start..bold.end]);
+        assert_eq!(inner, "bold");
+        // Plain body text produces no spans.
+        let plain = markdown_view_spans(
+            "plain - text
+",
+        );
+        assert!(plain.is_empty());
+    }
 
     #[cfg(windows)]
     #[test]
