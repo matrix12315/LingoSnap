@@ -15,7 +15,6 @@ mod windows_app {
             RefreshOutcome, ResidentStartOutcome,
         },
         credentials,
-        popup::{markdown_view_spans, render_markdown, FormatSpan, MarkdownStyle},
     };
     use selection_storage::{
         default_history_path, HistoryDatabase, HistoryEntry, HistoryOrder, HistoryQuery,
@@ -137,22 +136,12 @@ mod windows_app {
     const LB_GETCURSEL: u32 = 0x0188;
     const LBN_SELCHANGE: usize = 1;
     const EN_CHANGE: usize = 0x0300;
-    const EM_EXGETSEL: u32 = 0x0434;
     const EM_SETBKGNDCOLOR: u32 = 0x0443;
-    const EM_SETEVENTMASK: u32 = 0x0445;
-    const ENM_CHANGE: u32 = 0x0001;
 
     /// msftedit.dll hosts the RICHEDIT50W class used by the markdown-aware
     /// fields. Loaded once per process; when missing those fields fall back
     /// to plain EDIT controls and render as raw text.
     static RICH_EDIT_MODULE: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
-
-    #[allow(clippy::upper_case_acronyms)]
-    #[repr(C)]
-    struct CHARRANGE {
-        cp_min: i32,
-        cp_max: i32,
-    }
 
     fn rich_edit_class() -> windows::core::PCWSTR {
         use windows::core::w;
@@ -1602,15 +1591,6 @@ mod windows_app {
         // set through its own messages or it renders as a white box.
         for rich in [h.system_prompt, h.user_template, h.history_output] {
             unsafe {
-                // RichEdit sends no notifications until the event mask opts
-                // in: without ENM_CHANGE the editable prompt fields never
-                // fire EN_CHANGE and newly typed text stays default black.
-                let _ = SendMessageW(
-                    rich,
-                    EM_SETEVENTMASK,
-                    Some(WPARAM(0)),
-                    Some(LPARAM(ENM_CHANGE as isize)),
-                );
                 let _ = SendMessageW(
                     rich,
                     EM_SETBKGNDCOLOR,
@@ -2178,99 +2158,6 @@ mod windows_app {
                 );
             }
         }
-    }
-
-    /// Reset the body format of a rich field, then paint markdown spans
-    /// with the manager palette: headings bold gold, inline bold bold,
-    /// fenced code muted. The text itself is never modified.
-    fn apply_markdown_char_formats(control: HWND, spans: &[FormatSpan]) {
-        unsafe {
-            let mut selection = CHARRANGE {
-                cp_min: 0,
-                cp_max: 0,
-            };
-            let _ = SendMessageW(
-                control,
-                EM_EXGETSEL,
-                Some(WPARAM(0)),
-                Some(LPARAM(&mut selection as *mut CHARRANGE as isize)),
-            );
-            let _ = SendMessageW(control, WM_SETREDRAW, Some(WPARAM(0)), Some(LPARAM(0)));
-            let body = CHARFORMATW {
-                cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
-                dwMask: CFM_BOLD | CFM_COLOR,
-                dwEffects: CFE_EFFECTS(0),
-                crTextColor: TEXT,
-                ..Default::default()
-            };
-            let text_length = GetWindowTextLengthW(control).max(0) as usize;
-            let _ = SendMessageW(
-                control,
-                EM_SETSEL,
-                Some(WPARAM(0)),
-                Some(LPARAM(text_length as isize)),
-            );
-            let _ = SendMessageW(
-                control,
-                EM_SETCHARFORMAT,
-                Some(WPARAM(SCF_SELECTION as usize)),
-                Some(LPARAM(&body as *const CHARFORMATW as isize)),
-            );
-            for span in spans {
-                let (mask, effects, color) = match span.style {
-                    MarkdownStyle::Heading(_) => (CFM_BOLD | CFM_COLOR, CFE_BOLD, GOLD),
-                    MarkdownStyle::Bold => (CFM_BOLD, CFE_BOLD, TEXT),
-                    MarkdownStyle::Code => (CFM_COLOR, CFE_EFFECTS(0), MUTED),
-                    MarkdownStyle::Italic => (CFM_ITALIC, CFE_ITALIC, TEXT),
-                    MarkdownStyle::Strike => (CFM_STRIKEOUT, CFE_STRIKEOUT, TEXT),
-                };
-                let format = CHARFORMATW {
-                    cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
-                    dwMask: mask,
-                    dwEffects: effects,
-                    crTextColor: color,
-                    ..Default::default()
-                };
-                let _ = SendMessageW(
-                    control,
-                    EM_SETSEL,
-                    Some(WPARAM(span.start)),
-                    Some(LPARAM(span.end as isize)),
-                );
-                let _ = SendMessageW(
-                    control,
-                    EM_SETCHARFORMAT,
-                    Some(WPARAM(SCF_SELECTION as usize)),
-                    Some(LPARAM(&format as *const CHARFORMATW as isize)),
-                );
-            }
-            let _ = SendMessageW(
-                control,
-                EM_SETSEL,
-                Some(WPARAM(selection.cp_min.max(0) as usize)),
-                Some(LPARAM(selection.cp_max.max(0) as isize)),
-            );
-            let _ = SendMessageW(control, WM_SETREDRAW, Some(WPARAM(1)), Some(LPARAM(0)));
-            let _ = InvalidateRect(Some(control), None, true);
-        }
-    }
-
-    /// Live in-place markdown visualization for the editable prompt fields.
-    fn apply_markdown_view(control: HWND) {
-        if control.0.is_null() {
-            return;
-        }
-        let length = unsafe { GetWindowTextLengthW(control) };
-        if length <= 0 {
-            return;
-        }
-        let mut buffer = vec![0u16; length as usize + 1];
-        unsafe {
-            GetWindowTextW(control, &mut buffer);
-        }
-        let raw = String::from_utf16_lossy(&buffer[..length as usize]);
-        let spans = markdown_view_spans(&raw);
-        apply_markdown_char_formats(control, &spans);
     }
 
     fn place_control(hwnd: HWND, rect: RECT, dpi: u32) {
@@ -3570,12 +3457,6 @@ mod windows_app {
     ) -> LRESULT {
         let id = command & 0xffff;
         let notification = (command >> 16) & 0xffff;
-        if notification == EN_CHANGE && matches!(id, ID_PROMPT_SYSTEM | ID_PROMPT_USER_TEMPLATE) {
-            // The raw text stays untouched (it is what gets saved); markdown
-            // structure is visualized in place through character formatting.
-            apply_markdown_view(control);
-            return LRESULT(0);
-        }
         if notification == CBN_DROPDOWN {
             expand_combo_for_dropdown(state, control);
         }
@@ -3992,9 +3873,7 @@ mod windows_app {
                 set_text(state.handles.history_target, &entry.target);
                 set_text(state.handles.history_context, &context);
                 apply_history_detail_split(state);
-                let rendered = render_markdown(&entry.output);
-                set_text(state.handles.history_output, &rendered.text);
-                apply_markdown_char_formats(state.handles.history_output, &rendered.spans);
+                set_text(state.handles.history_output, &entry.output);
                 set_text(
                     state.handles.history_meta,
                     &format!(
