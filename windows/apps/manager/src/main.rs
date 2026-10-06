@@ -141,6 +141,33 @@ mod windows_app {
     /// to plain EDIT controls and render as raw text.
     static RICH_EDIT_MODULE: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
 
+    /// RichEdit ignores WM_CTLCOLOREDIT and resets character formatting on
+    /// WM_SETFONT/WM_SETTEXT, so the dark surface and light ink must be
+    /// reapplied after creation, font changes, and every text fill.
+    fn apply_rich_ink(control: HWND) {
+        unsafe {
+            let _ = SendMessageW(
+                control,
+                EM_SETBKGNDCOLOR,
+                Some(WPARAM(0)),
+                Some(LPARAM(MANAGER_BG.0 as isize)),
+            );
+            let ink = CHARFORMATW {
+                cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
+                dwMask: CFM_COLOR,
+                dwEffects: CFE_EFFECTS(0),
+                crTextColor: TEXT,
+                ..Default::default()
+            };
+            let _ = SendMessageW(
+                control,
+                EM_SETCHARFORMAT,
+                Some(WPARAM(SCF_ALL as usize)),
+                Some(LPARAM(&ink as *const CHARFORMATW as isize)),
+            );
+        }
+    }
+
     fn rich_edit_class() -> windows::core::PCWSTR {
         use windows::core::w;
         if RICH_EDIT_MODULE.get().copied().unwrap_or(0) != 0 {
@@ -1585,30 +1612,8 @@ mod windows_app {
         }
         h.history_output =
             add_readonly_rich_edit(hwnd, &mut h, Some(View::History), Slot::HistoryOutput, true)?;
-        // RichEdit ignores WM_CTLCOLOREDIT: its dark surface and ink must be
-        // set through its own messages or it renders as a white box.
         for rich in [h.system_prompt, h.user_template, h.history_output] {
-            unsafe {
-                let _ = SendMessageW(
-                    rich,
-                    EM_SETBKGNDCOLOR,
-                    Some(WPARAM(0)),
-                    Some(LPARAM(MANAGER_BG.0 as isize)),
-                );
-                let ink = CHARFORMATW {
-                    cbSize: std::mem::size_of::<CHARFORMATW>() as u32,
-                    dwMask: CFM_COLOR,
-                    dwEffects: CFE_EFFECTS(0),
-                    crTextColor: TEXT,
-                    ..Default::default()
-                };
-                let _ = SendMessageW(
-                    rich,
-                    EM_SETCHARFORMAT,
-                    Some(WPARAM(SCF_ALL as usize)),
-                    Some(LPARAM(&ink as *const CHARFORMATW as isize)),
-                );
-            }
+            apply_rich_ink(rich);
         }
         add_label(
             hwnd,
@@ -2875,6 +2880,15 @@ mod windows_app {
             };
             set_font(placement.hwnd, font);
         }
+        // WM_SETFONT resets RichEdit character formatting: re-ink the
+        // markdown-aware fields after every font application.
+        for rich in [
+            state.handles.system_prompt,
+            state.handles.user_template,
+            state.handles.history_output,
+        ] {
+            apply_rich_ink(rich);
+        }
     }
 
     fn apply_control_themes(state: &ManagerState) {
@@ -3872,6 +3886,7 @@ mod windows_app {
                 set_text(state.handles.history_context, &context);
                 apply_history_detail_split(state);
                 set_text(state.handles.history_output, &entry.output);
+                apply_rich_ink(state.handles.history_output);
                 set_text(
                     state.handles.history_meta,
                     &format!(
@@ -4419,6 +4434,8 @@ mod windows_app {
             set_text(state.handles.profile_name, &prompt.name);
             set_text(state.handles.system_prompt, &prompt.system_prompt);
             set_text(state.handles.user_template, &prompt.user_template);
+            apply_rich_ink(state.handles.system_prompt);
+            apply_rich_ink(state.handles.user_template);
             set_text(
                 state.handles.profile_model,
                 prompt.model.as_deref().unwrap_or_default(),

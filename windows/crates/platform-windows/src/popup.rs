@@ -345,9 +345,6 @@ mod windows_impl {
         /// More… list is expanded below the rail row.
         rail_expanded: bool,
         choosing_profile: bool,
-        /// The context pane holds sentence context for this target. When
-        /// false the target pane expands over the whole raw area.
-        has_context: bool,
         /// Only a user close should notify the resident. Replacement and
         /// cancellation destroy the window silently.
         notify_owner: bool,
@@ -412,7 +409,6 @@ mod windows_impl {
                 menu_panel: HWND::default(),
                 rail_expanded: false,
                 choosing_profile: false,
-                has_context: false,
                 notify_owner: true,
                 in_native_move: false,
                 render_pending: false,
@@ -767,10 +763,9 @@ mod windows_impl {
             presented
         }
 
-        /// Fill the selection card's two panes: the target in the primary
-        /// pane and its sentence context in the muted pane below. An absent
-        /// or duplicate context leaves the context pane empty; the target
-        /// pane then expands over the whole raw area at layout time.
+        /// Fill the selection card's single raw area: the target, then the
+        /// sentence context on the next line. The text stays as typed (and
+        /// as sent to the provider), and the pane scrolls for overflow.
         pub fn set_input(&mut self, target: &str, context: Option<&str>) {
             if let Some(data) = data_mut(self.hwnd) {
                 let target_text = bounded_input(target);
@@ -778,9 +773,13 @@ mod windows_impl {
                     Some(value) if !value.is_empty() && value != target => bounded_input(value),
                     _ => String::new(),
                 };
-                data.has_context = !context_text.is_empty();
-                set_control_text(data.input, &target_text);
-                set_control_text(data.context_input, &context_text);
+                let combined = if context_text.is_empty() {
+                    target_text
+                } else {
+                    format!("{target_text}\r\n{context_text}")
+                };
+                set_control_text(data.input, &combined);
+                set_control_text(data.context_input, "");
             }
         }
 
@@ -800,26 +799,20 @@ mod windows_impl {
             data_mut(self.hwnd).is_some_and(|data| data.pinned)
         }
 
-        /// Test-only: current selection-card pane texts and the context flag.
+        /// Test-only: the combined selection-card text.
         #[cfg(test)]
-        pub fn input_panes_for_test(&self) -> (String, String, bool) {
-            let pane_text = |hwnd: HWND| -> String {
-                if hwnd.0.is_null() {
-                    return String::new();
-                }
-                let length = unsafe { GetWindowTextLengthW(hwnd) };
-                let mut buffer = vec![0u16; (length.max(0) + 1) as usize];
-                let written = unsafe { GetWindowTextW(hwnd, &mut buffer) };
-                String::from_utf16_lossy(&buffer[..written.max(0) as usize])
+        pub fn input_text_for_test(&self) -> String {
+            let data = match data_mut(self.hwnd) {
+                Some(data) => data,
+                None => return String::new(),
             };
-            match data_mut(self.hwnd) {
-                Some(data) => (
-                    pane_text(data.input),
-                    pane_text(data.context_input),
-                    data.has_context,
-                ),
-                None => (String::new(), String::new(), false),
+            if data.input.0.is_null() {
+                return String::new();
             }
+            let length = unsafe { GetWindowTextLengthW(data.input) };
+            let mut buffer = vec![0u16; (length.max(0) + 1) as usize];
+            let written = unsafe { GetWindowTextW(data.input, &mut buffer) };
+            String::from_utf16_lossy(&buffer[..written.max(0) as usize])
         }
 
         /// Test-only: park the hover state on a profile rail pill so the
@@ -1584,37 +1577,17 @@ mod windows_impl {
             return;
         }
         let layout = compute_layout(client.right, client.bottom, dpi, data.buttons.len() as i32);
-        // Selection card: the target pane sits above the muted context pane.
-        // Without context the target pane expands over the whole raw area.
+        // Selection card: one raw area holds the target and its context.
         let raw_left = layout.margin + scale(12, dpi);
         let raw_width = layout.content_width - scale(24, dpi);
         let raw_bottom = layout.context_top + layout.context_height;
-        if data.has_context {
-            move_child(
-                data.input,
-                raw_left,
-                layout.target_top,
-                raw_width,
-                layout.target_height,
-            );
-            set_control_visible(data.context_input, true);
-            move_child(
-                data.context_input,
-                raw_left,
-                layout.context_top,
-                raw_width,
-                raw_bottom - layout.context_top,
-            );
-        } else {
-            set_control_visible(data.context_input, false);
-            move_child(
-                data.input,
-                raw_left,
-                layout.target_top,
-                raw_width,
-                raw_bottom - layout.target_top,
-            );
-        }
+        move_child(
+            data.input,
+            raw_left,
+            layout.target_top,
+            raw_width,
+            raw_bottom - layout.target_top,
+        );
         move_child(
             data.output,
             layout.margin + scale(12, dpi),
@@ -2168,7 +2141,9 @@ mod windows_impl {
 
     fn set_standard_controls_visible(data: &PopupData, visible: bool) {
         set_control_visible(data.input, visible);
-        set_control_visible(data.context_input, visible);
+        // The legacy context control stays hidden: its text is merged into
+        // the single raw area above.
+        set_control_visible(data.context_input, false);
         set_control_visible(data.output, visible);
         for button in data.buttons {
             set_control_visible(button, visible);
@@ -3916,7 +3891,7 @@ plain - text
 
     #[cfg(windows)]
     #[test]
-    fn set_input_splits_target_and_context_panes() {
+    fn set_input_combines_target_and_context_in_one_pane() {
         use super::windows_impl::Popup;
         use windows::core::w;
         use windows::Win32::Foundation::HINSTANCE;
@@ -3947,28 +3922,17 @@ plain - text
             "quick",
             Some("The quick brown fox jumps over the lazy dog."),
         );
-        let (target, context, has_context) = popup.input_panes_for_test();
-        assert_eq!(target, "quick", "target pane holds the target only");
+        let text = popup.input_text_for_test();
         assert_eq!(
-            context, "The quick brown fox jumps over the lazy dog.",
-            "context pane holds the sentence context only"
+            text, "quick\r\nThe quick brown fox jumps over the lazy dog.",
+            "target and context share one area, one line apart"
         );
-        assert!(has_context);
 
-        // A target without usable context empties the context pane and
-        // clears the flag so the target pane expands over the raw area.
         popup.set_input("word", None);
-        let (target, context, has_context) = popup.input_panes_for_test();
-        assert_eq!(target, "word");
-        assert_eq!(context, "");
-        assert!(!has_context);
+        assert_eq!(popup.input_text_for_test(), "word");
 
-        // A context equal to the target carries no extra information and
-        // must not be shown twice.
         popup.set_input("word", Some("word"));
-        let (_, context, has_context) = popup.input_panes_for_test();
-        assert_eq!(context, "");
-        assert!(!has_context);
+        assert_eq!(popup.input_text_for_test(), "word");
 
         popup.dismiss();
         unsafe {
