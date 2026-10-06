@@ -27,11 +27,12 @@ mod windows_impl {
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, FindWindowExW,
         GetAncestor, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId, KillTimer,
-        MessageBoxW, PostQuitMessage, RegisterClassW, SendMessageTimeoutW, SetTimer,
-        SetWindowLongPtrW, TranslateMessage, WindowFromPoint, GA_PARENT, GA_ROOT, GWLP_USERDATA,
-        HWND_MESSAGE, MB_ICONERROR, MB_ICONWARNING, MB_OK, MSG, SEND_MESSAGE_TIMEOUT_FLAGS,
-        SMTO_ABORTIFHUNG, SMTO_BLOCK, WM_COMMAND, WM_DESTROY, WM_HOTKEY, WM_LBUTTONDOWN,
-        WM_MBUTTONDOWN, WM_RBUTTONDOWN, WM_TIMER, WM_XBUTTONDOWN, WNDCLASSW,
+        MessageBoxW, PostQuitMessage, RegisterClassW, SendMessageTimeoutW, SetForegroundWindow,
+        SetTimer, SetWindowLongPtrW, TranslateMessage, WindowFromPoint, GA_PARENT, GA_ROOT,
+        GWLP_USERDATA, HWND_MESSAGE, MB_ICONERROR, MB_ICONWARNING, MB_OK, MSG,
+        SEND_MESSAGE_TIMEOUT_FLAGS, SMTO_ABORTIFHUNG, SMTO_BLOCK, WM_COMMAND, WM_DESTROY,
+        WM_HOTKEY, WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_RBUTTONDOWN, WM_TIMER, WM_XBUTTONDOWN,
+        WNDCLASSW,
     };
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslateResident");
@@ -1597,6 +1598,7 @@ mod windows_impl {
             )
         };
         let (trigger, pointer, selection_rect) = (spec.trigger, spec.pointer, spec.selection_rect);
+        let source_root_window = spec.source_root_window;
         state.pending = Some(PendingAttempt {
             attempt,
             spec,
@@ -1614,6 +1616,15 @@ mod windows_impl {
                     result,
                 },
             );
+            // The popup never activates itself, so without this the user's
+            // Ctrl+C is delivered to their application instead of the output
+            // control holding the selection. The resident just received the
+            // selecting click, so it may take the foreground.
+            unsafe {
+                let _ = SetForegroundWindow(windows::Win32::Foundation::HWND(
+                    source_root_window as *mut core::ffi::c_void,
+                ));
+            }
             return;
         }
         let _ = now;
