@@ -857,6 +857,58 @@ mod windows_impl {
             }
         }
 
+        /// True when `root` is this popup's own top-level window: selections
+        /// whose gesture started here originate from inside this popup.
+        /// The text currently selected inside the result output, read
+        /// directly from the control the resident owns. The popup never
+        /// takes foreground, so the foreground-based extractors cannot see
+        /// this selection; this direct read is what makes in-popup
+        /// self-translation possible.
+        pub fn output_selected_text(&self) -> Option<String> {
+            const EM_EXGETSEL: u32 = 0x0434;
+            const EM_GETSELTEXT: u32 = 0x043E;
+            #[allow(clippy::upper_case_acronyms)]
+            #[repr(C)]
+            struct CHARRANGE {
+                cp_min: i32,
+                cp_max: i32,
+            }
+            let data = data_mut(self.hwnd)?;
+            if data.output.0.is_null() || !popup_allows_hover_text(&data.state) {
+                return None;
+            }
+            unsafe {
+                let mut range = CHARRANGE {
+                    cp_min: 0,
+                    cp_max: 0,
+                };
+                SendMessageW(
+                    data.output,
+                    EM_EXGETSEL,
+                    Some(WPARAM(0)),
+                    Some(LPARAM(&mut range as *mut CHARRANGE as isize)),
+                );
+                let length = range.cp_max.saturating_sub(range.cp_min);
+                if length <= 0 {
+                    return None;
+                }
+                let mut buffer = vec![0u16; length as usize + 1];
+                SendMessageW(
+                    data.output,
+                    EM_GETSELTEXT,
+                    Some(WPARAM(0)),
+                    Some(LPARAM(buffer.as_mut_ptr() as isize)),
+                );
+                let text = String::from_utf16_lossy(&buffer);
+                let text = text.trim_end_matches(' ').trim().to_owned();
+                (!text.is_empty()).then_some(text)
+            }
+        }
+
+        pub fn is_root_window(&self, root: isize) -> bool {
+            !self.hwnd.0.is_null() && self.hwnd.0 as isize == root
+        }
+
         pub fn is_completed(&self) -> bool {
             data_mut(self.hwnd).is_some_and(|data| matches!(data.state, PopupState::Completed(_)))
         }

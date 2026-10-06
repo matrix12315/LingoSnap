@@ -1560,20 +1560,79 @@ mod windows_impl {
             CandidateCancellation::AllInflight => cancel_inflight_work(state),
             CandidateCancellation::ExtractionOnly => cancel_pending_extraction(state),
         }
-        let attempt = state.pipeline.extract(
-            spec.trigger,
-            spec.process_id,
-            spec.source_root_window,
-            spec.pointer,
-            spec.selection_rect,
-        );
+        // A selection gesture that started on a popup's own output is read
+        // directly from that control. The popup never takes foreground, so
+        // the foreground-based extractors (UIA focused element, clipboard
+        // copy, native fallback) cannot observe the gesture at all. An
+        // empty selection makes zero provider calls.
+        let popup_sourced = spec.trigger == TriggerKind::Selection
+            && spec.source_root_window != 0
+            && state
+                .popups
+                .iter()
+                .any(|entry| entry.popup.is_root_window(spec.source_root_window));
+        let (attempt, direct_result) = if popup_sourced {
+            match popup_output_selected_text(state, spec.source_root_window) {
+                Some(mut text) => {
+                    if text.screen_rect.is_none() {
+                        text.screen_rect = spec.selection_rect;
+                    }
+                    (state.pipeline.allocate_attempt(), Some(Ok(text)))
+                }
+                None => {
+                    runtime_trace::record("popup_self_selection_empty");
+                    return;
+                }
+            }
+        } else {
+            (
+                state.pipeline.extract(
+                    spec.trigger,
+                    spec.process_id,
+                    spec.source_root_window,
+                    spec.pointer,
+                    spec.selection_rect,
+                ),
+                None,
+            )
+        };
+        let (trigger, pointer, selection_rect) = (spec.trigger, spec.pointer, spec.selection_rect);
         state.pending = Some(PendingAttempt {
             attempt,
             spec,
             config_generation: state.config_generation,
         });
+        if let Some(result) = direct_result {
+            handle_extraction(
+                hwnd,
+                state,
+                ExtractionCompleted {
+                    attempt,
+                    trigger,
+                    pointer,
+                    selection_rect,
+                    result,
+                },
+            );
+            return;
+        }
         let _ = now;
         let _ = hwnd;
+    }
+
+    fn popup_output_selected_text(
+        state: &ShellState,
+        source_root_window: isize,
+    ) -> Option<selection_core::TextContext> {
+        let entry = state
+            .popups
+            .iter()
+            .find(|entry| entry.popup.is_root_window(source_root_window))?;
+        let text = entry.popup.output_selected_text()?;
+        Some(selection_core::TextContext::new(
+            text,
+            selection_core::ExtractionSource::UiaSelection,
+        ))
     }
 
     /// Cancel work which may still produce events without changing the
@@ -1963,7 +2022,16 @@ mod windows_impl {
             let highlight = profile_ids
                 .iter()
                 .position(|id| *id == pending.spec.prompt_id);
-            let admission = ensure_popup(hwnd, state, anchor, None, None, false);
+            // A selection that started inside a popup is self-translation:
+            // its chooser must be a fresh popup, because reusing a window
+            // would reanchor and destroy the popup the user is reading. The
+            // source popup stays until it is dismissed normally.
+            let force_new = pending.spec.source_root_window != 0
+                && state
+                    .popups
+                    .iter()
+                    .any(|entry| entry.popup.is_root_window(pending.spec.source_root_window));
+            let admission = ensure_popup(hwnd, state, anchor, None, None, force_new);
             let popup_id = admission.map(|admission| admission.popup_id);
             let shown = popup_id
                 .and_then(|id| popup_entry_mut(state, id))

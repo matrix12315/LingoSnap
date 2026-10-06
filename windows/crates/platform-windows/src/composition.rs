@@ -116,6 +116,13 @@ impl Pipeline {
         )
     }
 
+    /// Reserve the next attempt id without starting extraction. Callers
+    /// that produce a result synchronously (popup self-translation) use it
+    /// so their ids cannot collide with worker attempts.
+    pub fn allocate_attempt(&self) -> u64 {
+        self.next_attempt.fetch_add(1, Ordering::Relaxed)
+    }
+
     pub fn extract(
         &self,
         trigger: TriggerKind,
