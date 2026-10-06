@@ -139,6 +139,8 @@ mod windows_app {
     const EN_CHANGE: usize = 0x0300;
     const EM_EXGETSEL: u32 = 0x0434;
     const EM_SETBKGNDCOLOR: u32 = 0x0443;
+    const EM_SETEVENTMASK: u32 = 0x0445;
+    const ENM_CHANGE: u32 = 0x0001;
 
     /// msftedit.dll hosts the RICHEDIT50W class used by the markdown-aware
     /// fields. Loaded once per process; when missing those fields fall back
@@ -1600,6 +1602,15 @@ mod windows_app {
         // set through its own messages or it renders as a white box.
         for rich in [h.system_prompt, h.user_template, h.history_output] {
             unsafe {
+                // RichEdit sends no notifications until the event mask opts
+                // in: without ENM_CHANGE the editable prompt fields never
+                // fire EN_CHANGE and newly typed text stays default black.
+                let _ = SendMessageW(
+                    rich,
+                    EM_SETEVENTMASK,
+                    Some(WPARAM(0)),
+                    Some(LPARAM(ENM_CHANGE as isize)),
+                );
                 let _ = SendMessageW(
                     rich,
                     EM_SETBKGNDCOLOR,
