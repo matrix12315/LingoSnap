@@ -1572,6 +1572,16 @@ mod windows_impl {
                 .popups
                 .iter()
                 .any(|entry| entry.popup.is_root_window(spec.source_root_window));
+        // Foreground the source popup BEFORE the chooser is presented: the
+        // chooser is then shown above it and stays clickable. Keys (Ctrl+C)
+        // also reach the output control holding the selection.
+        if popup_sourced {
+            unsafe {
+                let _ = SetForegroundWindow(windows::Win32::Foundation::HWND(
+                    spec.source_root_window as *mut core::ffi::c_void,
+                ));
+            }
+        }
         let (attempt, direct_result) = if popup_sourced {
             match popup_output_selected_text(state, spec.source_root_window) {
                 Some(mut text) => {
@@ -1598,7 +1608,6 @@ mod windows_impl {
             )
         };
         let (trigger, pointer, selection_rect) = (spec.trigger, spec.pointer, spec.selection_rect);
-        let source_root_window = spec.source_root_window;
         state.pending = Some(PendingAttempt {
             attempt,
             spec,
@@ -1616,24 +1625,10 @@ mod windows_impl {
                     result,
                 },
             );
-            // The popup never activates itself, so without this the user's
-            // Ctrl+C is delivered to their application instead of the output
-            // control holding the selection. The resident just received the
-            // selecting click, so it may take the foreground.
-            unsafe {
-                let _ = SetForegroundWindow(windows::Win32::Foundation::HWND(
-                    source_root_window as *mut core::ffi::c_void,
-                ));
-            }
-            // SetForegroundWindow resets thread focus to the popup window:
-            // put keyboard focus back on the output control.
-            if let Some(entry) = state
-                .popups
-                .iter()
-                .find(|entry| entry.popup.is_root_window(source_root_window))
-            {
-                entry.popup.focus_output();
-            }
+            // Keys reach the output: the foreground handoff above activated
+            // the popup, and activation restores the focus the output held
+            // from the drag's EN_SELCHANGE. Do NOT SetFocus here - SetFocus
+            // activates the popup again and raises it back over the chooser.
             return;
         }
         let _ = now;
