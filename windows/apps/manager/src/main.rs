@@ -43,9 +43,11 @@ mod windows_app {
         CFE_EFFECTS, CFM_COLOR, CHARFORMATW, EM_SETCHARFORMAT, SCF_ALL,
     };
     use windows::Win32::UI::Controls::{
-        SetWindowTheme, DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_LISTBOX,
+        SetScrollInfo, SetWindowTheme, ShowScrollBar, DRAWITEMSTRUCT, MEASUREITEMSTRUCT,
+        ODT_BUTTON, ODT_LISTBOX,
     };
     use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
+    use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
         GetDlgCtrlID, GetMessageW, GetParent, GetWindowLongPtrW, GetWindowRect,
@@ -55,10 +57,14 @@ mod windows_app {
         ES_AUTOVSCROLL, ES_MULTILINE, ES_PASSWORD, GWLP_USERDATA, IDYES, MB_DEFBUTTON2,
         MB_ICONWARNING, MB_YESNO, MINMAXINFO, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SW_HIDE,
         SW_SHOW, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DPICHANGED,
-        WM_DRAWITEM, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_MEASUREITEM, WM_NOTIFY, WM_PAINT,
-        WM_SETFONT, WM_SIZE, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN,
-        WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
-        WS_VSCROLL,
+        WM_DRAWITEM, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_MEASUREITEM, WM_MOUSEWHEEL, WM_NOTIFY,
+        WM_PAINT, WM_SETFONT, WM_SIZE, WM_VSCROLL, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
+        WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU,
+        WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SB_LINEDOWN, SB_LINEUP, SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION, SB_VERT, SCROLLINFO,
+        SIF_ALL, SIF_POS, SIF_RANGE,
     };
 
     const CLASS_NAME: PCWSTR = w!("SelectionTranslateManager");
@@ -100,6 +106,14 @@ mod windows_app {
     const ID_PROMPT_TEMPERATURE: usize = 171;
     const ID_PROMPT_MAX_TOKENS: usize = 172;
     const ID_HISTORY_SEARCH: usize = 175;
+    // Profile reorder buttons: two per row (up/down), allocated in pairs.
+    // Owned by dynamically created rows on the Settings page; the pair for
+    // row `index` lives at ID_PROFILE_MOVE_BASE + index * 2 (+1 for down).
+    const ID_PROFILE_MOVE_BASE: usize = 180;
+    const ID_PROFILE_MOVE_SLOTS: usize = 64;
+    // Mirrors the resident's chooser rail inline limit: the first N profiles
+    // in this order sit on the chooser rail, the rest fold under More….
+    const RAIL_INLINE_LIMIT: usize = 4;
 
     const DEFAULT_DPI: u32 = 96;
     // Redesign mockup metrics (logical px): a horizontal tab bar over
@@ -261,6 +275,9 @@ mod windows_app {
         Ocr,
         Newest,
         Oldest,
+        ProfilesCard,
+        ProfilesBeneathDivider,
+        ProfilesRailHint,
         English,
         SimplifiedChinese,
     }
@@ -321,6 +338,9 @@ mod windows_app {
         TextKey::Ocr,
         TextKey::Newest,
         TextKey::Oldest,
+        TextKey::ProfilesCard,
+        TextKey::ProfilesBeneathDivider,
+        TextKey::ProfilesRailHint,
         TextKey::English,
         TextKey::SimplifiedChinese,
     ];
@@ -344,6 +364,11 @@ mod windows_app {
             (UiLanguage::English, ProviderCard) => "Provider",
             (UiLanguage::English, CredentialsCard) => "Credentials",
             (UiLanguage::English, DefaultsCard) => "Defaults",
+            (UiLanguage::English, ProfilesCard) => "Profiles",
+            (UiLanguage::English, ProfilesBeneathDivider) => "BENEATH MORE…",
+            (UiLanguage::English, ProfilesRailHint) => {
+                "The order here sets the chooser rail — the first four sit on the rail, the rest beneath More…"
+            }
             (UiLanguage::English, ProviderEndpoint) => "Provider endpoint",
             (UiLanguage::English, Model) => "Model",
             (UiLanguage::English, CredentialTarget) => "Credential target",
@@ -407,6 +432,11 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, ProviderCard) => "服务商",
             (UiLanguage::SimplifiedChinese, CredentialsCard) => "凭据",
             (UiLanguage::SimplifiedChinese, DefaultsCard) => "默认配置",
+            (UiLanguage::SimplifiedChinese, ProfilesCard) => "配置档",
+            (UiLanguage::SimplifiedChinese, ProfilesBeneathDivider) => "MORE… 以下",
+            (UiLanguage::SimplifiedChinese, ProfilesRailHint) => {
+                "这里的顺序即翻译选择栏的顺序 — 前四个显示在栏上，其余收在 More… 下。"
+            }
             (UiLanguage::SimplifiedChinese, ProviderEndpoint) => "服务端点",
             (UiLanguage::SimplifiedChinese, Model) => "模型",
             (UiLanguage::SimplifiedChinese, CredentialTarget) => "凭据目标",
@@ -820,6 +850,11 @@ mod windows_app {
         settings_page: HWND,
         prompts_page: HWND,
         history_page: HWND,
+        /// Dynamically created profile reorder rows (one per profile), the
+        /// rail divider after the inline limit, and the rail hint line.
+        profile_rows: Vec<ProfileOrderRow>,
+        profiles_divider: HWND,
+        profiles_hint: HWND,
         endpoint: HWND,
         model: HWND,
         credential_target: HWND,
@@ -860,6 +895,9 @@ mod windows_app {
                 settings_page: null,
                 prompts_page: null,
                 history_page: null,
+                profile_rows: Vec::new(),
+                profiles_divider: null,
+                profiles_hint: null,
                 endpoint: null,
                 model: null,
                 credential_target: null,
@@ -889,6 +927,12 @@ mod windows_app {
                 localized: Vec::new(),
             }
         }
+    }
+
+    struct ProfileOrderRow {
+        label: HWND,
+        up: HWND,
+        down: HWND,
     }
 
     struct ManagerState {
@@ -925,6 +969,11 @@ mod windows_app {
         credential_status: CredentialStatusState,
         theme: ThemeResources,
         dpi: u32,
+        /// Vertical scroll offset of the Settings page in logical pixels.
+        /// The Profiles order card grows with the profile count, so a tall
+        /// stack overflows the container and the page scrolls.
+        settings_scroll: i32,
+        settings_scroll_max: i32,
     }
 
     #[derive(Clone, Debug, Eq, PartialEq)]
@@ -998,6 +1047,8 @@ mod windows_app {
             credential_status: CredentialStatusState::Absent,
             theme: ThemeResources::new(dpi),
             dpi,
+            settings_scroll: 0,
+            settings_scroll_max: 0,
         });
         let state_ptr = Box::into_raw(state);
         let hwnd = unsafe {
@@ -1143,6 +1194,28 @@ mod windows_app {
         }
         match message {
             WM_COMMAND => handle_command(hwnd, &mut *state, wparam.0, HWND(lparam.0 as *mut _)),
+            WM_VSCROLL
+                if lparam.0 == 0
+                    || lparam.0 as usize == (*state).handles.settings_page.0 as usize =>
+            {
+                handle_settings_scroll(hwnd, &mut *state, wparam);
+                LRESULT(0)
+            }
+            WM_MOUSEWHEEL => {
+                if (*state).view == View::Settings {
+                    // Each notch scrolls three reorder rows.
+                    let delta = ((wparam.0 >> 16) as u16 as i16) as i32;
+                    let lines = -delta / 120 * 3;
+                    if lines != 0 {
+                        (*state).settings_scroll = ((*state).settings_scroll + lines * 32)
+                            .clamp(0, (*state).settings_scroll_max);
+                        apply_manager_layout(hwnd, &mut *state);
+                    }
+                    LRESULT(0)
+                } else {
+                    DefWindowProcW(hwnd, message, wparam, lparam)
+                }
+            }
             WM_SIZE => {
                 apply_manager_layout(hwnd, &mut *state);
                 LRESULT(0)
@@ -1227,6 +1300,9 @@ mod windows_app {
                 | WM_NOTIFY
                 | WM_DRAWITEM
                 | WM_MEASUREITEM
+                // The page owns the Settings scrollbar; the scroll state and
+                // layout live in the main window's ManagerState.
+                | WM_VSCROLL
                 | 0x0133
                 | 0x0134
                 | 0x0135
@@ -1716,6 +1792,11 @@ mod windows_app {
         HistoryHint,
         HistoryMeta,
         HistoryDelete,
+        // Dynamic Settings-page controls (profile reorder rows, rail divider,
+        // rail hint). They share one slot because geometry positions them
+        // manually relative to the Profiles card; the slot only carries font,
+        // theme, and card-background treatment.
+        ProfilesDynamic,
     }
 
     fn add_control(state: &mut Handles, hwnd: HWND, view: Option<View>, slot: Slot) -> HWND {
@@ -2218,7 +2299,25 @@ mod windows_app {
         // the whole window at any size.
         let page_width = unscale_from_dpi(page_rect.right - page_rect.left, state.dpi);
         let container_height = unscale_from_dpi(page_rect.bottom - page_rect.top, state.dpi);
-        let geometry = page_geometry(state.view, page_width, container_height);
+        let mut geometry = page_geometry(
+            state.view,
+            page_width,
+            container_height,
+            state.config.profiles.len(),
+        );
+        // Scroll plumbing for the Settings page: clamp the offset against the
+        // freshly computed overflow, shift every rect, then keep the
+        // scrollbar honest. Other pages never overflow.
+        state.settings_scroll_max = if state.view == View::Settings {
+            geometry.scroll_max
+        } else {
+            0
+        };
+        state.settings_scroll = state.settings_scroll.min(state.settings_scroll_max).max(0);
+        if state.settings_scroll > 0 {
+            shift_geometry(&mut geometry, state.settings_scroll);
+        }
+        update_settings_scrollbar(hwnd, state);
         for (slot, rect) in &geometry.slots {
             if let Some(placement) = state
                 .handles
@@ -2236,6 +2335,17 @@ mod windows_app {
                     },
                     state.dpi,
                 );
+            }
+        }
+        // The profile reorder rows, rail divider, and rail hint are dynamic
+        // children of the Profiles card; they follow the card's scrolled rect.
+        if state.view == View::Settings {
+            if let Some((card, _)) = geometry
+                .cards
+                .iter()
+                .find(|(_, key)| *key == TextKey::ProfilesCard)
+            {
+                sync_profile_order_rows(hwnd, state, *card);
             }
         }
         // Remember the laid-out Selection well bands so a selection change
@@ -2292,6 +2402,10 @@ mod windows_app {
         wells: Vec<RECT>,
         extra_caps: Vec<(RECT, TextKey)>,
         slots: Vec<(Slot, RECT)>,
+        /// Logical pixels by which the page content exceeds the container
+        /// height. Nonzero only on the Settings page, where the Profiles
+        /// order card grows with the profile count; the page then scrolls.
+        scroll_max: i32,
     }
 
     /// Evenly distribute `count` blocks of `block` logical pixels between
@@ -2306,7 +2420,12 @@ mod windows_app {
             .collect()
     }
 
-    fn page_geometry(view: View, page_width: i32, container_height: i32) -> PageGeometry {
+    fn page_geometry(
+        view: View,
+        page_width: i32,
+        container_height: i32,
+        profile_count: usize,
+    ) -> PageGeometry {
         let content_width = (page_width - CONTENT_PADDING * 2).max(200);
         let content_top = PAGE_HEADER_HEIGHT;
         let content_height = (container_height - PAGE_HEADER_HEIGHT - 24).max(120);
@@ -2314,30 +2433,53 @@ mod windows_app {
         let mut cards: Vec<(RECT, TextKey)> = Vec::new();
         let mut wells: Vec<RECT> = Vec::new();
         let mut extra_caps: Vec<(RECT, TextKey)> = Vec::new();
+        let mut geometry_scroll_max = 0i32;
         let field_block = 44; // label 14 + 2 + input 28
         match view {
             View::Settings => {
-                // Three cards share the vertical extra space by field count;
-                // the Save row stays pinned under the last card.
+                // Four cards: Provider, Credentials, Defaults, and the
+                // Profiles order card. The three field cards keep their
+                // weights for spare vertical space; the Profiles card grows
+                // with the profile count, so a tall stack overflows into a
+                // page scrollbar instead of squeezing the fields.
+                let row_h = 32; // reorder row: 30 + 2 gap
+                let rows = profile_count as i32;
+                let divider_h: i32 = if profile_count > RAIL_INLINE_LIMIT {
+                    30
+                } else {
+                    0
+                };
+                let profiles_h = 28 + rows * row_h + divider_h + 14;
+                let footnote_h = 16;
                 let base = [184, 140, 184];
                 let weights = [3, 2, 3];
-                let reserve = 36 + 10; // Save settings row + gap
-                let card_area = (content_height - reserve).max(528);
-                let extra = (card_area - 528).max(0);
-                let mut tops = [0, 0, 0];
-                let mut heights = [0, 0, 0];
+                let min_stack = base[0] + base[1] + base[2] + profiles_h + 3 * 10;
+                let extra = (content_height - 46 - footnote_h - min_stack).max(0);
+                let mut tops = [0, 0, 0, 0];
+                let mut heights = [0, 0, 0, 0];
                 let mut y = 0;
-                for index in 0..3 {
-                    heights[index] = base[index] + extra * weights[index] / 8;
+                for index in 0..4 {
+                    heights[index] = if index < 3 {
+                        base[index] + extra * weights[index] / 8
+                    } else {
+                        profiles_h
+                    };
                     tops[index] = y;
                     y += heights[index] + 10;
                 }
+                let footnote_top = y - 10;
+                let save_top = footnote_top + footnote_h + 8;
+                // The scroll shift moves the whole geometry including the
+                // header band, so the overflow is measured against the full
+                // container height, not just the content area.
+                let scroll_max = (content_top + save_top + 36 - container_height).max(0);
                 let card_keys = [
                     TextKey::ProviderCard,
                     TextKey::CredentialsCard,
                     TextKey::DefaultsCard,
+                    TextKey::ProfilesCard,
                 ];
-                for index in 0..3 {
+                for index in 0..4 {
                     cards.push((
                         RECT {
                             left: 0,
@@ -2485,11 +2627,12 @@ mod windows_app {
                     Slot::SaveSettings,
                     RECT {
                         left: 0,
-                        top: content_top + tops[2] + heights[2] + 10,
+                        top: content_top + save_top,
                         right: 160,
-                        bottom: content_top + tops[2] + heights[2] + 46,
+                        bottom: content_top + save_top + 36,
                     },
                 ));
+                geometry_scroll_max = scroll_max;
             }
             View::Prompts => {
                 // Meta row: ID fixed, Name flexes, the numeric group stays
@@ -2827,7 +2970,396 @@ mod windows_app {
             wells,
             extra_caps,
             slots,
+            scroll_max: geometry_scroll_max,
         }
+    }
+
+    /// Shift every rect in a geometry up by `dy` logical pixels. Used to
+    /// scroll the Settings page: geometry is shared by the painter and the
+    /// layout, so one shift moves the cards, slots, and dynamic rows alike.
+    fn shift_geometry(geometry: &mut PageGeometry, dy: i32) {
+        let shift = |rect: &mut RECT| {
+            rect.top -= dy;
+            rect.bottom -= dy;
+        };
+        for (rect, _) in &mut geometry.cards {
+            shift(rect);
+        }
+        for rect in &mut geometry.wells {
+            shift(rect);
+        }
+        for (rect, _) in &mut geometry.extra_caps {
+            shift(rect);
+        }
+        for (_, rect) in &mut geometry.slots {
+            shift(rect);
+        }
+    }
+
+    /// Reflect the Settings scroll state in the page container's vertical
+    /// scrollbar. The scrollbar is shown only when content overflows.
+    fn update_settings_scrollbar(_parent: HWND, state: &ManagerState) {
+        let page = state.handles.settings_page;
+        if state.view != View::Settings || state.settings_scroll_max == 0 {
+            unsafe {
+                let _ = ShowScrollBar(page, SB_VERT, false);
+            }
+            return;
+        }
+        let mut client = RECT::default();
+        if unsafe { GetClientRect(page, &mut client) }.is_err() {
+            return;
+        }
+        let page_height = unscale_from_dpi(client.bottom - client.top, state.dpi).max(1);
+        let info = SCROLLINFO {
+            cbSize: std::mem::size_of::<SCROLLINFO>() as u32,
+            fMask: SIF_RANGE | SIF_POS | SIF_ALL,
+            nMin: 0,
+            nMax: state.settings_scroll_max + page_height - 1,
+            nPage: page_height as u32,
+            nPos: state.settings_scroll,
+            nTrackPos: 0,
+        };
+        unsafe {
+            SetScrollInfo(page, SB_VERT, &info, true);
+            let _ = ShowScrollBar(page, SB_VERT, true);
+        }
+    }
+
+    /// Handle a vertical scroll gesture aimed at the Settings page.
+    fn handle_settings_scroll(parent: HWND, state: &mut ManagerState, wparam: WPARAM) {
+        if state.view != View::Settings || state.settings_scroll_max == 0 {
+            return;
+        }
+        let request =
+            windows::Win32::UI::WindowsAndMessaging::SCROLLBAR_COMMAND((wparam.0 & 0xffff) as i32);
+        let step = |lines: i32| lines * 32;
+        let mut next = state.settings_scroll;
+        match request {
+            SB_LINEUP => next -= step(1),
+            SB_LINEDOWN => next += step(1),
+            SB_PAGEUP => next -= step(6),
+            SB_PAGEDOWN => next += step(6),
+            SB_THUMBPOSITION => {
+                // The high word of wParam carries the absolute position.
+                next = ((wparam.0 >> 16) as u16) as i32;
+            }
+            _ => return,
+        }
+        state.settings_scroll = next.clamp(0, state.settings_scroll_max);
+        unsafe {
+            let _ = SetScrollInfo(
+                state.handles.settings_page,
+                SB_VERT,
+                &SCROLLINFO {
+                    cbSize: std::mem::size_of::<SCROLLINFO>() as u32,
+                    fMask: SIF_POS,
+                    nMin: 0,
+                    nMax: 0,
+                    nPage: 0,
+                    nPos: state.settings_scroll,
+                    nTrackPos: 0,
+                },
+                true,
+            );
+        }
+        apply_manager_layout(parent, state);
+    }
+
+    /// Reconcile the dynamic profile reorder rows with the profile count,
+    /// then position them inside the (scrolled) Profiles card. Row labels
+    /// and button enable states always refresh: a reorder only swaps two
+    /// labels, it never recreates the rows.
+    fn sync_profile_order_rows(parent: HWND, state: &mut ManagerState, card: RECT) {
+        let page = state.handles.settings_page;
+        let count = state.config.profiles.len();
+        if state.handles.profile_rows.len() != count {
+            let mut dead: Vec<HWND> = Vec::new();
+            for row in state.handles.profile_rows.drain(..) {
+                for hwnd in [row.label, row.up, row.down] {
+                    unsafe {
+                        let _ = DestroyWindow(hwnd);
+                    }
+                    dead.push(hwnd);
+                }
+            }
+            state
+                .handles
+                .placements
+                .retain(|placement| !dead.contains(&placement.hwnd));
+            for index in 0..count.min(ID_PROFILE_MOVE_SLOTS / 2) {
+                let label = create_profile_row_control(page, "", ID_PROFILE_MOVE_BASE, true);
+                let up = create_profile_row_control(
+                    page,
+                    "\u{2191}",
+                    ID_PROFILE_MOVE_BASE + index * 2,
+                    false,
+                );
+                let down = create_profile_row_control(
+                    page,
+                    "\u{2193}",
+                    ID_PROFILE_MOVE_BASE + index * 2 + 1,
+                    false,
+                );
+                let label = label.unwrap_or_default();
+                let up = up.unwrap_or_default();
+                let down = down.unwrap_or_default();
+                for hwnd in [label, up, down] {
+                    state.handles.placements.push(ControlPlacement {
+                        hwnd,
+                        view: View::Settings,
+                        slot: Slot::ProfilesDynamic,
+                    });
+                }
+                state
+                    .handles
+                    .profile_rows
+                    .push(ProfileOrderRow { label, up, down });
+            }
+            // The divider and hint ride along with the rows; they are created
+            // once and only shown when the stack actually folds profiles.
+            if state.handles.profiles_divider.0.is_null() {
+                state.handles.profiles_divider = create_profile_row_control(
+                    page,
+                    ui_text(state.language(), TextKey::ProfilesBeneathDivider),
+                    ID_PROFILE_MOVE_BASE,
+                    true,
+                )
+                .unwrap_or_default();
+                if !state.handles.profiles_divider.0.is_null() {
+                    state.handles.placements.push(ControlPlacement {
+                        hwnd: state.handles.profiles_divider,
+                        view: View::Settings,
+                        slot: Slot::ProfilesDynamic,
+                    });
+                    state.handles.localized.push(LocalizedControl {
+                        hwnd: state.handles.profiles_divider,
+                        key: TextKey::ProfilesBeneathDivider,
+                    });
+                }
+            }
+            if state.handles.profiles_hint.0.is_null() {
+                state.handles.profiles_hint = create_profile_row_control(
+                    page,
+                    ui_text(state.language(), TextKey::ProfilesRailHint),
+                    ID_PROFILE_MOVE_BASE,
+                    true,
+                )
+                .unwrap_or_default();
+                if !state.handles.profiles_hint.0.is_null() {
+                    state.handles.placements.push(ControlPlacement {
+                        hwnd: state.handles.profiles_hint,
+                        view: View::Settings,
+                        slot: Slot::ProfilesDynamic,
+                    });
+                    state.handles.localized.push(LocalizedControl {
+                        hwnd: state.handles.profiles_hint,
+                        key: TextKey::ProfilesRailHint,
+                    });
+                }
+            }
+        }
+        // Position and label every row.
+        let row_h = 32;
+        let divider_h = if count > RAIL_INLINE_LIMIT { 26 } else { 0 };
+        let _ = divider_h;
+        for (index, row) in state.handles.profile_rows.iter().enumerate() {
+            let top = card.top + 30 + (index as i32) * row_h;
+            let label_rect = scaled_rect(
+                RECT {
+                    left: card.left + 14,
+                    top,
+                    right: card.right - 16 - 2 * 30,
+                    bottom: top + 30,
+                },
+                state.dpi,
+            );
+            let up_rect = scaled_rect(
+                RECT {
+                    left: card.right - 16 - 2 * 30,
+                    top: top + 2,
+                    right: card.right - 16 - 30,
+                    bottom: top + 28,
+                },
+                state.dpi,
+            );
+            let down_rect = scaled_rect(
+                RECT {
+                    left: card.right - 16 - 26,
+                    top: top + 2,
+                    right: card.right - 16,
+                    bottom: top + 28,
+                },
+                state.dpi,
+            );
+            unsafe {
+                let _ = SetWindowPos(
+                    row.label,
+                    None,
+                    label_rect.left,
+                    label_rect.top,
+                    label_rect.right - label_rect.left,
+                    label_rect.bottom - label_rect.top,
+                    SWP_NOACTIVATE | SWP_NOZORDER,
+                );
+                let _ = SetWindowPos(
+                    row.up,
+                    None,
+                    up_rect.left,
+                    up_rect.top,
+                    up_rect.right - up_rect.left,
+                    up_rect.bottom - up_rect.top,
+                    SWP_NOACTIVATE | SWP_NOZORDER,
+                );
+                let _ = SetWindowPos(
+                    row.down,
+                    None,
+                    down_rect.left,
+                    down_rect.top,
+                    down_rect.right - down_rect.left,
+                    down_rect.bottom - down_rect.top,
+                    SWP_NOACTIVATE | SWP_NOZORDER,
+                );
+            }
+            relabel_profile_row(state, index);
+        }
+        // Divider after the inline limit; hint below the card.
+        if !state.handles.profiles_divider.0.is_null() {
+            let show = count > RAIL_INLINE_LIMIT;
+            let divider_top = card.top + 30 + (RAIL_INLINE_LIMIT as i32) * row_h;
+            let rect = scaled_rect(
+                RECT {
+                    left: card.left + 6,
+                    top: divider_top,
+                    right: card.right - 6,
+                    bottom: divider_top + 20,
+                },
+                state.dpi,
+            );
+            unsafe {
+                let _ = SetWindowPos(
+                    state.handles.profiles_divider,
+                    None,
+                    rect.left,
+                    rect.top,
+                    rect.right - rect.left,
+                    rect.bottom - rect.top,
+                    SWP_NOACTIVATE | SWP_NOZORDER,
+                );
+                let _ = ShowWindow(
+                    state.handles.profiles_divider,
+                    if show { SW_SHOW } else { SW_HIDE },
+                );
+            }
+        }
+        if !state.handles.profiles_hint.0.is_null() {
+            let hint_top = card.bottom + 6;
+            let rect = scaled_rect(
+                RECT {
+                    left: card.left + 2,
+                    top: hint_top,
+                    right: card.right,
+                    bottom: hint_top + 16,
+                },
+                state.dpi,
+            );
+            unsafe {
+                let _ = SetWindowPos(
+                    state.handles.profiles_hint,
+                    None,
+                    rect.left,
+                    rect.top,
+                    rect.right - rect.left,
+                    rect.bottom - rect.top,
+                    SWP_NOACTIVATE | SWP_NOZORDER,
+                );
+            }
+        }
+        let _ = parent;
+    }
+
+    fn relabel_profile_row(state: &ManagerState, index: usize) {
+        let Some(row) = state.handles.profile_rows.get(index) else {
+            return;
+        };
+        let Some(profile) = state.config.profiles.get(index) else {
+            return;
+        };
+        set_text(row.label, &profile_option_label(profile));
+        unsafe {
+            let _ = EnableWindow(row.up, index > 0);
+            let _ = EnableWindow(row.down, index + 1 < state.config.profiles.len());
+        }
+    }
+
+    /// Create one dynamic Settings-page control. Statics carry the row
+    /// labels, divider, and hint; buttons are owner-drawn so they share the
+    /// manager's raised button treatment.
+    fn create_profile_row_control(
+        parent: HWND,
+        text: &str,
+        id: usize,
+        is_static: bool,
+    ) -> windows::core::Result<HWND> {
+        if is_static {
+            create_control(
+                parent,
+                w!("STATIC"),
+                text,
+                WS_CHILD | WS_VISIBLE,
+                0,
+                0,
+                100,
+                24,
+                id,
+            )
+        } else {
+            create_control(
+                parent,
+                w!("BUTTON"),
+                text,
+                WS_CHILD
+                    | WS_VISIBLE
+                    | WS_TABSTOP
+                    | WINDOW_STYLE(BS_PUSHBUTTON as u32 | BS_OWNERDRAW as u32),
+                0,
+                0,
+                26,
+                24,
+                id,
+            )
+        }
+    }
+
+    /// Swap a profile with its neighbour and persist immediately: the order
+    /// is the chooser rail contract, so it must survive without an extra
+    /// Save click.
+    fn move_profile_order(parent: HWND, state: &mut ManagerState, index: usize, up: bool) {
+        let target = if up {
+            match index.checked_sub(1) {
+                Some(value) => value,
+                None => return,
+            }
+        } else if index + 1 < state.config.profiles.len() {
+            index + 1
+        } else {
+            return;
+        };
+        state.config.profiles.swap(index, target);
+        if let Err(error) = save_config(state, &state.config) {
+            set_status(
+                state,
+                &status_text(
+                    state.language(),
+                    StatusEvent::CannotSaveSettings { detail: &error },
+                ),
+            );
+            return;
+        }
+        let refresh = notify_config_changed();
+        populate_profile_selectors(state);
+        set_status(state, &config_refresh_status(state.language(), refresh));
+        apply_manager_layout(parent, state);
     }
 
     fn apply_control_fonts(state: &ManagerState) {
@@ -3012,7 +3544,15 @@ mod windows_app {
             // Responsive geometry shared with apply_manager_layout.
             let page_width = unscale_from_dpi(client.right, state.dpi);
             let container_height = unscale_from_dpi(client.bottom, state.dpi);
-            let geometry = page_geometry(view, page_width, container_height);
+            let mut geometry = page_geometry(
+                view,
+                page_width,
+                container_height,
+                state.config.profiles.len(),
+            );
+            if view == View::Settings && state.settings_scroll > 0 {
+                shift_geometry(&mut geometry, state.settings_scroll);
+            }
             // Slot rects are logical container coordinates with the content
             // padding already accounted for; scale exactly once here.
             let place = |rect: &RECT| {
@@ -3493,6 +4033,15 @@ mod windows_app {
         if id == ID_PROMPT_ID && notification == CBN_SELCHANGE {
             // The ID dropdown lists every profile; picking one loads it.
             load_profile_from_dropdown(state);
+            return LRESULT(0);
+        }
+        if (ID_PROFILE_MOVE_BASE..ID_PROFILE_MOVE_BASE + ID_PROFILE_MOVE_SLOTS).contains(&id) {
+            // Reorder buttons send BN_CLICKED only; other notifications (for
+            // example focus aesthetics) fall through.
+            if notification == 0 {
+                let slot = id - ID_PROFILE_MOVE_BASE;
+                move_profile_order(hwnd, state, slot / 2, slot.is_multiple_of(2));
+            }
             return LRESULT(0);
         }
         match id {
@@ -4712,13 +5261,13 @@ mod windows_app {
             assert!(wide.page.right > compact.page.right);
             // Content starts at the fixed padding and spans the page.
             let geometry =
-                super::page_geometry(super::View::Settings, 1240, 820 - super::TAB_BAR_HEIGHT);
+                super::page_geometry(super::View::Settings, 1240, 820 - super::TAB_BAR_HEIGHT, 1);
             let card = &geometry.cards[0];
             assert_eq!(card.0.left, 0);
             assert_eq!(card.0.right, 1240 - 2 * super::CONTENT_PADDING);
             // Cards stretch to absorb vertical extra space.
             let compact_geometry =
-                super::page_geometry(super::View::Settings, 980, 760 - super::TAB_BAR_HEIGHT);
+                super::page_geometry(super::View::Settings, 980, 760 - super::TAB_BAR_HEIGHT, 1);
             let wide_card = &geometry.cards[0];
             let compact_card = &compact_geometry.cards[0];
             assert!(
@@ -4731,8 +5280,8 @@ mod windows_app {
             // 980-wide window: content spans the page minus padding; the
             // three cards share the vertical slack by field count; fields
             // distribute evenly inside each card.
-            let geometry = super::page_geometry(super::View::Settings, 980, 664);
-            let tops = [64, 258, 408];
+            let geometry = super::page_geometry(super::View::Settings, 980, 664, 8);
+            let tops = [64, 258, 408, 602];
             for (card, top) in geometry.cards.iter().zip(tops) {
                 assert_eq!(card.0.left, 0);
                 assert_eq!(card.0.right, 916);
@@ -4741,6 +5290,11 @@ mod windows_app {
             assert_eq!(geometry.cards[0].0.bottom, 248);
             assert_eq!(geometry.cards[1].0.bottom, 398);
             assert_eq!(geometry.cards[2].0.bottom, 592);
+            // The Profiles order card grows with the row count (8 rows) and
+            // pushes the page past the container: the geometry reports the
+            // overflow for the page scrollbar.
+            assert_eq!(geometry.cards[3].0.bottom, 930);
+            assert_eq!(geometry.scroll_max, 326);
             let slot = |slot: super::Slot| {
                 geometry
                     .slots
@@ -4757,9 +5311,9 @@ mod windows_app {
             assert_eq!(endpoint.bottom, endpoint.top + 28);
             let save = slot(super::Slot::SaveSettings);
             assert_eq!(save.left, 0);
-            assert_eq!(save.top, 408 + 184 + 10);
+            assert_eq!(save.top, 954);
             // History geometry: the entries split absorbs the remaining height.
-            let history = super::page_geometry(super::View::History, 980, 664);
+            let history = super::page_geometry(super::View::History, 980, 664, 8);
             let list = history
                 .slots
                 .iter()

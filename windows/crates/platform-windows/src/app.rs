@@ -45,11 +45,6 @@ mod windows_impl {
     const ACK_REFRESHED: usize = 0x5354_5202;
     const ACK_REJECTED: usize = 0x5354_52ff;
     const DEFAULT_REST_ENABLED: bool = false;
-    const PRIORITIZED_SELECTION_PROFILES: [&str; 3] = [
-        "linguist-analysis",
-        "code-specialist",
-        "concise-explanation",
-    ];
     const MAX_VISIBLE_POPUPS: usize = 4;
 
     /// Private resident notifications. They carry no configuration data or
@@ -2413,27 +2408,11 @@ mod windows_impl {
     /// Put the three standard profiles first without changing the configured
     /// order of every other profile. The same ordering is used for labels and
     /// IDs so a click always maps to the intended profile.
+    /// The chooser rail follows the configured profile order verbatim: the
+    /// manager's Profiles page owns that order (the first four entries sit
+    /// on the rail, the rest fold under More…).
     fn profile_chooser_order(profiles: &[selection_core::PromptConfig]) -> Vec<usize> {
-        let mut ordered = Vec::with_capacity(profiles.len());
-        for prioritized_id in PRIORITIZED_SELECTION_PROFILES {
-            ordered.extend(
-                profiles
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, profile)| profile.id == prioritized_id)
-                    .map(|(index, _)| index),
-            );
-        }
-        ordered.extend(
-            profiles
-                .iter()
-                .enumerate()
-                .filter(|(_, profile)| {
-                    !PRIORITIZED_SELECTION_PROFILES.contains(&profile.id.as_str())
-                })
-                .map(|(index, _)| index),
-        );
-        ordered
+        (0..profiles.len()).collect()
     }
 
     fn handle_finished(
@@ -3057,49 +3036,19 @@ mod windows_impl {
         }
 
         #[test]
-        fn chooser_prioritizes_standard_profiles_and_preserves_other_order() {
+        fn chooser_follows_the_configured_profile_order() {
             let profiles = vec![
-                selection_core::PromptConfig::new("custom-first"),
-                selection_core::PromptConfig::new("code-specialist"),
-                selection_core::PromptConfig::new("custom-second"),
+                selection_core::PromptConfig::new("translate"),
                 selection_core::PromptConfig::new("linguist-analysis"),
+                selection_core::PromptConfig::new("program"),
                 selection_core::PromptConfig::new("concise-explanation"),
+                selection_core::PromptConfig::new("contextual-zh-en"),
             ];
 
+            // The manager's Profiles page owns the order; the rail mirrors it
+            // verbatim instead of prioritizing built-in IDs.
             let ordered = profile_chooser_order(&profiles);
-            let ids: Vec<&str> = ordered
-                .iter()
-                .map(|&index| profiles[index].id.as_str())
-                .collect();
-            assert_eq!(
-                ids,
-                vec![
-                    "linguist-analysis",
-                    "code-specialist",
-                    "concise-explanation",
-                    "custom-first",
-                    "custom-second",
-                ]
-            );
-        }
-
-        #[test]
-        fn chooser_omits_missing_standard_profiles_without_reordering_custom_profiles() {
-            let profiles = vec![
-                selection_core::PromptConfig::new("custom-first"),
-                selection_core::PromptConfig::new("concise-explanation"),
-                selection_core::PromptConfig::new("custom-second"),
-            ];
-
-            let ordered = profile_chooser_order(&profiles);
-            let ids: Vec<&str> = ordered
-                .iter()
-                .map(|&index| profiles[index].id.as_str())
-                .collect();
-            assert_eq!(
-                ids,
-                vec!["concise-explanation", "custom-first", "custom-second"]
-            );
+            assert_eq!(ordered, (0..profiles.len()).collect::<Vec<_>>());
         }
 
         #[test]
