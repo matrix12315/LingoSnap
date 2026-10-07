@@ -1572,14 +1572,24 @@ mod windows_impl {
                 .popups
                 .iter()
                 .any(|entry| entry.popup.is_root_window(spec.source_root_window));
-        // Foreground the source popup BEFORE the chooser is presented: the
-        // chooser is then shown above it and stays clickable. Keys (Ctrl+C)
-        // also reach the output control holding the selection.
+        // Foreground the source popup and put keyboard focus on the output
+        // control BEFORE the chooser is presented: the chooser is then shown
+        // above both and stays clickable, while Ctrl+C still copies the
+        // selection. SetFocus must happen here — it raises the focused
+        // window, so doing it after the chooser appears would pull the popup
+        // back over the chooser.
         if popup_sourced {
             unsafe {
                 let _ = SetForegroundWindow(windows::Win32::Foundation::HWND(
                     spec.source_root_window as *mut core::ffi::c_void,
                 ));
+            }
+            if let Some(entry) = state
+                .popups
+                .iter()
+                .find(|entry| entry.popup.is_root_window(spec.source_root_window))
+            {
+                entry.popup.focus_output();
             }
         }
         let (attempt, direct_result) = if popup_sourced {
@@ -1625,10 +1635,10 @@ mod windows_impl {
                     result,
                 },
             );
-            // Keys reach the output: the foreground handoff above activated
-            // the popup, and activation restores the focus the output held
-            // from the drag's EN_SELCHANGE. Do NOT SetFocus here - SetFocus
-            // activates the popup again and raises it back over the chooser.
+            // Keyboard focus for a following Ctrl+C was restored in the
+            // foreground handoff above, before the chooser was presented —
+            // focus must never be set after the chooser appears, because
+            // SetFocus raises the focused window over it.
             return;
         }
         let _ = now;

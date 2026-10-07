@@ -94,8 +94,8 @@ mod windows_impl {
         SetWindowTheme, DRAWITEMSTRUCT, MEASUREITEMSTRUCT, ODT_BUTTON, ODT_MENU, WM_MOUSELEAVE,
     };
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
-        VK_ESCAPE,
+        GetFocus, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE,
+        TRACKMOUSEEVENT, VK_ESCAPE,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         CallWindowProcW, CreateWindowExW, DefWindowProcW, DestroyWindow, GetAncestor,
@@ -383,6 +383,12 @@ mod windows_impl {
             present: bool,
         ) -> windows::core::Result<Self> {
             runtime_trace::record("popup_show_create_attempt");
+            // Creating the visible child controls moves the thread's keyboard
+            // focus onto the new popup. For a self-translation chooser that
+            // would break a following Ctrl+C in the source popup, so the
+            // focus is restored before the chooser is ever shown (restoring
+            // after it becomes visible would raise the source over it).
+            let previous_focus = unsafe { GetFocus() };
             if let Err(error) = register_class() {
                 runtime_trace::record("popup_show_create_failure");
                 return Err(error);
@@ -484,7 +490,24 @@ mod windows_impl {
             } else {
                 runtime_trace::record("popup_staged_hidden");
             }
+            Self::restore_focus(previous_focus, hwnd);
             Ok(Self { hwnd })
+        }
+
+        /// Give the keyboard focus back to `previous_focus` when the popup
+        /// machinery stole it. Called while the popup is still hidden, where
+        /// SetFocus cannot raise the hidden popup over anything.
+        fn restore_focus(previous_focus: HWND, hwnd: HWND) {
+            if previous_focus.0.is_null()
+                || previous_focus == hwnd
+                || !unsafe { IsWindow(Some(previous_focus)) }.as_bool()
+            {
+                return;
+            }
+            let current = unsafe { GetFocus() };
+            if !current.0.is_null() && current != previous_focus {
+                let _ = unsafe { SetFocus(Some(previous_focus)) };
+            }
         }
 
         pub fn present_staged(&mut self) -> bool {
@@ -681,6 +704,7 @@ mod windows_impl {
                 .map(|name| compact_profile_label(name))
                 .collect();
             data.profile_default = highlight.filter(|index| *index < data.profile_labels.len());
+            let chooser_previous_focus = unsafe { GetFocus() };
             set_standard_controls_visible(data, false);
             let Ok(instance) =
                 (unsafe { windows::Win32::System::LibraryLoader::GetModuleHandleW(None) })
@@ -734,6 +758,14 @@ mod windows_impl {
                 enable_button_hover(button);
                 data.profile_buttons.push(button);
             }
+            // Creating visible pill buttons moves keyboard focus onto the
+            // chooser (the foreground thread's newest visible window). A
+            // selection made inside a source popup keeps its Ctrl+C target
+            // only if that focus survives, so restore whatever held focus
+            // before the pills were created. This must happen BEFORE the
+            // chooser is presented: SetFocus raises its target, and the
+            // chooser is not on top yet.
+            Self::restore_focus(chooser_previous_focus, self.hwnd);
             data.choosing_profile = true;
             let anchor = data.anchor;
             let size = chooser_size(anchor, &data.profile_button_widths, dpi);
@@ -894,6 +926,12 @@ mod windows_impl {
         #[cfg(test)]
         pub fn hwnd_for_test(&self) -> isize {
             self.hwnd.0 as isize
+        }
+
+        /// Test-only: the output control's window handle.
+        #[cfg(test)]
+        pub fn output_hwnd_for_test(&self) -> isize {
+            data_mut(self.hwnd).map_or(0, |data| data.output.0 as isize)
         }
 
         pub fn is_root_window(&self, root: isize) -> bool {
@@ -3991,6 +4029,7 @@ plain - text
         use windows::Win32::Foundation::{HINSTANCE, HWND};
         use windows::Win32::System::LibraryLoader::GetModuleHandleW;
         use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+        use windows::Win32::UI::Input::KeyboardAndMouse::GetFocus;
         use windows::Win32::UI::WindowsAndMessaging::{
             CreateWindowExW, DestroyWindow, GetForegroundWindow, GetTopWindow, GetWindow,
             GetWindowThreadProcessId, SetForegroundWindow, GW_HWNDNEXT, WS_POPUP,
@@ -4046,11 +4085,30 @@ plain - text
             "popup is foreground"
         );
 
+        // Copy compatibility: focus the output before the chooser appears --
+        // SetFocus raises its target, so the app focuses before presenting.
+        let hwnd_a_output = popup_a.output_hwnd_for_test();
+        assert!(hwnd_a_output != 0);
+        popup_a.focus_output();
+        assert_eq!(
+            unsafe { GetFocus() }.0 as isize,
+            hwnd_a_output,
+            "output control holds keyboard focus"
+        );
+
+        // Focus must survive the whole chooser admission: staging a fresh
+        // popup creates visible children that steal the thread focus.
         let mut chooser =
             Popup::stage(parent, 95, super::Point { x: 220, y: 220 }).expect("chooser stage");
         let shown = chooser.show_profile_choices(&["IELTS".to_string(), "Plain".to_string()], None);
         assert!(shown, "chooser presented");
         let hwnd_c = chooser.hwnd_for_test();
+
+        assert_eq!(
+            unsafe { GetFocus() }.0 as isize,
+            hwnd_a_output,
+            "output keeps keyboard focus after the chooser appears"
+        );
 
         let mut order: Vec<isize> = Vec::new();
         let mut current = unsafe { GetTopWindow(None) }.unwrap_or_default();
@@ -4065,6 +4123,7 @@ plain - text
             rank_c < rank_a,
             "chooser (rank {rank_c}) must be above the active source popup (rank {rank_a})"
         );
+        let _ = 0;
 
         // Restore the foreground the desktop had before the test.
         if !previous.0.is_null() && unsafe { GetForegroundWindow() }.0 != previous.0 {
