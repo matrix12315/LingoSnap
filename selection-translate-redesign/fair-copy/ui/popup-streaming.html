@@ -41,18 +41,18 @@
 
   <div class="manuscript">
     <div class="sec">
-      <h3><span class="rm" >＊</span>Translation</h3>
+      <h3>Translation</h3>
       <div class="trans">不透明度<span class="caret" aria-hidden="true"></span></div>
     </div>
     <div class="sec">
-      <h3><span class="rm">†</span>Words</h3>
+      <h3>Words</h3>
       <div class="word">
         <span class="lemma">opacity</span><span class="ipa">/oʊˈpæsəti/</span><span class="pos">n.</span>
         <div class="sense">不透明度；朦胧，不清晰</div>
       </div>
     </div>
     <div class="sec">
-      <h3><span class="rm">‡</span>Idioms &amp; Grammar</h3>
+      <h3>Idioms &amp; Grammar</h3>
       <p class="streaming-note">uncountable noun — writing…</p>
     </div>
   </div>
@@ -76,6 +76,18 @@
   </div>
 </div>
 
+<script>
+  // The manuscript's first section must always clear the floating glass panel,
+  // whatever the quote and context wrap to — size the top padding from the panel.
+  (function () {
+    var sp = document.querySelector('.sourcepanel.float'), m = document.querySelector('.manuscript');
+    if (!sp || !m) return;
+    var fit = function () { m.style.paddingTop = (sp.offsetTop + sp.offsetHeight - m.offsetTop + 24) + 'px'; };
+    fit();
+    if (window.ResizeObserver) new ResizeObserver(fit).observe(sp);
+    window.addEventListener('resize', fit);
+  })();
+</script>
 <script src="theme.js"></script>
 <script src="liquid-lens.js"></script>
 </body>

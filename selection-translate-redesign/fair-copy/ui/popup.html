@@ -41,38 +41,43 @@
 
   <div class="manuscript">
     <div class="sec">
-      <h3><span class="rm" >＊</span>Translation</h3>
-      <div class="trans">更改会立即应用到弹窗，并保存至 <span class="alt">config.toml</span></div>
+      <h3>Translation</h3>
+      <ul>
+        <li id="transLine">Chinese: 更改会立即应用到弹窗，并保存至 <span class="alt">config.toml</span></li>
+        <li>English: None</li>
+        <li>Error check: no spelling or grammar issues found</li>
+      </ul>
     </div>
 
     <div class="sec">
-      <h3><span class="rm">†</span>Words</h3>
-      <div class="word">
-        <span class="lemma">change</span><span class="ipa">/tʃeɪndʒ/</span><span class="pos">n. / v.</span>
-        <div class="sense">改变，变更；(v.) 更换，替换</div>
-      </div>
-      <div class="word">
-        <span class="lemma">apply</span><span class="ipa">/əˈplaɪ/</span><span class="pos">v.</span>
-        <div class="sense">应用，生效</div>
-      </div>
+      <h3>Words</h3>
+      <ul>
+        <li>change: /tʃeɪndʒ/ (n. / v.) 改变，变更；更换，替换</li>
+        <li>apply: /əˈplaɪ/ (v.) 应用，生效</li>
+      </ul>
     </div>
 
     <div class="sec">
-      <h3><span class="rm">‡</span>Idioms &amp; Grammar</h3>
-      <div class="idiom"><span class="en">change of mind</span><span class="dash">—</span><span>改变主意</span></div>
-      <div class="idiom"><span class="en">for a change</span><span class="dash">—</span><span>换换花样</span></div>
-      <p class="fineprint">Countable as a noun; transitive and intransitive as a verb.</p>
+      <h3>Idioms and Grammar</h3>
+      <ul>
+        <li>change of mind: 改变主意</li>
+        <li>for a change: 换换花样</li>
+      </ul>
+      <p class="fineprint">In this context "change" is a configuration mutation; countable as a noun, transitive and intransitive as a verb.</p>
     </div>
 
     <div class="sec">
-      <h3><span class="rm">§</span>Error check</h3>
-      <div class="checkline"><span class="tick">✓</span>No spelling or grammar issues found.</div>
+      <h3>Other Forms</h3>
+      <ul>
+        <li>Noun: change, changing</li>
+        <li>Verb: change, rechange</li>
+        <li>Adjective: changeable</li>
+      </ul>
     </div>
 
     <div class="sec">
-      <h3><span class="rm">⁂</span>Reasoning</h3>
-      <p class="reason">Context treats <code>change</code> as a configuration mutation,
-      so 更改 is more precise than 改变.</p>
+      <h3>Reasoning</h3>
+      <p class="fineprint">Context treats <span class="alt">change</span> as a configuration mutation, so 更改 is more precise than 改变.</p>
     </div>
   </div>
 
@@ -92,12 +97,6 @@
       </svg>
       Retry
     </button>
-    <button class="btn" type="button">
-      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M4.6 2.2H2.7a.9.9 0 0 0-.9.9v6.8a.9.9 0 0 0 .9.9h1.9M8.4 2.2h1.9a.9.9 0 0 1 .9.9v6.8a.9.9 0 0 1-.9.9H8.4"/>
-      </svg>
-      Prompt
-    </button>
     <button class="btn push" type="button" style="padding:0 10px">Close</button>
   </div>
 </div>
@@ -105,7 +104,7 @@
 <script>
   const copyBtn = document.getElementById('copyBtn');
   copyBtn.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(document.querySelector('.trans').textContent.trim()); } catch (e) {}
+    try { await navigator.clipboard.writeText(document.getElementById('transLine').textContent.trim()); } catch (e) {}
     copyBtn.classList.add('copied');
     copyBtn.lastChild.textContent = ' Copied';
     setTimeout(() => { copyBtn.classList.remove('copied'); copyBtn.lastChild.textContent = ' Copy'; }, 1600);
@@ -115,6 +114,18 @@
     const on = pinBtn.getAttribute('aria-pressed') === 'true';
     pinBtn.setAttribute('aria-pressed', String(!on));
   });
+</script>
+<script>
+  // The manuscript's first section must always clear the floating glass panel,
+  // whatever the quote and context wrap to — size the top padding from the panel.
+  (function () {
+    var sp = document.querySelector('.sourcepanel.float'), m = document.querySelector('.manuscript');
+    if (!sp || !m) return;
+    var fit = function () { m.style.paddingTop = (sp.offsetTop + sp.offsetHeight - m.offsetTop + 24) + 'px'; };
+    fit();
+    if (window.ResizeObserver) new ResizeObserver(fit).observe(sp);
+    window.addEventListener('resize', fit);
+  })();
 </script>
 <script src="theme.js"></script>
 <script src="liquid-lens.js"></script>

@@ -13,10 +13,10 @@
     --ledger:   #3D6B52;  /* factual ok */
     --desk:     #262220;
 
-    --serif: Georgia, "Times New Roman", "SimSun", serif;
+    --serif: Georgia, "Times New Roman", "Microsoft YaHei", serif;
     --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, "Microsoft YaHei UI", sans-serif;
     --mono: "Cascadia Code", Consolas, ui-monospace, monospace;
-    --cjk: "SimSun", "Songti SC", "Noto Serif CJK SC", serif;
+    --cjk: "Microsoft YaHei", "Microsoft YaHei UI", "PingFang SC", "Noto Sans CJK SC", sans-serif;
 
     --lift: 0 1px 1px rgba(15, 12, 8, .20), 0 8px 20px rgba(15, 12, 8, .24),
             0 28px 64px rgba(15, 12, 8, .34);
@@ -183,9 +183,9 @@
 
   /* ——— Quotation: target + context in one glass panel (button material) ——— */
   .sourcepanel {
-    margin: 12px 14px 2px;
-    padding: 8px 14px 8px;
-    border-radius: 8px;
+    margin: 8px 12px 2px;
+    padding: 5px 12px 6px;
+    border-radius: 7px;
     background: var(--panel-fill);
     -webkit-backdrop-filter: blur(1px) saturate(1.05);
     backdrop-filter: blur(1px) saturate(1.05);
@@ -199,27 +199,29 @@
      passes beneath it and is covered by the glass as you scroll. */
   .sourcepanel.float {
     position: absolute;
-    top: 62px; left: 14px; right: 14px;
+    top: 68px; left: 12px; right: 12px;
     margin: 0;
     z-index: 2;
   }
   .target {
-    font: 500 14.5px/1.55 var(--serif);
+    font: 500 12.5px/1.6 var(--serif);
     letter-spacing: .005em;
-    padding-left: 20px;
-    text-indent: -20px;
+    /* One hanging edge: the quote mark hangs left; every text line — first,
+       wrapped, and the context beneath — starts at the same x. */
+    padding-left: 16px;
+    text-indent: -16px;
     white-space: pre-wrap;
     word-break: break-word;
     overflow-wrap: anywhere;
   }
-  .target::before { content: "“"; color: var(--seal); font-size: 17px; }
-  .target::after  { content: "”"; color: var(--seal); font-size: 17px; }
+  .target::before { content: "“"; color: var(--seal); font-size: 14px; margin-right: 1px; }
+  .target::after  { content: "”"; color: var(--seal); font-size: 14px; }
 
   .context {
-    margin-top: 6px;
-    padding: 6px 0 0 20px;
+    margin-top: 5px;
+    padding: 5px 0 0 16px;
     border-top: 1px solid var(--rule-soft);
-    font: 12px/1.6 var(--ui);
+    font: 11px/1.55 var(--ui);
     color: var(--ink-soft);
     white-space: pre-wrap;
     word-break: break-word;
@@ -233,49 +235,57 @@
   .rulemark::before, .rulemark::after { content: ""; flex: 1; border-top: 1px solid var(--rule-soft); }
   .rulemark i { font: 12px var(--serif); font-style: normal; color: var(--seal); }
 
-  /* ——— Result manuscript ——— */
-  .manuscript { padding: 114px 18px 46px 20px; max-height: 500px; overflow: auto; scrollbar-width: none; }
+  /* ——— Result manuscript ———
+     Hierarchy: the translation is the hero of the sheet; section headings are
+     quiet editorial labels so the result text, not its chrome, carries the size. */
+  .manuscript { padding: 114px 18px 30px 22px; max-height: 500px; overflow: auto; scrollbar-width: none; }
   .manuscript::-webkit-scrollbar { display: none; }
 
-  .sec { padding: 8px 0 10px; }
+  .sec { padding: 5px 0 5px; }
+  .sec:first-child { padding-top: 0; }
   .sec + .sec { border-top: 1px solid var(--rule-soft); }
 
   .sec > h3 {
-    display: flex; align-items: baseline; gap: 8px;
-    font: 600 14.5px/1.3 var(--serif);
-    color: var(--ink);
-    margin-bottom: 7px;
+    display: flex; align-items: baseline; gap: 7px;
+    font: 600 12.5px/1 var(--ui);
+    letter-spacing: .07em; text-transform: uppercase;
+    color: var(--seal-deep);
+    margin-bottom: 4px;
   }
   .sec > h3 .rm {
-    font: 600 15px var(--serif);
+    font: 600 13.5px var(--serif);
     color: var(--seal);
+    letter-spacing: 0;
   }
 
   /* Latin runs take Georgia; CJK falls through to SimSun — no typewriter Latin. */
+  /* ONE body style for all section text — 13.5px/1.7 Georgia/YaHei.
+     Titles (12.5px tracked caps + vermilion mark) are the only other style. */
   .trans {
-    font: 17px/1.7 var(--serif);
-    letter-spacing: .01em;
+    font: 13.5px/1.7 var(--serif);
+    letter-spacing: 0;
+    color: var(--ink);
   }
-  .trans .alt { font: 500 13px var(--mono); color: var(--ink-soft); }
+  .trans .alt { font: 500 12.5px var(--mono); color: var(--ink-soft); }
   .trans .pair-en { font: 14px/1.55 var(--serif); color: var(--ink-soft); }
 
-  .word { padding: 5px 0 6px; }
+  .word { padding: 2px 0 3px; }
   .word + .word { border-top: 1px solid var(--rule-soft); }
-  .word .lemma { font: 600 14px var(--serif); }
-  .word .ipa { font: 12px var(--mono); color: var(--seal); margin-left: 7px; letter-spacing: .01em; }
-  .word .pos { font: italic 12px var(--serif); color: var(--ink-faint); margin-left: 6px; }
+  .word .lemma { font: 600 13.5px var(--serif); }
+  .word .ipa { font: 11.5px var(--mono); color: var(--seal); margin-left: 7px; letter-spacing: .01em; }
+  .word .pos { font: italic 11.5px var(--serif); color: var(--ink-faint); margin-left: 6px; }
   .word .sense { font: 13.5px/1.7 var(--serif); color: var(--ink); margin-top: 2px; }
 
-  .idiom { display: flex; gap: 8px; padding: 4.5px 0; font: 13.5px/1.6 var(--serif); }
+  .idiom { display: flex; gap: 8px; padding: 1.5px 0; font: 13.5px/1.7 var(--serif); }
   .idiom .en { font: inherit; font-weight: 400; white-space: nowrap; }
   .idiom .dash { color: var(--rule); }
 
-  .fineprint { font: italic 12.5px/1.6 var(--serif); color: var(--ink-soft); }
+  .fineprint { font: 13.5px/1.7 var(--serif); color: var(--ink-soft); }
 
-  .checkline { display: flex; align-items: baseline; gap: 7px; font: 12.5px/1.6 var(--ui); color: var(--ink-soft); }
+  .checkline { display: flex; align-items: baseline; gap: 7px; font: 13.5px/1.7 var(--serif); color: var(--ink-soft); }
   .checkline .tick { color: var(--ledger); font: 600 11px var(--ui); letter-spacing: .05em; }
 
-  .reason { font: italic 12.5px/1.65 var(--serif); color: var(--ink-soft); }
+  .reason { font: 13.5px/1.7 var(--serif); color: var(--ink-soft); }
   .reason code { font: 11.5px var(--mono); color: var(--seal); font-style: normal; }
 
   /* Any markdown maps into the manuscript: lists, emphasis, quotes, code. */
@@ -285,13 +295,15 @@
   }
   .manuscript ul li, .houtput ul li {
     font: 13.5px/1.7 var(--serif);
-    padding: 2px 0 2px 16px;
+    padding: 2.5px 0 2.5px 16px;
     position: relative;
   }
   .manuscript ul li::before, .houtput ul li::before {
-    content: "—";
+    content: "•";
     position: absolute; left: 0;
     color: var(--seal);
+    font-size: 17px;
+    line-height: 1;
   }
   .manuscript strong, .houtput strong { font-weight: 600; }
   .manuscript blockquote, .houtput blockquote {
@@ -322,14 +334,15 @@
   }
 
   /* ——— Footer actions ——— */
-  /* The action buttons float over the manuscript's bottom edge — the glass
-     buttons are the only material here; the text bends beneath them. The
-     seal rests just above the bar. */
+  /* The action buttons float over the manuscript's beneath edge — the glass
+     buttons are the only material here. The manuscript's scroll viewport ends
+     AT the card's bottom edge: text clips at the popup's edge like a text
+     field, never on a hidden line above it. */
   .foot {
     display: flex; align-items: center; gap: 6px;
     padding: 0 14px 12px 20px;
-    margin-top: -30px;
-    position: relative;
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
     z-index: 2;
   }
   /* Liquid glass — action chrome only; warm glass pressed over paper,
@@ -451,7 +464,9 @@
   .errbox .detail { font: 12px/1.6 var(--ui); color: var(--ink-soft); margin-top: 3px; }
 
   /* ——— Manager shell ——— */
-  .shell { width: 860px; overflow: hidden; }
+  /* The manager is a fixed-size window: titlebar, tab bar and page area hold
+     a constant frame, and the active page slides inside its region. */
+  .shell { width: 860px; height: 700px; display: flex; flex-direction: column; overflow: hidden; }
   .titlebar {
     display: flex; align-items: center; gap: 9px;
     padding: 10px 14px;
@@ -470,9 +485,10 @@
     background: var(--ledger); display: block;
   }
 
-  .mbody { display: block; }
+  .mbody { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .mnav {
     display: flex; align-items: center; gap: 6px;
+    flex-shrink: 0;
     padding: 8px 14px;
     border-bottom: 1px solid var(--rule-soft);
     background: var(--nav-bg);
@@ -507,7 +523,7 @@
   }
   .mnav button.on .mark { visibility: visible; }
 
-  .mpage { padding: 22px 28px 26px; overflow: auto; max-height: 560px; }
+  .mpage { padding: 22px 28px 26px; overflow: auto; flex: 1; min-height: 0; max-height: none; }
   .mpage > h2, .pagehead h2 { font: 600 21px/1.3 var(--serif); letter-spacing: .005em; }
   .mpage > .sub { font-size: 12.5px; color: var(--ink-soft); margin: 3px 0 18px; }
   .pagehead { display: flex; align-items: baseline; gap: 12px; }
@@ -673,13 +689,14 @@
   }
   .hsearch .input { padding-left: 28px; }
   .htoolbar .select { width: 128px; flex-shrink: 0; }
-  .hsplit { display: grid; grid-template-columns: 272px 1fr; gap: 14px; align-items: start; }
+  .hsplit { display: grid; grid-template-columns: 272px 1fr; gap: 14px; align-items: stretch; }
   .hlist {
     border: 1px solid var(--rule);
     border-radius: 6px;
     background: var(--raised);
     overflow: auto;
-    max-height: 330px;
+    height: 100%;
+    max-height: none;
   }
   .hitem { padding: 8px 12px 9px; border-bottom: 1px solid var(--rule-soft); cursor: pointer; }
   .hitem:last-child { border-bottom: none; }
@@ -700,10 +717,12 @@
 
   .hhead { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
   .hhead .htime { font: 11px var(--serif); color: var(--ink-faint); }
-  .hdetail .quote { padding: 12px 14px; border: 1px solid var(--rule); border-radius: 6px; background: var(--raised); }
-  .hdetail .quote .context { border-top: none; padding-left: 20px; }
-  /* The saved result, rendered as the fair copy it is — not a raw dump. */
-  .houtput { margin-top: 12px; border-top: 1px solid var(--rule-soft); padding-top: 6px; }
+  /* History detail — the popup's design, fine-tuned for the manager window:
+     the glass quote sits IN FLOW (it doesn't hover anything here) and the
+     quote text runs one step larger for the wider document surface. */
+  .hdetail .sourcepanel { position: static; margin: 10px 0 0; }
+  .hdetail .sourcepanel .target { font-size: 13.5px; }
+  .houtput { margin-top: 10px; border-top: 1px solid var(--rule-soft); padding-top: 4px; }
   .houtput .sec:first-child { border-top: none; }
 
   @media (max-width: 900px) {

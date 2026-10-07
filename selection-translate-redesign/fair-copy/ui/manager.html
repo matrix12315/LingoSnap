@@ -98,6 +98,28 @@
       </div>
 
       <div class="group">
+        <div class="glabel">Hot key</div>
+        <div class="fields2">
+          <div class="field">
+            <label for="hkSelection">Selection translate</label>
+            <input class="input ui" id="hkSelection" value="Ctrl + Shift + T">
+          </div>
+          <div class="field">
+            <label for="hkHover">Hover translate</label>
+            <input class="input ui" id="hkHover" value="Ctrl + Shift + H">
+          </div>
+          <div class="field">
+            <label for="hkPause">Pause / resume</label>
+            <input class="input ui" id="hkPause" value="Ctrl + Shift + P" placeholder="Off — no hot key">
+          </div>
+          <div class="field">
+            <label for="hkPopup">Open popup</label>
+            <input class="input ui" id="hkPopup" value="Ctrl + Shift + Space" placeholder="Off — no hot key">
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
         <div class="glabel">Profiles</div>
         <div class="orderlist" id="orderlist">
           <div class="orderrow"><span class="oname">Translate</span><span class="oid">translate</span>
@@ -286,29 +308,31 @@ Context:
             <span class="htime">Today 14:22 · selection</span>
           </div>
           <div class="sourcepanel">
-            <div class="target" style="font-size:13.5px">The change applies immediately to the popup and is saved to config.toml</div>
+            <div class="target">The change applies immediately to the popup and is saved to config.toml</div>
             <div class="context">The resident reloads settings when the file changes…</div>
           </div>
           <div class="houtput">
             <div class="sec">
-              <h3><span class="rm" >＊</span>Translation</h3>
-              <div class="trans">更改会立即应用到弹窗，并保存至 <span class="alt">config.toml</span></div>
+              <h3>Translation</h3>
+              <ul>
+                <li class="cline">Chinese: 更改会立即应用到弹窗，并保存至 <span class="alt">config.toml</span></li>
+                <li>English: None</li>
+                <li>Error check: no spelling or grammar issues found</li>
+              </ul>
             </div>
             <div class="sec">
-              <h3><span class="rm">†</span>Words</h3>
-              <div class="word">
-                <span class="lemma">change</span><span class="ipa">/tʃeɪndʒ/</span><span class="pos">n. / v.</span>
-                <div class="sense">改变，变更；(v.) 更换，替换</div>
-              </div>
+              <h3>Words</h3>
+              <ul>
+                <li>change: /tʃeɪndʒ/ (n. / v.) 改变，变更；更换，替换</li>
+              </ul>
             </div>
             <div class="sec">
-              <h3><span class="rm">‡</span>Idioms &amp; Grammar</h3>
-              <div class="idiom"><span class="en">change of mind</span><span class="dash">—</span><span>改变主意</span></div>
-              <div class="idiom"><span class="en">for a change</span><span class="dash">—</span><span>换换花样</span></div>
-            </div>
-            <div class="sec">
-              <h3><span class="rm">§</span>Error check</h3>
-              <div class="checkline"><span class="tick">✓</span>No spelling or grammar issues found.</div>
+              <h3>Idioms and Grammar</h3>
+              <ul>
+                <li>change of mind: 改变主意</li>
+                <li>for a change: 换换花样</li>
+              </ul>
+              <p class="fineprint">In this context "change" is a configuration mutation; countable as a noun, transitive and intransitive as a verb.</p>
             </div>
           </div>
           <div class="actions">
