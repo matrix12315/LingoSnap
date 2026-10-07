@@ -59,6 +59,7 @@
     --ledger:   #7CBE97;
     --desk:     #14110E;
     --btn-fill: rgba(255, 255, 255, .05);
+    --btn-primary-ink: #EFE8DC;
     --btn-danger-fill: rgba(224, 101, 74, .12);
     --panel-fill: rgba(255, 255, 255, .04);
     --rim: rgba(255, 244, 230, .22);
@@ -413,16 +414,20 @@
   }
   .rdiv { width: 1px; align-self: stretch; margin: 4px 3px; background: var(--rule-soft); }
   .rmore { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+  /* The overflow list: a dropdown wing of the rail — same paper, same
+     padding, same shadow; the same glass pills inside. */
+  /* The overflow list: the rail's capsule stood upright — a taller pill
+     holding the same glass pills, with room for the rounded ends to read. */
   .rmenu {
+    display: flex; flex-direction: column; gap: 3px;
     background: var(--paper);
-    border-radius: 10px;
-    box-shadow: var(--lift);
     padding: 5px 6px;
-    min-width: 128px;
+    border-radius: 21px;
+    box-shadow: var(--lift);
     align-self: flex-end;
-    display: flex; flex-direction: column; gap: 2px;
+    width: max-content;
   }
-  .rmenu .rpill { width: 100%; justify-content: flex-start; }
+  .rmenu .rpill { width: 100%; justify-content: center; }
 
   /* ——— Streaming state ——— */
   .caret {
