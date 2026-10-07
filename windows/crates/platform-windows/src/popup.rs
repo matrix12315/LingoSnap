@@ -890,6 +890,12 @@ mod windows_impl {
             }
         }
 
+        /// Test-only: the popup's top-level window handle, for z-order checks.
+        #[cfg(test)]
+        pub fn hwnd_for_test(&self) -> isize {
+            self.hwnd.0 as isize
+        }
+
         pub fn is_root_window(&self, root: isize) -> bool {
             !self.hwnd.0.is_null() && self.hwnd.0 as isize == root
         }
@@ -3900,6 +3906,186 @@ plain - text
 ",
         );
         assert!(plain.is_empty());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn chooser_presented_after_foreground_handoff_lands_above_popups() {
+        use windows::core::w;
+        use windows::Win32::Foundation::{HINSTANCE, HWND};
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DestroyWindow as TestDestroyWindow, GetTopWindow, GetWindow,
+            SetForegroundWindow, GW_HWNDNEXT, WS_POPUP,
+        };
+
+        let instance = unsafe { GetModuleHandleW(None) }.expect("module");
+        let parent = unsafe {
+            CreateWindowExW(
+                Default::default(),
+                w!("STATIC"),
+                w!(""),
+                WS_POPUP,
+                80,
+                80,
+                200,
+                200,
+                None,
+                None,
+                Some(HINSTANCE(instance.0)),
+                None,
+            )
+        }
+        .expect("parent");
+        let anchor = super::Point { x: 200, y: 200 };
+        let mut popup_a = Popup::show(parent, 91, anchor).expect("popup a");
+        let mut popup_b =
+            Popup::show(parent, 92, super::Point { x: 260, y: 260 }).expect("popup b");
+        let hwnd_a = popup_a.hwnd_for_test();
+        let hwnd_b = popup_b.hwnd_for_test();
+        assert!(hwnd_a != 0 && hwnd_b != 0 && hwnd_a != hwnd_b);
+
+        // The app sequence for an in-popup self-translation: the source
+        // popup takes the foreground, then the chooser popup is presented.
+        let source = HWND(hwnd_a as *mut core::ffi::c_void);
+        let foregrounded = unsafe { SetForegroundWindow(source) }.as_bool();
+        let _ = foregrounded;
+        let mut chooser =
+            Popup::stage(parent, 93, super::Point { x: 220, y: 220 }).expect("chooser stage");
+        let shown = chooser.show_profile_choices(&["IELTS".to_string(), "Plain".to_string()], None);
+        assert!(shown, "chooser presented");
+        let hwnd_c = chooser.hwnd_for_test();
+
+        // Walk the top-level z-order from the top and require the chooser to
+        // sit above both result popups.
+        let mut order: Vec<isize> = Vec::new();
+        let mut current = unsafe { GetTopWindow(None) }.unwrap_or_default();
+        while !current.0.is_null() && order.len() < 4096 {
+            order.push(current.0 as isize);
+            current = unsafe { GetWindow(current, GW_HWNDNEXT) }.unwrap_or_default();
+        }
+        let rank = |hwnd: isize| order.iter().position(|&h| h == hwnd);
+        let rank_c = rank(hwnd_c).unwrap_or_else(|| panic!("chooser missing from z-order"));
+        if let (Some(ra), Some(rb)) = (rank(hwnd_a), rank(hwnd_b)) {
+            assert!(
+                rank_c < ra && rank_c < rb,
+                "chooser (rank {rank_c}) must be above popup a ({ra}) and popup b ({rb}); foregrounded={foregrounded}"
+            );
+        } else {
+            panic!("result popups missing from z-order");
+        }
+
+        chooser.dismiss();
+        popup_a.dismiss();
+        popup_b.dismiss();
+        unsafe {
+            let _ = TestDestroyWindow(parent);
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "activates a real popup window; steals desktop focus briefly"]
+    fn chooser_lands_above_active_source_popup() {
+        use windows::core::w;
+        use windows::Win32::Foundation::{HINSTANCE, HWND};
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DestroyWindow, GetForegroundWindow, GetTopWindow, GetWindow,
+            GetWindowThreadProcessId, SetForegroundWindow, GW_HWNDNEXT, WS_POPUP,
+        };
+
+        let instance = unsafe { GetModuleHandleW(None) }.expect("module");
+        let parent = unsafe {
+            CreateWindowExW(
+                Default::default(),
+                w!("STATIC"),
+                w!(""),
+                WS_POPUP,
+                80,
+                80,
+                200,
+                200,
+                None,
+                None,
+                Some(HINSTANCE(instance.0)),
+                None,
+            )
+        }
+        .expect("parent");
+        let mut popup_a =
+            Popup::show(parent, 94, super::Point { x: 200, y: 200 }).expect("popup a");
+        let hwnd_a = popup_a.hwnd_for_test();
+        assert!(hwnd_a != 0);
+
+        let previous = unsafe { GetForegroundWindow() };
+        let this_thread = unsafe { GetCurrentThreadId() };
+        let mut attached = false;
+        if !previous.0.is_null() {
+            let previous_thread = unsafe { GetWindowThreadProcessId(previous, None) };
+            if previous_thread != this_thread {
+                attached =
+                    unsafe { AttachThreadInput(this_thread, previous_thread, true) }.as_bool();
+            }
+        }
+        let source = HWND(hwnd_a as *mut core::ffi::c_void);
+        let foregrounded = unsafe { SetForegroundWindow(source) }.as_bool();
+        if attached {
+            let previous_thread = unsafe { GetWindowThreadProcessId(previous, None) };
+            unsafe {
+                let _ = AttachThreadInput(this_thread, previous_thread, false);
+            }
+        }
+        assert!(
+            foregrounded,
+            "test requires the source popup to take the foreground"
+        );
+        assert!(
+            unsafe { GetForegroundWindow() }.0 == source.0,
+            "popup is foreground"
+        );
+
+        let mut chooser =
+            Popup::stage(parent, 95, super::Point { x: 220, y: 220 }).expect("chooser stage");
+        let shown = chooser.show_profile_choices(&["IELTS".to_string(), "Plain".to_string()], None);
+        assert!(shown, "chooser presented");
+        let hwnd_c = chooser.hwnd_for_test();
+
+        let mut order: Vec<isize> = Vec::new();
+        let mut current = unsafe { GetTopWindow(None) }.unwrap_or_default();
+        while !current.0.is_null() && order.len() < 4096 {
+            order.push(current.0 as isize);
+            current = unsafe { GetWindow(current, GW_HWNDNEXT) }.unwrap_or_default();
+        }
+        let rank = |hwnd: isize| order.iter().position(|&h| h == hwnd);
+        let rank_c = rank(hwnd_c).unwrap_or_else(|| panic!("chooser missing from z-order"));
+        let rank_a = rank(hwnd_a).unwrap_or_else(|| panic!("popup a missing from z-order"));
+        assert!(
+            rank_c < rank_a,
+            "chooser (rank {rank_c}) must be above the active source popup (rank {rank_a})"
+        );
+
+        // Restore the foreground the desktop had before the test.
+        if !previous.0.is_null() && unsafe { GetForegroundWindow() }.0 != previous.0 {
+            let previous_thread = unsafe { GetWindowThreadProcessId(previous, None) };
+            let attached =
+                unsafe { AttachThreadInput(this_thread, previous_thread, true) }.as_bool();
+            unsafe {
+                let _ = SetForegroundWindow(previous);
+            }
+            if attached {
+                unsafe {
+                    let _ = AttachThreadInput(this_thread, previous_thread, false);
+                }
+            }
+        }
+
+        chooser.dismiss();
+        popup_a.dismiss();
+        unsafe {
+            let _ = DestroyWindow(parent);
+        }
     }
 
     #[cfg(windows)]
