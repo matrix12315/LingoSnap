@@ -46,11 +46,24 @@ pub enum UiLanguage {
     SimplifiedChinese,
 }
 
+/// Which presentation the resident drives: the native `classic` popup or the
+/// WebView2 `fair-copy` companion.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum PopupSkin {
+    #[default]
+    #[serde(rename = "classic")]
+    Classic,
+    #[serde(rename = "fair-copy")]
+    FairCopy,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiSettings {
     #[serde(default)]
     pub manager_language: UiLanguage,
+    #[serde(default)]
+    pub popup_skin: PopupSkin,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -98,12 +111,51 @@ impl Default for ProviderSettings {
 pub struct HotkeySettings {
     #[serde(default = "default_cycle_profiles_hotkey")]
     pub cycle_profiles: String,
+    /// Translate the current selection on demand. `None` or empty disables it.
+    #[serde(default = "default_selection_translate_hotkey")]
+    pub selection_translate: Option<String>,
+    /// Toggle the Hover trigger. `None` or empty disables it.
+    #[serde(default = "default_hover_translate_hotkey")]
+    pub hover_translate: Option<String>,
+    /// Toggle rest mode. `None` or empty disables it.
+    #[serde(default = "default_pause_resume_hotkey")]
+    pub pause_resume: Option<String>,
+    /// Re-open the most recent result popup. `None` or empty disables it.
+    #[serde(default = "default_open_popup_hotkey")]
+    pub open_popup: Option<String>,
+}
+
+impl HotkeySettings {
+    /// The configured spec for an action, treating empty strings as "off".
+    pub fn spec(&self, action: HotkeyAction) -> Option<&str> {
+        let value = match action {
+            HotkeyAction::CycleProfiles => return Some(self.cycle_profiles.as_str()),
+            HotkeyAction::SelectionTranslate => self.selection_translate.as_deref(),
+            HotkeyAction::HoverTranslate => self.hover_translate.as_deref(),
+            HotkeyAction::PauseResume => self.pause_resume.as_deref(),
+            HotkeyAction::OpenPopup => self.open_popup.as_deref(),
+        };
+        value.filter(|spec| !spec.trim().is_empty())
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HotkeyAction {
+    CycleProfiles,
+    SelectionTranslate,
+    HoverTranslate,
+    PauseResume,
+    OpenPopup,
 }
 
 impl Default for HotkeySettings {
     fn default() -> Self {
         Self {
             cycle_profiles: default_cycle_profiles_hotkey(),
+            selection_translate: default_selection_translate_hotkey(),
+            hover_translate: default_hover_translate_hotkey(),
+            pause_resume: default_pause_resume_hotkey(),
+            open_popup: default_open_popup_hotkey(),
         }
     }
 }
@@ -520,6 +572,18 @@ fn default_credential_target() -> String {
 fn default_cycle_profiles_hotkey() -> String {
     DEFAULT_CYCLE_PROFILES_HOTKEY.to_owned()
 }
+fn default_selection_translate_hotkey() -> Option<String> {
+    Some("Ctrl+Shift+T".to_owned())
+}
+fn default_hover_translate_hotkey() -> Option<String> {
+    Some("Ctrl+Shift+H".to_owned())
+}
+fn default_pause_resume_hotkey() -> Option<String> {
+    Some("Ctrl+Shift+P".to_owned())
+}
+fn default_open_popup_hotkey() -> Option<String> {
+    Some("Ctrl+Shift+Space".to_owned())
+}
 
 #[cfg(test)]
 mod tests {
@@ -664,6 +728,84 @@ mod tests {
         );
         let invalid = serialized.replace("zh-CN", "fr");
         assert!(AppConfig::from_toml(&invalid).is_err());
+    }
+
+    #[test]
+    fn optional_hotkeys_default_and_empty_means_off() {
+        let config = AppConfig::default();
+        assert_eq!(
+            config.hotkeys.spec(HotkeyAction::SelectionTranslate),
+            Some("Ctrl+Shift+T")
+        );
+        assert_eq!(
+            config.hotkeys.spec(HotkeyAction::OpenPopup),
+            Some("Ctrl+Shift+Space")
+        );
+        let mut cleared = AppConfig::default();
+        // "Off" is persisted as an empty string because TOML omits None
+        // fields entirely, which would resurrect the built-in default.
+        cleared.hotkeys.pause_resume = Some("  ".to_owned());
+        cleared.hotkeys.open_popup = Some(String::new());
+        assert_eq!(cleared.hotkeys.spec(HotkeyAction::PauseResume), None);
+        assert_eq!(cleared.hotkeys.spec(HotkeyAction::OpenPopup), None);
+        let serialized = cleared.to_toml().expect("serialize cleared hotkeys");
+        let loaded = AppConfig::from_toml(&serialized).expect("reload cleared hotkeys");
+        assert_eq!(loaded, cleared);
+    }
+
+    #[test]
+    fn legacy_hotkeys_section_still_loads_with_new_fields_absent() {
+        let mut config = AppConfig::default();
+        config.ui.manager_language = UiLanguage::English;
+        let serialized = config.to_toml().expect("serialize defaults");
+        let mut document: toml::Value = toml::from_str(&serialized).expect("parse serialized");
+        let hotkeys = document
+            .get_mut("hotkeys")
+            .and_then(toml::Value::as_table_mut)
+            .expect("hotkeys table");
+        for field in [
+            "selection_translate",
+            "hover_translate",
+            "pause_resume",
+            "open_popup",
+        ] {
+            hotkeys.remove(field);
+        }
+        let legacy = toml::to_string_pretty(&document).expect("serialize legacy hotkeys");
+        let loaded = AppConfig::from_toml(&legacy).expect("legacy hotkeys remain valid");
+        assert_eq!(
+            loaded.hotkeys.spec(HotkeyAction::SelectionTranslate),
+            Some("Ctrl+Shift+T")
+        );
+    }
+
+    #[test]
+    fn popup_skin_round_trips_and_defaults_to_classic() {
+        let mut config = AppConfig::default();
+        config.ui.popup_skin = PopupSkin::FairCopy;
+        let serialized = config.to_toml().expect("serialize skin config");
+        assert!(serialized.contains("popup_skin = \"fair-copy\""));
+        assert_eq!(
+            AppConfig::from_toml(&serialized)
+                .expect("skin config")
+                .ui
+                .popup_skin,
+            PopupSkin::FairCopy
+        );
+        let mut document: toml::Value = toml::from_str(&serialized).expect("parse serialized");
+        document
+            .get_mut("ui")
+            .and_then(toml::Value::as_table_mut)
+            .expect("ui table")
+            .remove("popup_skin");
+        let legacy = toml::to_string_pretty(&document).expect("serialize legacy ui");
+        assert_eq!(
+            AppConfig::from_toml(&legacy)
+                .expect("legacy ui")
+                .ui
+                .popup_skin,
+            PopupSkin::Classic
+        );
     }
 
     #[test]

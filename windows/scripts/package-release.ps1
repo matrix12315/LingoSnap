@@ -83,7 +83,8 @@ Invoke-VsCargo -CargoArguments @("clippy", "--workspace", "--all-targets", "--lo
 Invoke-VsCargo -CargoArguments @(
     "build", "--locked", "--release",
     "-p", "selection-translate-resident",
-    "-p", "selection-translate-manager"
+    "-p", "selection-translate-manager",
+    "-p", "selection-translate-popup-ui"
 )
 
 $artifacts = @(
@@ -94,6 +95,10 @@ $artifacts = @(
     @{
         Source = Join-Path $releaseDirectory "selection-translate-manager.exe"
         Name = "selection-translate-manager.exe"
+    },
+    @{
+        Source = Join-Path $releaseDirectory "popup-ui.exe"
+        Name = "popup-ui.exe"
     }
 )
 foreach ($artifact in $artifacts) {
@@ -154,7 +159,7 @@ $buildInfo = @(
     "Visual Studio environment: $vsDevCmd -arch=x64",
     "Cargo.lock SHA-256: $((Get-FileHash -LiteralPath $lockFile -Algorithm SHA256).Hash)",
     "Git commit: $gitCommit",
-    "Artifacts: selection-translate-resident.exe, selection-translate-manager.exe",
+    "Artifacts: selection-translate-resident.exe, selection-translate-manager.exe, popup-ui.exe",
     "This folder is unsigned and is for local testing only."
 )
 $buildInfo | Set-Content -LiteralPath (Join-Path $outputDirectory "BUILD-INFO.txt") -Encoding UTF8

@@ -15,6 +15,7 @@ pub mod popup;
 pub mod runtime_trace;
 pub mod tray;
 pub mod uia;
+pub mod webview_ui;
 
 /// Marker retained for callers that only need to identify the platform crate.
 pub const CRATE_NAME: &str = "selection-platform-windows";

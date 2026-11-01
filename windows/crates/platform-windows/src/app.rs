@@ -4,13 +4,15 @@
 mod windows_impl {
     use super::super::composition::{AppRuntime, Pipeline, PipelineEvent, PIPELINE_EVENT};
     use super::super::mouse::{self, MouseTrigger, ScreenPoint};
-    use super::super::{config_reload, foreground, hotkey, popup, runtime_trace, tray};
+    use super::super::{config_reload, foreground, hotkey, popup, runtime_trace, tray, webview_ui};
     use selection_core::{
         cache::{CacheKey, ResultCache},
+        config::{save_config_atomic, PopupSkin},
         default_config_path, Coordinator, JobInput, JobPriority, RequestGate, RequestRejection,
         TextContext, TriggerKind,
     };
     use selection_platform_interface::{canonical_utc_now, CancellationToken, CompletedEntry};
+    use selection_ui_protocol::{Anchor, UiCommand, UiEvent};
     use std::process::{Child, Command};
     use std::sync::mpsc::Receiver;
     use std::thread;
@@ -260,6 +262,26 @@ mod windows_impl {
         popup_failure_reported: bool,
         // Diagnostic-only deduplication for hover deadline traces.
         hover_trace_deadline: Option<Instant>,
+        /// Fair-copy WebView2 companion, present only while the fair-copy
+        /// skin is active and the companion could actually be started.
+        fair_copy: Option<webview_ui::FairCopyUi>,
+        /// Last event sent to the companion, replayed when the page reports
+        /// it finished loading (events sent during navigation are dropped).
+        fair_copy_last_event: Option<UiEvent>,
+        /// When the last companion start failed: retries after a cooldown
+        /// instead of disabling the fair-copy skin for the whole session.
+        fair_copy_failed_at: Option<Instant>,
+        /// How long to wait before retrying a failed companion start.
+        fair_copy_retry_after: Duration,
+        /// The companion's top-level window, resolved once per start. Clicks
+        /// inside it belong to the page (profile rail, buttons) and must not
+        /// be treated as outside clicks by the mouse hook.
+        companion_window: Option<isize>,
+        /// True while the current press started inside the companion window
+        /// (a page drag): the hook must not feed those events to the gesture
+        /// machinery. Presses outside stay resident-owned, and their moves
+        /// must keep flowing even when the cursor crosses the companion.
+        companion_button_down: bool,
     }
 
     struct PopupEntry {
@@ -416,7 +438,7 @@ mod windows_impl {
                 return Err(error);
             }
         };
-        let hotkeys = hotkey::Registrations::register(hwnd, &runtime.config.hotkeys.cycle_profiles);
+        let hotkeys = hotkey::Registrations::register(hwnd, &runtime.config.hotkeys);
         let config_watcher =
             default_config_path().and_then(|path| config_reload::ConfigWatcher::start(path, hwnd));
         let mouse_hook = match mouse::MouseHook::install(hwnd) {
@@ -438,6 +460,9 @@ mod windows_impl {
             }
         };
         let (pipeline, events) = Pipeline::with_receiver(runtime.provider.clone(), hwnd);
+        // The companion starts lazily with the first popup request, so an
+        // unused resident pays nothing and a missing WebView2 runtime never
+        // delays startup.
         let mut state = Box::new(ShellState {
             tray: tray_icon,
             hotkeys,
@@ -471,6 +496,12 @@ mod windows_impl {
             config_generation: 1,
             popup_failure_reported: false,
             hover_trace_deadline: None,
+            fair_copy: None,
+            fair_copy_last_event: None,
+            fair_copy_failed_at: None,
+            fair_copy_retry_after: Duration::from_secs(60),
+            companion_window: None,
+            companion_button_down: false,
         });
         unsafe {
             SetWindowLongPtrW(
@@ -670,13 +701,20 @@ mod windows_impl {
         match message {
             tray::TRAY_CALLBACK => {
                 if state.is_null() {
-                    tray::handle_callback(hwnd, lparam, false, false);
+                    tray::handle_callback(
+                        hwnd,
+                        lparam,
+                        false,
+                        false,
+                        selection_core::config::PopupSkin::Classic,
+                    );
                 } else {
                     tray::handle_callback(
                         hwnd,
                         lparam,
                         (*state).hover_enabled,
                         (*state).rest_enabled,
+                        (*state).runtime.config.ui.popup_skin,
                     );
                 }
                 return LRESULT(0);
@@ -708,6 +746,22 @@ mod windows_impl {
             PIPELINE_EVENT => {
                 if !state.is_null() {
                     drain_pipeline_events(hwnd, &mut *state);
+                }
+                return LRESULT(0);
+            }
+            webview_ui::FAIR_COPY_COMMAND_MESSAGE => {
+                if !state.is_null() {
+                    let raw = lparam.0 as *mut String;
+                    if !raw.is_null() {
+                        let line = unsafe { Box::from_raw(raw) };
+                        handle_fair_copy_command(hwnd, &mut *state, &line);
+                    }
+                } else {
+                    // Resident is gone; just release the queued line.
+                    let raw = lparam.0 as *mut String;
+                    if !raw.is_null() {
+                        unsafe { drop(Box::from_raw(raw)) };
+                    }
                 }
                 return LRESULT(0);
             }
@@ -812,6 +866,16 @@ mod windows_impl {
                             set_rest_mode(hwnd, &mut *state, enabled);
                         }
                     }
+                    tray::SET_SKIN_CLASSIC_COMMAND => {
+                        if !state.is_null() {
+                            set_popup_skin(hwnd, &mut *state, PopupSkin::Classic);
+                        }
+                    }
+                    tray::SET_SKIN_FAIRCOPY_COMMAND => {
+                        if !state.is_null() {
+                            set_popup_skin(hwnd, &mut *state, PopupSkin::FairCopy);
+                        }
+                    }
                     tray::EXIT_COMMAND => PostQuitMessage(0),
                     _ => {}
                 }
@@ -819,7 +883,9 @@ mod windows_impl {
             }
             WM_HOTKEY => {
                 if !state.is_null() {
-                    if (*state).rest_enabled {
+                    // The pause/resume hotkey must work while resting; every
+                    // other hotkey stays inert until rest mode is lifted.
+                    if (*state).rest_enabled && wparam.0 as i32 != hotkey::PAUSE_RESUME_ID {
                         return LRESULT(0);
                     }
                     match wparam.0 as i32 {
@@ -844,6 +910,12 @@ mod windows_impl {
                         }
                         hotkey::CYCLE_PROFILES_ID => {
                             cycle_prompt(&mut *state);
+                        }
+                        hotkey::PAUSE_RESUME_ID => {
+                            set_rest_mode(hwnd, &mut *state, !(*state).rest_enabled);
+                        }
+                        hotkey::OPEN_POPUP_ID => {
+                            reopen_last_popup(hwnd, &mut *state, Instant::now());
                         }
                         _ => {}
                     }
@@ -1078,6 +1150,13 @@ mod windows_impl {
                 entry.popup.dismiss();
             }
         }
+        // The fair-copy page must mirror the native dismissal: a popup that
+        // goes away here (outside click, Esc, replacement) hides the card or
+        // rail on screen too — the classic popup disappears with its native
+        // window, and the interaction logic is identical across skins.
+        if companion_presents(state) {
+            send_fair_copy(state, UiEvent::Close { id: id as u64 });
+        }
         for child in &mut state.popups {
             if child.parent == Some(id) {
                 child.parent = None;
@@ -1271,9 +1350,29 @@ mod windows_impl {
             .find(|entry| entry.popup.contains_window_point(native_point))
             .map(|entry| entry.id);
         let button_down = is_pointer_button_down(raw.kind);
+        // A click inside the companion window belongs to the page (profile
+        // rail, buttons): the companion is a separate process window the
+        // native registry knows nothing about, so without this check the
+        // mouse hook dismisses the chooser before the pick arrives.
+        let inside_companion = companion_window_contains(state, point);
         if button_down {
-            dismiss_unpinned_outside(state, clicked_popup);
-            runtime_trace::record("popup_outside_click_dismiss");
+            // A press inside the companion belongs to the page (drag by the
+            // chrome, pill clicks): swallow it and mark the press so the
+            // following moves/ups are not misread as a text selection. A
+            // press outside stays resident-owned.
+            state.companion_button_down = inside_companion;
+            if !inside_companion {
+                dismiss_unpinned_outside(state, clicked_popup);
+                runtime_trace::record("popup_outside_click_dismiss");
+            }
+        }
+        if state.companion_button_down {
+            // The page owns this press's whole gesture. Moves must NOT flow
+            // to the gesture machinery (the page is dragging), but moves of
+            // an outside-started selection drag keep flowing even when the
+            // cursor crosses the companion, or the selection truncates at the
+            // rail's edge.
+            return;
         }
         // Popup controls keep their native click behavior. A press or move
         // over a completed result's output participates in recursive
@@ -1482,6 +1581,26 @@ mod windows_impl {
             true,
             now,
         );
+    }
+
+    /// Re-present the most recent completed result popup. When no popup can
+    /// be reopened, fall back to the manual trigger so the hotkey always has
+    /// a useful effect.
+    fn reopen_last_popup(hwnd: HWND, state: &mut ShellState, now: Instant) {
+        let target = state
+            .popups
+            .iter()
+            .rev()
+            .find(|entry| entry.popup.is_completed() && entry.popup.is_result_surface_available())
+            .map(|entry| entry.id);
+        if let Some(id) = target {
+            if let Some(entry) = popup_entry_mut(state, id) {
+                if entry.popup.present_result() {
+                    return;
+                }
+            }
+        }
+        observe_manual(hwnd, state, now);
     }
 
     fn selection_rect_for_root(
@@ -1709,6 +1828,143 @@ mod windows_impl {
         !rest_enabled
     }
 
+    /// Switch the popup skin, persist the choice, and start or stop the
+    /// WebView2 companion. A companion that cannot start leaves the resident
+    /// on the classic popup; a translation is never blocked on the UI.
+    fn set_popup_skin(hwnd: HWND, state: &mut ShellState, skin: PopupSkin) {
+        if state.runtime.config.ui.popup_skin == skin
+            && state.fair_copy.is_some() == (skin == PopupSkin::FairCopy)
+        {
+            return;
+        }
+        let mut next = state.runtime.config.clone();
+        next.ui.popup_skin = skin;
+        if let Some(path) = default_config_path() {
+            if let Err(error) = save_config_atomic(&path, &next) {
+                runtime_trace::record("popup_skin_save_failed");
+                eprintln!("could not persist popup skin: {error}");
+                return;
+            }
+        }
+        state.runtime.config = next;
+        apply_popup_skin(hwnd, state);
+    }
+
+    /// Bring the companion in line with `config.ui.popup_skin`.
+    fn apply_popup_skin(hwnd: HWND, state: &mut ShellState) {
+        // A skin switch starts a clean session: a replayed last event would
+        // pop the previous translation back onto the screen, and a pending
+        // profile choice belongs to a chooser the other skin presented.
+        if let Some(choice) = state.pending_profile_choice.take() {
+            remove_popup(state, choice.popup_id, true);
+        }
+        state.fair_copy_last_event = None;
+        match state.runtime.config.ui.popup_skin {
+            PopupSkin::Classic => {
+                // Dropping the companion terminates popup-ui.exe.
+                state.fair_copy = None;
+                state.companion_window = None;
+            }
+            PopupSkin::FairCopy => {
+                // An explicit skin switch is a new attempt even if an earlier
+                // one failed (for example the runtime was installed since).
+                state.fair_copy_failed_at = None;
+                ensure_companion(hwnd, state);
+            }
+        }
+    }
+
+    /// True while the fair-copy companion owns visible presentation: native
+    /// windows keep their registry/bookkeeping but are never shown.
+    fn companion_presents(state: &ShellState) -> bool {
+        state.fair_copy.is_some()
+    }
+
+    /// Start the companion on demand when the fair-copy skin is active. A
+    /// failed start retries after a cooldown: transient machine load (a
+    /// controller timeout, a busy GPU) self-heals on the next selection
+    /// instead of disabling the fair-copy skin for the whole session.
+    fn ensure_companion(hwnd: HWND, state: &mut ShellState) {
+        // The companion may have exited on its own (idle shutdown); a dead
+        // child must never keep the skin pinned to a corpse.
+        if let Some(ui) = state.fair_copy.as_mut() {
+            if ui.child_exited() {
+                state.fair_copy = None;
+            }
+        }
+        if state.fair_copy.is_some() || state.runtime.config.ui.popup_skin != PopupSkin::FairCopy {
+            return;
+        }
+        if let Some(failed_at) = state.fair_copy_failed_at {
+            if failed_at.elapsed() < state.fair_copy_retry_after {
+                return;
+            }
+            state.fair_copy_failed_at = None;
+        }
+        match webview_ui::FairCopyUi::start("popup", hwnd) {
+            Ok(ui) => {
+                state.companion_window = companion_window_handle();
+                state.fair_copy = Some(ui);
+            }
+            Err(_) => state.fair_copy_failed_at = Some(Instant::now()),
+        }
+    }
+
+    /// The companion's top-level window, if it is up right now.
+    fn companion_window_handle() -> Option<isize> {
+        use windows::core::PCWSTR;
+        use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
+        let wide: Vec<u16> = selection_ui_protocol::COMPANION_WINDOW_CLASS
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        let hwnd = unsafe { FindWindowW(PCWSTR(wide.as_ptr()), PCWSTR::null()) }.ok()?;
+        (!hwnd.0.is_null()).then_some(hwnd.0 as isize)
+    }
+
+    /// True when the physical screen point lies inside the companion window.
+    fn companion_window_contains(state: &ShellState, point: ScreenPoint) -> bool {
+        use windows::Win32::Foundation::RECT;
+        use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+        let Some(raw) = state.companion_window else {
+            return false;
+        };
+        let hwnd = HWND(raw as *mut _);
+        let mut rect = RECT::default();
+        if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
+            return false;
+        }
+        point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom
+    }
+
+    /// Best-effort event delivery; a dead companion never blocks the
+    /// translation pipeline.
+    fn send_fair_copy(state: &mut ShellState, event: UiEvent) {
+        if let Some(ui) = state.fair_copy.as_mut() {
+            let _ = ui.send(event.clone());
+        }
+        state.fair_copy_last_event = Some(event);
+    }
+
+    /// The fair-copy surfaces anchor at the SELECTED TEXT, not at the
+    /// pointer: the pointer may have drifted after the selection, and the
+    /// rail/card must appear at the words the user selected.
+    fn fair_copy_anchor_for_spec(spec: &RequestSpec, fallback: popup::Point) -> popup::Point {
+        spec.selection_rect
+            .map(|rect| popup::Point {
+                x: rect.left,
+                y: rect.top,
+            })
+            .unwrap_or(fallback)
+    }
+
+    fn fair_copy_anchor(anchor: popup::Point) -> Anchor {
+        Anchor {
+            x: anchor.x,
+            y: anchor.y,
+        }
+    }
+
     fn set_rest_mode(hwnd: HWND, state: &mut ShellState, enabled: bool) {
         if state.rest_enabled == enabled {
             return;
@@ -1767,6 +2023,15 @@ mod windows_impl {
                     if is_current_presentation(&state.coordinator, state.popup_job_id, job_id) {
                         runtime_trace::record_id("delta_received", job_id);
                         state.stream_output.push_str(&delta);
+                        if companion_presents(state) {
+                            send_fair_copy(
+                                state,
+                                UiEvent::Delta {
+                                    id: job_id,
+                                    text: delta.clone(),
+                                },
+                            );
+                        }
                         if let Some(id) = state.active_popup_id {
                             if let Some(entry) = popup_entry_mut(state, id) {
                                 entry.popup.update(&delta);
@@ -1791,7 +2056,7 @@ mod windows_impl {
         for change in changes {
             match change {
                 config_reload::ConfigChange::Loaded(config) => {
-                    apply_config(hwnd, state, config);
+                    apply_config(hwnd, state, *config);
                 }
                 config_reload::ConfigChange::Invalid => {
                     // Do not replace the parsed config or gate.  Automatic
@@ -1837,7 +2102,11 @@ mod windows_impl {
             // new value so repeated notifications are stable without
             // cancelling work, clearing cache, rereading credentials, or
             // rebuilding the provider.
+            let previous_skin = state.runtime.config.ui.popup_skin;
             state.runtime.config.ui = config.ui;
+            if state.runtime.config.ui.popup_skin != previous_skin {
+                apply_popup_skin(hwnd, state);
+            }
             runtime_trace::record("config_ui_only_applied");
             return;
         }
@@ -1845,11 +2114,13 @@ mod windows_impl {
         runtime_trace::record("config_runtime_reload");
         cancel_inflight_work(state);
         state.cache = ResultCache::default();
-        state
-            .hotkeys
-            .reregister(hwnd, &config.hotkeys.cycle_profiles);
+        state.hotkeys.reregister(hwnd, &config.hotkeys);
         apply_provider_runtime(state, &config);
+        let previous_skin = state.runtime.config.ui.popup_skin;
         state.runtime.config = config;
+        if state.runtime.config.ui.popup_skin != previous_skin {
+            apply_popup_skin(hwnd, state);
+        }
         if state
             .active_prompt_id
             .as_deref()
@@ -1889,9 +2160,26 @@ mod windows_impl {
                     .iter()
                     .position(|id| *id == choice.pending.spec.prompt_id)
             });
-            let refreshed = chooser_id
-                .and_then(|id| popup_entry_mut(state, id))
-                .is_some_and(|entry| entry.popup.show_profile_choices(&profile_names, highlight));
+            let refreshed = if companion_presents(state) {
+                chooser_id.is_some_and(|id| {
+                    send_fair_copy(
+                        state,
+                        UiEvent::ShowChooser {
+                            id: id as u64,
+                            profiles: profile_names.clone(),
+                            highlight,
+                            anchor: fair_copy_anchor(state.popup_anchor),
+                        },
+                    );
+                    true
+                })
+            } else {
+                chooser_id
+                    .and_then(|id| popup_entry_mut(state, id))
+                    .is_some_and(|entry| {
+                        entry.popup.show_profile_choices(&profile_names, highlight)
+                    })
+            };
             if refreshed {
                 if let Some(choice) = state.pending_profile_choice.as_mut() {
                     choice.pending.config_generation = state.config_generation;
@@ -2053,9 +2341,30 @@ mod windows_impl {
                     .any(|entry| entry.popup.is_root_window(pending.spec.source_root_window));
             let admission = ensure_popup(hwnd, state, anchor, None, None, force_new);
             let popup_id = admission.map(|admission| admission.popup_id);
-            let shown = popup_id
-                .and_then(|id| popup_entry_mut(state, id))
-                .is_some_and(|entry| entry.popup.show_profile_choices(&profile_names, highlight));
+            ensure_companion(hwnd, state);
+            let shown = if companion_presents(state) {
+                popup_id.is_some_and(|id| {
+                    send_fair_copy(
+                        state,
+                        UiEvent::ShowChooser {
+                            id: id as u64,
+                            profiles: profile_names.clone(),
+                            highlight,
+                            anchor: fair_copy_anchor(fair_copy_anchor_for_spec(
+                                &pending.spec,
+                                anchor,
+                            )),
+                        },
+                    );
+                    true
+                })
+            } else {
+                popup_id
+                    .and_then(|id| popup_entry_mut(state, id))
+                    .is_some_and(|entry| {
+                        entry.popup.show_profile_choices(&profile_names, highlight)
+                    })
+            };
             if !shown {
                 if let Some(id) = popup_id {
                     remove_popup(state, id, true);
@@ -2255,6 +2564,7 @@ mod windows_impl {
         state.active_popup_id = Some(surface.popup_id);
         state.popup_job_id = Some(handle.input.id);
         initialize_result_surface(
+            hwnd,
             state,
             &surface,
             prepared.target(),
@@ -2265,10 +2575,12 @@ mod windows_impl {
         // staged path presented the default frame to reserve the surface;
         // this re-present is a no-op for it and the first real frame for
         // every reused surface.
-        if let Some(entry) = popup_entry_mut(state, surface.popup_id) {
-            if !entry.popup.present_result() && !state.popup_failure_reported {
-                state.popup_failure_reported = true;
-                show_diagnostic(ResidentDiagnostic::ResultWindowUnavailable);
+        if !companion_presents(state) {
+            if let Some(entry) = popup_entry_mut(state, surface.popup_id) {
+                if !entry.popup.present_result() && !state.popup_failure_reported {
+                    state.popup_failure_reported = true;
+                    show_diagnostic(ResidentDiagnostic::ResultWindowUnavailable);
+                }
             }
         }
 
@@ -2276,10 +2588,18 @@ mod windows_impl {
         // produced a valid target, coordination and RequestGate admitted it,
         // and a native result surface is already visible. Until this point
         // the prior popup and Retry/Prompt request remain authoritative.
+        let selection_anchor = pending
+            .spec
+            .selection_rect
+            .map(|rect| popup::Point {
+                x: rect.left,
+                y: rect.top,
+            })
+            .unwrap_or(anchor);
         state.last_request = Some(pending.spec);
         state.presented_trigger = Some(trigger);
         state.popup_guard_root_window = foreground_guard_root_window;
-        state.popup_anchor = anchor;
+        state.popup_anchor = selection_anchor;
         let popup_request = state.last_request.clone();
         let popup_text = text.clone();
         if let Some(entry) = popup_entry_mut(state, surface.popup_id) {
@@ -2368,6 +2688,7 @@ mod windows_impl {
             .as_ref()
             .is_none_or(|choice| choice.popup_id != popup_id)
         {
+            runtime_trace::record("profile_pick_stale_choice");
             return;
         }
         let Some(profile_id) = state.pending_profile_choice.as_ref().and_then(|choice| {
@@ -2378,12 +2699,14 @@ mod windows_impl {
                 state.config_generation,
             )
         }) else {
+            runtime_trace::record("profile_pick_stale_generation");
             return;
         };
         let Some(mut choice) = state.pending_profile_choice.take() else {
             return;
         };
         if state.runtime.config.profile(&profile_id).is_none() {
+            runtime_trace::record("profile_pick_unknown_profile");
             remove_popup(state, popup_id, true);
             return;
         }
@@ -2413,6 +2736,96 @@ mod windows_impl {
     /// on the rail, the rest fold under More…).
     fn profile_chooser_order(profiles: &[selection_core::PromptConfig]) -> Vec<usize> {
         (0..profiles.len()).collect()
+    }
+
+    /// Commands arriving from the fair-copy page bridge. Mirrors the native
+    /// popup's owner messages: chooser selection, retry, close, copy, and
+    /// self-translation of selected output text.
+    fn handle_fair_copy_command(hwnd: HWND, state: &mut ShellState, line: &str) {
+        use selection_ui_protocol::Envelope;
+        let Ok(envelope) = serde_json::from_str::<Envelope<UiCommand>>(line) else {
+            return;
+        };
+        match envelope.payload {
+            UiCommand::SelectProfile { index, .. } => {
+                if let Some(choice) = state.pending_profile_choice.as_ref() {
+                    begin_selected_profile(hwnd, state, choice.popup_id, index);
+                }
+            }
+            UiCommand::UserClose { id, .. } => {
+                if let Some(choice) = state.pending_profile_choice.take() {
+                    remove_popup(state, choice.popup_id, true);
+                } else {
+                    let id = if id != 0 {
+                        id as popup::PopupId
+                    } else {
+                        state.active_popup_id.unwrap_or(0)
+                    };
+                    if id != 0 {
+                        remove_popup(state, id, true);
+                    }
+                }
+            }
+            UiCommand::Retry { id, .. } => {
+                let popup_id = if id != 0 {
+                    id as popup::PopupId
+                } else {
+                    state.active_popup_id.unwrap_or(0)
+                };
+                if popup_id != 0 {
+                    replay_popup(hwnd, state, popup_id, false);
+                }
+            }
+            UiCommand::Copy { text, .. } => {
+                if webview_ui::copy_text_to_clipboard(&text) {
+                    runtime_trace::record("fair_copy_copy");
+                }
+            }
+            UiCommand::TogglePin { pinned, .. } => {
+                if let Some(id) = state.active_popup_id {
+                    if let Some(entry) = popup_entry_mut(state, id) {
+                        entry.popup.set_pinned(pinned);
+                    }
+                }
+            }
+            UiCommand::SelfTranslate { text, .. } => {
+                // Recursive translation of fair-copy output: the resident's
+                // mouse hook cannot see selection inside a WebView, so the
+                // page reports the selected text and it is admitted directly,
+                // exactly like a selection gesture on the result.
+                let spec = RequestSpec {
+                    trigger: TriggerKind::Selection,
+                    process_id: std::process::id(),
+                    source_root_window: 0,
+                    foreground_guard_root_window: 0,
+                    pointer: None,
+                    selection_rect: None,
+                    prompt_id: selected_prompt_id(state, TriggerKind::Selection).to_owned(),
+                    bypass_duplicate_suppression: true,
+                    source_popup_id: None,
+                    destination_popup_id: None,
+                };
+                let pending = PendingAttempt {
+                    attempt: 0,
+                    spec,
+                    config_generation: state.config_generation,
+                };
+                let context = TextContext::new(text, selection_core::ExtractionSource::Clipboard);
+                admit_extracted_request(hwnd, state, pending, context, state.popup_anchor);
+            }
+            UiCommand::PageReady => {
+                // The page finished loading: replay the event that may have
+                // been sent while it was still navigating.
+                if let Some(event) = state.fair_copy_last_event.clone() {
+                    send_fair_copy(state, event);
+                }
+            }
+            UiCommand::Ping => {}
+            UiCommand::RegisterWindow { .. } => {
+                // The companion announces its surface; the resident keeps no
+                // per-window registry for the stateless companion.
+            }
+        }
     }
 
     fn handle_finished(
@@ -2450,8 +2863,17 @@ mod windows_impl {
                     );
                 }
                 state.active_request = None;
+                let output = state.stream_output.clone();
+                if companion_presents(state) {
+                    send_fair_copy(
+                        state,
+                        UiEvent::Completed {
+                            id: job_id,
+                            text: output.clone(),
+                        },
+                    );
+                }
                 if let Some(id) = state.active_popup_id {
-                    let output = state.stream_output.clone();
                     if let Some(entry) = popup_entry_mut(state, id) {
                         entry.popup.set_text(&output);
                     }
@@ -2461,6 +2883,15 @@ mod windows_impl {
                 runtime_trace::record_id("finish_received", job_id);
                 let _ = state.coordinator.finish(job_id);
                 state.active_request = None;
+                if companion_presents(state) {
+                    send_fair_copy(
+                        state,
+                        UiEvent::LocalError {
+                            id: job_id,
+                            message: "Provider returned no text".to_owned(),
+                        },
+                    );
+                }
                 if let Some(id) = state.active_popup_id {
                     if let Some(entry) = popup_entry_mut(state, id) {
                         entry.popup.show_local_error("Provider returned no text");
@@ -2476,8 +2907,17 @@ mod windows_impl {
                 runtime_trace::record_id("finish_received", job_id);
                 let _ = state.coordinator.finish(job_id);
                 state.active_request = None;
+                let message = provider_error(error);
+                if companion_presents(state) {
+                    send_fair_copy(
+                        state,
+                        UiEvent::LocalError {
+                            id: job_id,
+                            message: message.clone(),
+                        },
+                    );
+                }
                 if let Some(id) = state.active_popup_id {
-                    let message = provider_error(error);
                     if let Some(entry) = popup_entry_mut(state, id) {
                         entry.popup.show_local_error(&message);
                     }
@@ -2680,11 +3120,16 @@ mod windows_impl {
         let Some(evicted_id) = surface.evict_after_commit else {
             return false;
         };
+        let companion = companion_presents(state);
         let Some(evicted) = popup_entry_mut(state, evicted_id) else {
             return false;
         };
         if !evicted.popup.hide_temporarily() {
             return false;
+        }
+        if companion {
+            // Keep both native frames hidden; the companion is visible.
+            return true;
         }
         if !staged.popup.present_staged() {
             let _ = evicted.popup.present_staged();
@@ -2721,12 +3166,47 @@ mod windows_impl {
     }
 
     fn initialize_result_surface(
+        hwnd: HWND,
         state: &mut ShellState,
         surface: &ResultSurfaceReady,
         target: &str,
         context: Option<&str>,
         cached_output: Option<&str>,
     ) {
+        ensure_companion(hwnd, state);
+        let id = surface.popup_id as u64;
+        if companion_presents(state) {
+            // The companion owns the visible surface; drive it directly.
+            if let Some(output) = cached_output {
+                send_fair_copy(
+                    state,
+                    UiEvent::ShowLoading {
+                        id,
+                        target: target.to_owned(),
+                        context: context.map(str::to_owned),
+                        anchor: fair_copy_anchor(state.popup_anchor),
+                    },
+                );
+                send_fair_copy(
+                    state,
+                    UiEvent::Completed {
+                        id,
+                        text: output.to_owned(),
+                    },
+                );
+            } else {
+                send_fair_copy(
+                    state,
+                    UiEvent::ShowLoading {
+                        id,
+                        target: target.to_owned(),
+                        context: context.map(str::to_owned),
+                        anchor: fair_copy_anchor(state.popup_anchor),
+                    },
+                );
+            }
+            return;
+        }
         let popup = popup_entry_mut(state, surface.popup_id)
             .map(|entry| &mut entry.popup)
             .expect("result-surface capability requires a live popup");
@@ -2774,6 +3254,20 @@ mod windows_impl {
         anchor: popup::Point,
         message: &str,
     ) {
+        if companion_presents(state) {
+            // The companion owns the surface; only the bookkeeping matters.
+            state.popup_job_id = Some(job_id);
+            state.presented_trigger = None;
+            state.popup_guard_root_window = 0;
+            send_fair_copy(
+                state,
+                UiEvent::LocalError {
+                    id: job_id,
+                    message: message.to_owned(),
+                },
+            );
+            return;
+        }
         if let Some(admission) = ensure_popup(hwnd, state, anchor, None, None, false) {
             let mut surface = ResultSurfaceReady {
                 popup_id: admission.popup_id,

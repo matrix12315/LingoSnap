@@ -10,8 +10,8 @@ mod windows_impl {
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, LoadIconW, SetForegroundWindow,
-        TrackPopupMenu, IDI_APPLICATION, MF_CHECKED, MF_STRING, TPM_BOTTOMALIGN, TPM_LEFTALIGN,
-        WM_APP, WM_COMMAND, WM_LBUTTONDBLCLK, WM_RBUTTONUP,
+        TrackPopupMenu, IDI_APPLICATION, MF_CHECKED, MF_SEPARATOR, MF_STRING, TPM_BOTTOMALIGN,
+        TPM_LEFTALIGN, WM_APP, WM_COMMAND, WM_LBUTTONDBLCLK, WM_RBUTTONUP,
     };
 
     pub const TRAY_CALLBACK: u32 = WM_APP + 7;
@@ -19,6 +19,8 @@ mod windows_impl {
     pub const TOGGLE_HOVER_COMMAND: usize = 0x7202;
     pub const TOGGLE_REST_COMMAND: usize = 0x7203;
     pub const EXIT_COMMAND: usize = 0x7204;
+    pub const SET_SKIN_CLASSIC_COMMAND: usize = 0x7205;
+    pub const SET_SKIN_FAIRCOPY_COMMAND: usize = 0x7206;
 
     #[derive(Debug)]
     pub struct TrayIcon {
@@ -79,7 +81,13 @@ mod windows_impl {
         }
     }
 
-    pub fn handle_callback(hwnd: HWND, lparam: LPARAM, hover_enabled: bool, rest_enabled: bool) {
+    pub fn handle_callback(
+        hwnd: HWND,
+        lparam: LPARAM,
+        hover_enabled: bool,
+        rest_enabled: bool,
+        skin: selection_core::config::PopupSkin,
+    ) {
         match lparam.0 as u32 {
             WM_LBUTTONDBLCLK => unsafe {
                 windows::Win32::UI::WindowsAndMessaging::PostMessageW(
@@ -90,12 +98,17 @@ mod windows_impl {
                 )
                 .ok();
             },
-            WM_RBUTTONUP => show_menu(hwnd, hover_enabled, rest_enabled),
+            WM_RBUTTONUP => show_menu(hwnd, hover_enabled, rest_enabled, skin),
             _ => {}
         }
     }
 
-    fn show_menu(hwnd: HWND, hover_enabled: bool, rest_enabled: bool) {
+    fn show_menu(
+        hwnd: HWND,
+        hover_enabled: bool,
+        rest_enabled: bool,
+        skin: selection_core::config::PopupSkin,
+    ) {
         let menu = match unsafe { CreatePopupMenu() } {
             Ok(menu) => menu,
             Err(error) => {
@@ -104,6 +117,17 @@ mod windows_impl {
             }
         };
         let hover_flags = if hover_enabled {
+            MF_STRING | MF_CHECKED
+        } else {
+            MF_STRING
+        };
+        use selection_core::config::PopupSkin;
+        let classic_flags = if skin == PopupSkin::Classic {
+            MF_STRING | MF_CHECKED
+        } else {
+            MF_STRING
+        };
+        let faircopy_flags = if skin == PopupSkin::FairCopy {
             MF_STRING | MF_CHECKED
         } else {
             MF_STRING
@@ -125,6 +149,24 @@ mod windows_impl {
                         },
                     )
                 })
+                .and_then(|_| AppendMenuW(menu, MF_SEPARATOR, 0, None))
+                .and_then(|_| {
+                    AppendMenuW(
+                        menu,
+                        classic_flags,
+                        SET_SKIN_CLASSIC_COMMAND,
+                        w!("UI: Classic"),
+                    )
+                })
+                .and_then(|_| {
+                    AppendMenuW(
+                        menu,
+                        faircopy_flags,
+                        SET_SKIN_FAIRCOPY_COMMAND,
+                        w!("UI: Fair Copy"),
+                    )
+                })
+                .and_then(|_| AppendMenuW(menu, MF_SEPARATOR, 0, None))
                 .and_then(|_| AppendMenuW(menu, MF_STRING, EXIT_COMMAND, w!("Exit")))
         };
         if result.is_ok() {

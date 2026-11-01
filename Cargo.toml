@@ -6,8 +6,10 @@ members = [
     "windows/crates/platform-windows",
     "crates/provider-openai",
     "crates/storage",
+    "crates/ui-protocol",
     "windows/apps/resident",
     "windows/apps/manager",
+    "windows/apps/popup-ui",
 ]
 
 [profile.release]

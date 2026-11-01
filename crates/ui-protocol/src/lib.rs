@@ -1,0 +1,195 @@
+//! Protocol v1 between the resident shell and the WebView2 fair-copy UI
+//! process. JSON lines over the named pipe; see FAIR_COPY_UI_PLAN.md.
+//!
+//! The resident owns all UI state; the UI process is stateless presentation.
+//! Every line carries a monotonic `seq` next to the tagged payload.
+
+use serde::{Deserialize, Serialize};
+
+pub const PROTOCOL_VERSION: u32 = 1;
+
+/// Named pipe the UI process connects to.
+pub const PIPE_NAME: &str = r"\\.\pipe\SelectionTranslatePopupUi";
+
+/// Named pipe for the manager's fair-copy view. The manager keeps its own
+/// data bridge, separate from the resident's popup state.
+pub const MANAGER_PIPE_NAME: &str = r"\\.\pipe\SelectionTranslateManagerUi";
+/// Window class of the companion's top-level window; the resident checks
+/// clicks against it so choosing a profile is not dismissed as an outside
+/// click by the resident's own mouse hook.
+pub const COMPANION_WINDOW_CLASS: &str = "SelectionTranslatePopupUi";
+
+/// First line the UI process sends after connecting.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Handshake {
+    pub protocol: u32,
+    pub ready: bool,
+}
+
+impl Handshake {
+    pub fn ready() -> Self {
+        Self {
+            protocol: PROTOCOL_VERSION,
+            ready: true,
+        }
+    }
+}
+
+/// Which mockup surface a window presents.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Surface {
+    Chooser,
+    Popup,
+    Streaming,
+    Error,
+    Manager,
+}
+
+/// A screen position for anchoring a popup surface (physical pixels).
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Anchor {
+    pub x: i32,
+    pub y: i32,
+}
+
+/// Resident → UI events.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum UiEvent {
+    ShowChooser {
+        id: u64,
+        profiles: Vec<String>,
+        highlight: Option<usize>,
+        anchor: Anchor,
+    },
+    ShowLoading {
+        id: u64,
+        target: String,
+        context: Option<String>,
+        anchor: Anchor,
+    },
+    Delta {
+        id: u64,
+        text: String,
+    },
+    Completed {
+        id: u64,
+        text: String,
+    },
+    LocalError {
+        id: u64,
+        message: String,
+    },
+    SetPinned {
+        id: u64,
+        pinned: bool,
+    },
+    Close {
+        id: u64,
+    },
+    Shutdown,
+}
+
+/// UI → resident commands.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum UiCommand {
+    RegisterWindow {
+        id: u64,
+        surface: Surface,
+    },
+    SelectProfile {
+        id: u64,
+        index: usize,
+    },
+    Retry {
+        id: u64,
+    },
+    TogglePin {
+        id: u64,
+        pinned: bool,
+    },
+    UserClose {
+        id: u64,
+    },
+    Copy {
+        id: u64,
+        text: String,
+    },
+    SelfTranslate {
+        id: u64,
+        text: String,
+    },
+    /// The page finished loading; the host may replay any event that was
+    /// sent while the page was still navigating.
+    PageReady,
+    Ping,
+}
+
+/// One framed line of the pipe protocol: a sequence number plus payload.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Envelope<T> {
+    pub seq: u64,
+    #[serde(flatten)]
+    pub payload: T,
+}
+
+impl<T> Envelope<T> {
+    pub fn new(seq: u64, payload: T) -> Self {
+        Self { seq, payload }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handshake_round_trips() {
+        let line = serde_json::to_string(&Handshake::ready()).expect("serialize handshake");
+        assert_eq!(line, r#"{"protocol":1,"ready":true}"#);
+        let parsed: Handshake = serde_json::from_str(&line).expect("parse handshake");
+        assert_eq!(parsed, Handshake::ready());
+    }
+
+    #[test]
+    fn events_and_commands_round_trip_with_seq() {
+        let event = Envelope::new(
+            7,
+            UiEvent::ShowChooser {
+                id: 3,
+                profiles: vec!["Translate".into(), "Expert".into()],
+                highlight: Some(0),
+                anchor: Anchor { x: 100, y: 200 },
+            },
+        );
+        let line = serde_json::to_string(&event).expect("serialize event");
+        assert!(line.contains(r#""seq":7"#));
+        assert!(line.contains(r#""type":"show_chooser""#));
+        let parsed: Envelope<UiEvent> = serde_json::from_str(&line).expect("parse event");
+        assert_eq!(parsed, event);
+
+        let command = Envelope::new(
+            9,
+            UiCommand::SelfTranslate {
+                id: 3,
+                text: "hola".into(),
+            },
+        );
+        let line = serde_json::to_string(&command).expect("serialize command");
+        let parsed: Envelope<UiCommand> = serde_json::from_str(&line).expect("parse command");
+        assert_eq!(parsed, command);
+        assert!(line.contains(r#""type":"self_translate""#));
+    }
+
+    #[test]
+    fn shutdown_and_ping_round_trip() {
+        let line = serde_json::to_string(&UiEvent::Shutdown).expect("serialize shutdown");
+        assert_eq!(line, r#"{"type":"shutdown"}"#);
+        let line = serde_json::to_string(&UiCommand::Ping).expect("serialize ping");
+        assert_eq!(line, r#"{"type":"ping"}"#);
+        let line = serde_json::to_string(&UiCommand::PageReady).expect("serialize page_ready");
+        assert_eq!(line, r#"{"type":"page_ready"}"#);
+    }
+}

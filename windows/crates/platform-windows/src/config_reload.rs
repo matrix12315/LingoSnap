@@ -37,7 +37,7 @@ pub const CONFIG_RELOAD_MESSAGE: u32 = windows::Win32::UI::WindowsAndMessaging::
 /// no parser text because diagnostics can accidentally echo sensitive TOML.
 #[derive(Debug)]
 pub enum ConfigChange {
-    Loaded(AppConfig),
+    Loaded(Box<AppConfig>),
     Invalid,
 }
 
@@ -172,7 +172,7 @@ fn watch_directory(
             // finish while still keeping reload effectively immediate.
             thread::sleep(Duration::from_millis(30));
             let change = match AppConfig::load(&path) {
-                Ok(config) => ConfigChange::Loaded(config),
+                Ok(config) => ConfigChange::Loaded(Box::new(config)),
                 Err(_) => ConfigChange::Invalid,
             };
             if sender.send(change).is_ok() {

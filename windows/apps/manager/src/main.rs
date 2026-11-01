@@ -14,7 +14,7 @@ mod windows_app {
             ensure_resident_running, notify_config_changed, notify_credentials_changed,
             RefreshOutcome, ResidentStartOutcome,
         },
-        credentials,
+        credentials, webview_ui,
     };
     use selection_storage::{
         default_history_path, HistoryDatabase, HistoryEntry, HistoryOrder, HistoryQuery,
@@ -49,18 +49,18 @@ mod windows_app {
     use windows::Win32::UI::HiDpi::{GetDpiForSystem, GetDpiForWindow};
     use windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
-        GetDlgCtrlID, GetMessageW, GetParent, GetWindowLongPtrW, GetWindowRect,
-        GetWindowTextLengthW, GetWindowTextW, IsDialogMessageW, MessageBoxW, PostQuitMessage,
-        RegisterClassW, SendMessageW, SetWindowLongPtrW, SetWindowPos, SetWindowTextW, ShowWindow,
-        TranslateMessage, BS_OWNERDRAW, BS_PUSHBUTTON, CREATESTRUCTW, ES_AUTOHSCROLL,
-        ES_AUTOVSCROLL, ES_MULTILINE, ES_PASSWORD, GWLP_USERDATA, IDYES, MB_DEFBUTTON2,
-        MB_ICONWARNING, MB_YESNO, MINMAXINFO, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOZORDER, SW_HIDE,
-        SW_SHOW, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY, WM_DPICHANGED,
-        WM_DRAWITEM, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_MEASUREITEM, WM_MOUSEWHEEL, WM_NOTIFY,
-        WM_PAINT, WM_SETFONT, WM_SIZE, WM_VSCROLL, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
-        WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED, WS_SYSMENU,
-        WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+        CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, FindWindowW,
+        GetClientRect, GetDlgCtrlID, GetMessageW, GetParent, GetWindowLongPtrW, GetWindowRect,
+        GetWindowTextLengthW, GetWindowTextW, IsDialogMessageW, KillTimer, MessageBoxW,
+        PostQuitMessage, RegisterClassW, SendMessageW, SetTimer, SetWindowLongPtrW, SetWindowPos,
+        SetWindowTextW, ShowWindow, TranslateMessage, BS_OWNERDRAW, BS_PUSHBUTTON, CREATESTRUCTW,
+        ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE, ES_PASSWORD, GWLP_USERDATA, IDYES,
+        MB_DEFBUTTON2, MB_ICONWARNING, MB_YESNO, MINMAXINFO, SWP_NOACTIVATE, SWP_NOMOVE,
+        SWP_NOZORDER, SW_HIDE, SW_SHOW, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_CREATE, WM_DESTROY,
+        WM_DPICHANGED, WM_DRAWITEM, WM_ERASEBKGND, WM_GETMINMAXINFO, WM_MEASUREITEM, WM_MOUSEWHEEL,
+        WM_NOTIFY, WM_PAINT, WM_SETFONT, WM_SIZE, WM_TIMER, WM_VSCROLL, WNDCLASSW, WS_BORDER,
+        WS_CAPTION, WS_CHILD, WS_CLIPCHILDREN, WS_CLIPSIBLINGS, WS_EX_CONTROLPARENT, WS_OVERLAPPED,
+        WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         SB_LINEDOWN, SB_LINEUP, SB_PAGEDOWN, SB_PAGEUP, SB_THUMBPOSITION, SB_VERT, SCROLLINFO,
@@ -106,6 +106,10 @@ mod windows_app {
     const ID_PROMPT_TEMPERATURE: usize = 171;
     const ID_PROMPT_MAX_TOKENS: usize = 172;
     const ID_HISTORY_SEARCH: usize = 175;
+    const ID_HOTKEY_SELECTION: usize = 190;
+    const ID_HOTKEY_HOVER: usize = 191;
+    const ID_HOTKEY_PAUSE: usize = 192;
+    const ID_HOTKEY_OPEN_POPUP: usize = 193;
     // Profile reorder buttons: two per row (up/down), allocated in pairs.
     // Owned by dynamically created rows on the Settings page; the pair for
     // row `index` lives at ID_PROFILE_MOVE_BASE + index * 2 (+1 for down).
@@ -234,6 +238,11 @@ mod windows_app {
         ProviderCard,
         CredentialsCard,
         DefaultsCard,
+        HotkeyCard,
+        HotkeySelectionLabel,
+        HotkeyHoverLabel,
+        HotkeyPauseLabel,
+        HotkeyOpenPopupLabel,
         ProviderEndpoint,
         Model,
         CredentialTarget,
@@ -297,6 +306,11 @@ mod windows_app {
         TextKey::ProviderCard,
         TextKey::CredentialsCard,
         TextKey::DefaultsCard,
+        TextKey::HotkeyCard,
+        TextKey::HotkeySelectionLabel,
+        TextKey::HotkeyHoverLabel,
+        TextKey::HotkeyPauseLabel,
+        TextKey::HotkeyOpenPopupLabel,
         TextKey::ProviderEndpoint,
         TextKey::Model,
         TextKey::CredentialTarget,
@@ -364,6 +378,11 @@ mod windows_app {
             (UiLanguage::English, ProviderCard) => "Provider",
             (UiLanguage::English, CredentialsCard) => "Credentials",
             (UiLanguage::English, DefaultsCard) => "Defaults",
+            (UiLanguage::English, HotkeyCard) => "Hot key",
+            (UiLanguage::English, HotkeySelectionLabel) => "Selection translate",
+            (UiLanguage::English, HotkeyHoverLabel) => "Hover translate",
+            (UiLanguage::English, HotkeyPauseLabel) => "Pause / resume",
+            (UiLanguage::English, HotkeyOpenPopupLabel) => "Open popup",
             (UiLanguage::English, ProfilesCard) => "Profiles",
             (UiLanguage::English, ProfilesBeneathDivider) => "BENEATH MORE…",
             (UiLanguage::English, ProfilesRailHint) => {
@@ -432,6 +451,11 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, ProviderCard) => "服务商",
             (UiLanguage::SimplifiedChinese, CredentialsCard) => "凭据",
             (UiLanguage::SimplifiedChinese, DefaultsCard) => "默认配置",
+            (UiLanguage::SimplifiedChinese, HotkeyCard) => "热键",
+            (UiLanguage::SimplifiedChinese, HotkeySelectionLabel) => "划词翻译",
+            (UiLanguage::SimplifiedChinese, HotkeyHoverLabel) => "悬停翻译",
+            (UiLanguage::SimplifiedChinese, HotkeyPauseLabel) => "暂停/恢复",
+            (UiLanguage::SimplifiedChinese, HotkeyOpenPopupLabel) => "打开弹窗",
             (UiLanguage::SimplifiedChinese, ProfilesCard) => "配置档",
             (UiLanguage::SimplifiedChinese, ProfilesBeneathDivider) => "MORE… 以下",
             (UiLanguage::SimplifiedChinese, ProfilesRailHint) => {
@@ -860,6 +884,10 @@ mod windows_app {
         credential_target: HWND,
         api_key: HWND,
         credential_status: HWND,
+        hotkey_selection: HWND,
+        hotkey_hover: HWND,
+        hotkey_pause: HWND,
+        hotkey_open_popup: HWND,
         settings_selection_default: HWND,
         settings_hover_default: HWND,
         profile_id: HWND,
@@ -903,6 +931,10 @@ mod windows_app {
                 credential_target: null,
                 api_key: null,
                 credential_status: null,
+                hotkey_selection: null,
+                hotkey_hover: null,
+                hotkey_pause: null,
+                hotkey_open_popup: null,
                 settings_selection_default: null,
                 settings_hover_default: null,
                 profile_id: null,
@@ -967,6 +999,9 @@ mod windows_app {
         combo_compact_heights: Vec<(i32, i32)>,
         resident_start: ResidentStartOutcome,
         credential_status: CredentialStatusState,
+        /// Fair-copy manager view companion. The native window stays the
+        /// source of truth; the page mirrors it and posts edits back.
+        fair_copy: Option<webview_ui::FairCopyUi>,
         theme: ThemeResources,
         dpi: u32,
         /// Vertical scroll offset of the Settings page in logical pixels.
@@ -1045,6 +1080,7 @@ mod windows_app {
             combo_compact_heights: Vec::new(),
             resident_start,
             credential_status: CredentialStatusState::Absent,
+            fair_copy: None,
             theme: ThemeResources::new(dpi),
             dpi,
             settings_scroll: 0,
@@ -1084,10 +1120,12 @@ mod windows_app {
                 scale_for_dpi(760, window_dpi),
                 SWP_NOACTIVATE | SWP_NOZORDER,
             );
-            let _ = ShowWindow(
-                hwnd,
-                windows::Win32::UI::WindowsAndMessaging::SW_SHOWDEFAULT,
-            );
+            if !FAIR_COPY_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = ShowWindow(
+                    hwnd,
+                    windows::Win32::UI::WindowsAndMessaging::SW_SHOWDEFAULT,
+                );
+            }
         }
         let mut message = windows::Win32::UI::WindowsAndMessaging::MSG::default();
         let result = loop {
@@ -1186,6 +1224,7 @@ mod windows_app {
                 SWP_NOACTIVATE | SWP_NOZORDER,
             );
             apply_manager_layout(hwnd, &mut *state);
+            start_fair_copy_view(hwnd, &mut *state);
             return LRESULT(0);
         }
         let state = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut ManagerState;
@@ -1194,6 +1233,29 @@ mod windows_app {
         }
         match message {
             WM_COMMAND => handle_command(hwnd, &mut *state, wparam.0, HWND(lparam.0 as *mut _)),
+            webview_ui::FAIR_COPY_COMMAND_MESSAGE => {
+                let raw = lparam.0 as *mut String;
+                if !raw.is_null() {
+                    let line = unsafe { Box::from_raw(raw) };
+                    handle_fair_copy_command(hwnd, &mut *state, &line);
+                }
+                LRESULT(0)
+            }
+            WM_TIMER if wparam.0 == FAIR_COPY_POLL_TIMER_ID => {
+                let exited = (*state)
+                    .fair_copy
+                    .as_mut()
+                    .map(|ui| ui.child_exited())
+                    .unwrap_or(true);
+                if exited {
+                    (*state).fair_copy = None;
+                    unsafe {
+                        let _ = KillTimer(Some(hwnd), FAIR_COPY_POLL_TIMER_ID);
+                    };
+                    let _ = ShowWindow(hwnd, SW_SHOW);
+                }
+                LRESULT(0)
+            }
             WM_VSCROLL
                 if lparam.0 == 0
                     || lparam.0 as usize == (*state).handles.settings_page.0 as usize =>
@@ -1500,6 +1562,89 @@ mod windows_app {
             Slot::Language,
         )?;
 
+        add_label(
+            hwnd,
+            &mut h,
+            "Selection translate",
+            Some(View::Settings),
+            Slot::HotkeySelectionLabel,
+        )?;
+        h.hotkey_selection = add_edit_with_id(
+            hwnd,
+            &mut h,
+            Some(View::Settings),
+            Slot::HotkeySelection,
+            false,
+            false,
+            ID_HOTKEY_SELECTION,
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Hover translate",
+            Some(View::Settings),
+            Slot::HotkeyHoverLabel,
+        )?;
+        h.hotkey_hover = add_edit_with_id(
+            hwnd,
+            &mut h,
+            Some(View::Settings),
+            Slot::HotkeyHover,
+            false,
+            false,
+            ID_HOTKEY_HOVER,
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Pause / resume",
+            Some(View::Settings),
+            Slot::HotkeyPauseLabel,
+        )?;
+        h.hotkey_pause = add_edit_with_id(
+            hwnd,
+            &mut h,
+            Some(View::Settings),
+            Slot::HotkeyPause,
+            false,
+            false,
+            ID_HOTKEY_PAUSE,
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Open popup",
+            Some(View::Settings),
+            Slot::HotkeyOpenPopupLabel,
+        )?;
+        h.hotkey_open_popup = add_edit_with_id(
+            hwnd,
+            &mut h,
+            Some(View::Settings),
+            Slot::HotkeyOpenPopup,
+            false,
+            false,
+            ID_HOTKEY_OPEN_POPUP,
+        )?;
+        for handle in [
+            h.hotkey_selection,
+            h.hotkey_hover,
+            h.hotkey_pause,
+            h.hotkey_open_popup,
+        ] {
+            // Empty field means the hotkey is off; the cue banner says so.
+            const EM_SETCUEBANNER: u32 = 0x1501;
+            let cue: Vec<u16> = "Off — no hot key\0".encode_utf16().collect();
+            unsafe {
+                let _ = SendMessageW(
+                    handle,
+                    EM_SETCUEBANNER,
+                    Some(WPARAM(1)),
+                    Some(LPARAM(cue.as_ptr() as isize)),
+                );
+            }
+        }
+
         add_button(
             hwnd,
             &mut h,
@@ -1762,6 +1907,14 @@ mod windows_app {
         HoverDefault,
         LangLabel,
         Language,
+        HotkeySelectionLabel,
+        HotkeySelection,
+        HotkeyHoverLabel,
+        HotkeyHover,
+        HotkeyPauseLabel,
+        HotkeyPause,
+        HotkeyOpenPopupLabel,
+        HotkeyOpenPopup,
         SaveSettings,
         PromptIdLabel,
         PromptId,
@@ -2437,8 +2590,8 @@ mod windows_app {
         let field_block = 44; // label 14 + 2 + input 28
         match view {
             View::Settings => {
-                // Four cards: Provider, Credentials, Defaults, and the
-                // Profiles order card. The three field cards keep their
+                // Five cards: Provider, Credentials, Defaults, Hot key, and
+                // the Profiles order card. The four field cards keep their
                 // weights for spare vertical space; the Profiles card grows
                 // with the profile count, so a tall stack overflows into a
                 // page scrollbar instead of squeezing the fields.
@@ -2451,15 +2604,15 @@ mod windows_app {
                 };
                 let profiles_h = 28 + rows * row_h + divider_h + 14;
                 let footnote_h = 16;
-                let base = [184, 140, 184];
-                let weights = [3, 2, 3];
-                let min_stack = base[0] + base[1] + base[2] + profiles_h + 3 * 10;
+                let base = [184, 140, 184, 216];
+                let weights = [3, 2, 3, 2];
+                let min_stack = base[0] + base[1] + base[2] + base[3] + profiles_h + 4 * 10;
                 let extra = (content_height - 46 - footnote_h - min_stack).max(0);
-                let mut tops = [0, 0, 0, 0];
-                let mut heights = [0, 0, 0, 0];
+                let mut tops = [0, 0, 0, 0, 0];
+                let mut heights = [0, 0, 0, 0, 0];
                 let mut y = 0;
-                for index in 0..4 {
-                    heights[index] = if index < 3 {
+                for index in 0..5 {
+                    heights[index] = if index < 4 {
                         base[index] + extra * weights[index] / 8
                     } else {
                         profiles_h
@@ -2477,9 +2630,10 @@ mod windows_app {
                     TextKey::ProviderCard,
                     TextKey::CredentialsCard,
                     TextKey::DefaultsCard,
+                    TextKey::HotkeyCard,
                     TextKey::ProfilesCard,
                 ];
-                for index in 0..4 {
+                for index in 0..5 {
                     cards.push((
                         RECT {
                             left: 0,
@@ -2619,6 +2773,52 @@ mod windows_app {
                             left: 12,
                             top: row + 16,
                             right: 12 + inner_width,
+                            bottom: row + 44,
+                        },
+                    ));
+                }
+                // Hot key: four optional fields in a 2×2 grid, matching the
+                // mockup's two-column "fields2" arrangement. Empty input
+                // means the hotkey is off (the edit's cue banner says so).
+                let hot_rows = distributed_tops(
+                    2,
+                    content_top + tops[3] + 28,
+                    content_top + tops[3] + heights[3] - 12,
+                    field_block,
+                );
+                let half_width = (inner_width - 16) / 2;
+                for (label_slot, input_slot, row, column) in [
+                    (
+                        Slot::HotkeySelectionLabel,
+                        Slot::HotkeySelection,
+                        hot_rows[0],
+                        0,
+                    ),
+                    (Slot::HotkeyHoverLabel, Slot::HotkeyHover, hot_rows[0], 1),
+                    (Slot::HotkeyPauseLabel, Slot::HotkeyPause, hot_rows[1], 0),
+                    (
+                        Slot::HotkeyOpenPopupLabel,
+                        Slot::HotkeyOpenPopup,
+                        hot_rows[1],
+                        1,
+                    ),
+                ] {
+                    let left = 12 + column * (half_width + 16);
+                    slots.push((
+                        label_slot,
+                        RECT {
+                            left,
+                            top: row,
+                            right: left + half_width,
+                            bottom: row + 14,
+                        },
+                    ));
+                    slots.push((
+                        input_slot,
+                        RECT {
+                            left,
+                            top: row + 16,
+                            right: left + half_width,
                             bottom: row + 44,
                         },
                     ));
@@ -4361,6 +4561,7 @@ mod windows_app {
                 set_status(state, &message);
             }
         }
+        fair_copy_push_history(state);
     }
 
     fn history_query(state: &ManagerState) -> HistoryQuery {
@@ -4727,7 +4928,45 @@ mod windows_app {
             state.handles.credential_target,
             &state.config.provider.credential_target,
         );
+        set_text(
+            state.handles.hotkey_selection,
+            &display_hotkey(state.config.hotkeys.selection_translate.as_deref()),
+        );
+        set_text(
+            state.handles.hotkey_hover,
+            &display_hotkey(state.config.hotkeys.hover_translate.as_deref()),
+        );
+        set_text(
+            state.handles.hotkey_pause,
+            &display_hotkey(state.config.hotkeys.pause_resume.as_deref()),
+        );
+        set_text(
+            state.handles.hotkey_open_popup,
+            &display_hotkey(state.config.hotkeys.open_popup.as_deref()),
+        );
         populate_profile_selectors(state);
+    }
+
+    /// Hotkeys are shown with spaced separators ("Ctrl + Shift + T") and an
+    /// empty field means the hotkey is off.
+    fn display_hotkey(spec: Option<&str>) -> String {
+        spec.unwrap_or_default()
+            .split('+')
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join(" + ")
+    }
+
+    /// Normalize typed hotkey text back to the canonical "Ctrl+Shift+T"
+    /// form. Empty input normalizes to an empty string, meaning "off".
+    fn normalized_hotkey(input: &str) -> String {
+        input
+            .split('+')
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join("+")
     }
 
     #[cfg(test)]
@@ -4771,6 +5010,15 @@ mod windows_app {
         {
             next.defaults.hover = id;
         }
+        next.hotkeys.selection_translate = Some(normalized_hotkey(&read_text(
+            state.handles.hotkey_selection,
+        )));
+        next.hotkeys.hover_translate =
+            Some(normalized_hotkey(&read_text(state.handles.hotkey_hover)));
+        next.hotkeys.pause_resume = Some(normalized_hotkey(&read_text(state.handles.hotkey_pause)));
+        next.hotkeys.open_popup = Some(normalized_hotkey(&read_text(
+            state.handles.hotkey_open_popup,
+        )));
         if let Err(error) = next.validate() {
             set_status(
                 state,
@@ -4798,6 +5046,7 @@ mod windows_app {
         state.config = next;
         let refresh = notify_config_changed();
         populate_profile_selectors(state);
+        fair_copy_push_all(state);
         set_status(state, &config_refresh_status(state.language(), refresh));
         update_credential_status(state);
     }
@@ -5111,6 +5360,392 @@ mod windows_app {
     fn should_write_config(loaded_from_disk: bool, path_exists: bool) -> bool {
         loaded_from_disk || !path_exists
     }
+
+    // —— Fair-copy manager view (WebView2 companion) ——
+
+    /// Timer that watches the companion process so closing the page restores
+    /// the native manager window.
+    const FAIR_COPY_POLL_TIMER_ID: usize = 1;
+
+    /// Set while the fair-copy view owns the presentation: the startup
+    /// ShowWindow must then leave the native window hidden (WM_CREATE hides
+    /// it inside start_fair_copy_view, and the startup show would otherwise
+    /// undo that, leaving both UIs on screen at once).
+    static FAIR_COPY_ACTIVE: std::sync::atomic::AtomicBool =
+        std::sync::atomic::AtomicBool::new(false);
+
+    /// Spawn the fair-copy manager view. On success the native window hides
+    /// and the page becomes the presentation; on any failure the native
+    /// manager simply stays as it is.
+    fn start_fair_copy_view(hwnd: HWND, state: &mut ManagerState) {
+        if state.fair_copy.is_some() {
+            return;
+        }
+        // Respect the skin setting: the fair-copy manager view only exists
+        // while the fair-copy skin is active; with the classic skin the
+        // native manager stays (the user switches via the tray menu).
+        if state.config.ui.popup_skin != selection_core::config::PopupSkin::FairCopy {
+            return;
+        }
+        let Ok(mut ui) = webview_ui::FairCopyUi::start("manager", hwnd) else {
+            return;
+        };
+        // Initial snapshots; a companion that is still navigating may miss
+        // them, so the page can re-request via the refresh commands.
+        fair_copy_push_settings(state, &mut ui);
+        fair_copy_push_prompts(state, &mut ui);
+        state.fair_copy = Some(ui);
+        FAIR_COPY_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
+        // The companion takes over the native manager's exact rect, so the
+        // hand-off reads as the same window changing skin, not a second
+        // floating panel next to it.
+        unsafe {
+            use windows::Win32::Foundation::RECT;
+            use windows::Win32::UI::WindowsAndMessaging::{
+                GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
+            };
+            let mut rect = RECT::default();
+            if GetWindowRect(hwnd, &mut rect).is_ok() {
+                let wide: Vec<u16> = selection_ui_protocol::COMPANION_WINDOW_CLASS
+                    .encode_utf16()
+                    .chain(Some(0))
+                    .collect();
+                if let Some(companion) = FindWindowW(
+                    windows::core::PCWSTR(wide.as_ptr()),
+                    windows::core::PCWSTR::null(),
+                )
+                .ok()
+                .filter(|h| !h.0.is_null())
+                {
+                    let _ = SetWindowPos(
+                        companion,
+                        None,
+                        rect.left,
+                        rect.top,
+                        rect.right - rect.left,
+                        rect.bottom - rect.top,
+                        SWP_NOZORDER | SWP_NOACTIVATE,
+                    );
+                }
+            }
+            let _ = SetTimer(Some(hwnd), FAIR_COPY_POLL_TIMER_ID, 500, None);
+            let _ = ShowWindow(hwnd, SW_HIDE);
+        }
+    }
+
+    fn fair_copy_push_settings(state: &ManagerState, ui: &mut webview_ui::FairCopyUi) {
+        let profiles: Vec<_> = state
+            .config
+            .profiles
+            .iter()
+            .map(|profile| serde_json::json!({ "id": profile.id, "name": profile.name }))
+            .collect();
+        let order: Vec<_> = state
+            .config
+            .profiles
+            .iter()
+            .map(|profile| profile.id.clone())
+            .collect();
+        let hotkeys = &state.config.hotkeys;
+        let payload = serde_json::json!({
+            "apply": {
+                "kind": "settings",
+                "config": {
+                    "endpoint": state.config.provider.endpoint,
+                    "model": state.config.provider.model,
+                    "credtarget": state.config.provider.credential_target,
+                    "hkSelection": hotkeys.selection_translate,
+                    "hkHover": hotkeys.hover_translate,
+                    "hkPause": hotkeys.pause_resume,
+                    "hkPopup": hotkeys.open_popup,
+                    "language": match state.config.ui.manager_language {
+                        UiLanguage::SimplifiedChinese => "zh-CN",
+                        UiLanguage::English => "en",
+                    },
+                    "selectionDefault": state
+                        .config
+                        .profile(&state.config.defaults.selection)
+                        .map(profile_option_label),
+                    "hoverDefault": state
+                        .config
+                        .profile(&state.config.defaults.hover)
+                        .map(profile_option_label),
+                    "profiles": profiles,
+                    "order": order,
+                }
+            }
+        });
+        let _ = ui.send_raw(&payload.to_string());
+    }
+
+    fn fair_copy_push_prompts(state: &ManagerState, ui: &mut webview_ui::FairCopyUi) {
+        let profiles: Vec<_> = state
+            .config
+            .profiles
+            .iter()
+            .map(|profile| serde_json::json!({ "id": profile.id, "name": profile.name }))
+            .collect();
+        let payload = state.config.profiles.get(state.profile_index).map_or_else(
+            || {
+                serde_json::json!({
+                    "apply": { "kind": "prompts", "profiles": profiles, "selectedId": null }
+                })
+            },
+            |profile| {
+                serde_json::json!({
+                    "apply": {
+                        "kind": "prompts",
+                        "profiles": profiles,
+                        "selectedId": profile.id,
+                        "selected": {
+                            "name": profile.name,
+                            "model": profile.model,
+                            "temp": profile.temperature,
+                            "tokens": profile.max_output_tokens,
+                            "sys": profile.system_prompt,
+                            "user": profile.user_template,
+                        }
+                    }
+                })
+            },
+        );
+        let _ = ui.send_raw(&payload.to_string());
+    }
+
+    fn fair_copy_history_entries(state: &ManagerState) -> Vec<serde_json::Value> {
+        state
+            .history_entries
+            .iter()
+            .take(100)
+            .map(|entry| {
+                let time = entry
+                    .created_at_utc
+                    .get(11..16)
+                    .map(str::to_owned)
+                    .unwrap_or_default();
+                let preview = entry.output.lines().next().unwrap_or_default().to_owned();
+                serde_json::json!({
+                    "time": time,
+                    "target": entry.target,
+                    "preview": preview,
+                    "prompt": entry.prompt_id,
+                    "source": format!("{:?}", entry.source).to_lowercase(),
+                    "context": entry.context,
+                    "output": entry.output,
+                })
+            })
+            .collect()
+    }
+
+    fn fair_copy_push_history(state: &mut ManagerState) {
+        let entries = fair_copy_history_entries(state);
+        let payload = serde_json::json!({
+            "apply": {
+                "kind": "history",
+                "total": state.history_entries.len(),
+                "selected": 0,
+                "entries": entries,
+            }
+        });
+        if let Some(ui) = state.fair_copy.as_mut() {
+            let _ = ui.send_raw(&payload.to_string());
+        }
+    }
+
+    fn fair_copy_push_history_detail(state: &mut ManagerState, index: usize) {
+        let Some(entry) = fair_copy_history_entries(state).get(index).cloned() else {
+            return;
+        };
+        let payload = serde_json::json!({
+            "apply": { "kind": "history_detail", "index": index, "entry": entry }
+        });
+        if let Some(ui) = state.fair_copy.as_mut() {
+            let _ = ui.send_raw(&payload.to_string());
+        }
+    }
+
+    /// Commands posted by the fair-copy page. The native state stays the
+    /// source of truth: every command flows through the same validation and
+    /// save path as the native controls, then the fresh state is pushed back.
+    fn handle_fair_copy_command(hwnd: HWND, state: &mut ManagerState, line: &str) {
+        let Ok(command) = serde_json::from_str::<serde_json::Value>(line) else {
+            return;
+        };
+        // The page announces itself after loading: the settings/prompts/
+        // history snapshots pushed at spawn raced the navigation and were
+        // lost, so the page would show mockup sample data instead of the
+        // user's real configuration. Re-push everything now.
+        if command.get("type").and_then(serde_json::Value::as_str) == Some("page_ready") {
+            fair_copy_push_all(state);
+            fair_copy_push_history(state);
+            return;
+        }
+        match command.get("mcmd").and_then(serde_json::Value::as_str) {
+            Some("save_settings") => {
+                let mut next = state.config.clone();
+                if let Some(value) = command.get("endpoint").and_then(serde_json::Value::as_str) {
+                    next.provider.endpoint = value.trim().to_owned();
+                }
+                if let Some(value) = command.get("model").and_then(serde_json::Value::as_str) {
+                    next.provider.model = value.trim().to_owned();
+                }
+                if let Some(value) = command
+                    .get("credtarget")
+                    .and_then(serde_json::Value::as_str)
+                {
+                    next.provider.credential_target = value.trim().to_owned();
+                }
+                let normalize = |raw: Option<&str>| -> Option<String> {
+                    let text = raw?;
+                    let normalized: Vec<_> = text
+                        .split('+')
+                        .map(str::trim)
+                        .filter(|part| !part.is_empty())
+                        .collect();
+                    Some(normalized.join("+"))
+                };
+                next.hotkeys.selection_translate = normalize(
+                    command
+                        .get("hkSelection")
+                        .and_then(serde_json::Value::as_str),
+                );
+                next.hotkeys.hover_translate =
+                    normalize(command.get("hkHover").and_then(serde_json::Value::as_str));
+                next.hotkeys.pause_resume =
+                    normalize(command.get("hkPause").and_then(serde_json::Value::as_str));
+                next.hotkeys.open_popup =
+                    normalize(command.get("hkPopup").and_then(serde_json::Value::as_str));
+                if let Some(order) = command.get("order").and_then(serde_json::Value::as_array) {
+                    let ids: Vec<_> = order
+                        .iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .map(str::to_owned)
+                        .collect();
+                    if !ids.is_empty() {
+                        let mut reordered: Vec<PromptConfig> = Vec::with_capacity(ids.len());
+                        for id in &ids {
+                            if let Some(position) =
+                                next.profiles.iter().position(|profile| &profile.id == id)
+                            {
+                                reordered.push(next.profiles.remove(position));
+                            }
+                        }
+                        reordered.append(&mut next.profiles);
+                        next.profiles = reordered;
+                    }
+                }
+                if next.validate().is_ok() && save_config(state, &next).is_ok() {
+                    state.config = next;
+                    refresh_settings_form(state);
+                    apply_static_localization(hwnd, state);
+                }
+                fair_copy_push_all(state);
+            }
+            Some("select_prompt") => {
+                if let Some(id) = command.get("id").and_then(serde_json::Value::as_str) {
+                    if let Some(index) = state.config.profiles.iter().position(|p| p.id == id) {
+                        state.profile_index = index;
+                        state.draft_prompt = None;
+                        refresh_prompt_form(state);
+                    }
+                }
+                fair_copy_push_all(state);
+            }
+            Some("new_prompt") => {
+                new_prompt(state);
+                fair_copy_push_all(state);
+            }
+            Some("save_prompt") => {
+                let value = |key: &str| {
+                    command
+                        .get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned()
+                };
+                let id = value("id");
+                let name = value("name");
+                if id.is_empty() || name.trim().is_empty() {
+                    return;
+                }
+                let mut next = state.config.clone();
+                let prompt = PromptConfig {
+                    id: id.clone(),
+                    name: name.trim().to_owned(),
+                    system_prompt: value("sys"),
+                    user_template: value("user"),
+                    model: {
+                        let model = value("model");
+                        let trimmed = model.trim();
+                        (!trimmed.is_empty()).then(|| trimmed.to_owned())
+                    },
+                    temperature: command
+                        .get("temp")
+                        .and_then(serde_json::Value::as_str)
+                        .and_then(|text| text.trim().parse::<f32>().ok()),
+                    max_output_tokens: command
+                        .get("tokens")
+                        .and_then(serde_json::Value::as_str)
+                        .and_then(|text| text.trim().parse::<usize>().ok())
+                        .map(|tokens| tokens as u32),
+                };
+                if prompt.validate().is_ok() {
+                    if let Some(position) =
+                        next.profiles.iter().position(|profile| profile.id == id)
+                    {
+                        next.profiles[position] = prompt;
+                    } else {
+                        next.profiles.push(prompt);
+                    }
+                    if next.validate().is_ok() && save_config(state, &next).is_ok() {
+                        state.config = next;
+                        if let Some(index) = state
+                            .config
+                            .profiles
+                            .iter()
+                            .position(|profile| profile.id == id)
+                        {
+                            state.profile_index = index;
+                        }
+                        state.draft_prompt = None;
+                        refresh_prompt_form(state);
+                        populate_profile_selectors(state);
+                    }
+                }
+                fair_copy_push_all(state);
+            }
+            Some("history_query") => {
+                if let Some(search) = command.get("search").and_then(serde_json::Value::as_str) {
+                    set_text(state.handles.history_search, search);
+                }
+                refresh_history(state);
+                fair_copy_push_history(state);
+                fair_copy_push_history_detail(state, 0);
+            }
+            Some("refresh_history") => {
+                refresh_history(state);
+                fair_copy_push_history(state);
+                fair_copy_push_history_detail(state, 0);
+            }
+            Some("select_history") => {
+                if let Some(index) = command.get("index").and_then(serde_json::Value::as_u64) {
+                    fair_copy_push_history_detail(state, index as usize);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Push settings and prompts snapshots after a page-initiated change.
+    fn fair_copy_push_all(state: &mut ManagerState) {
+        // Take the companion out so the pushes can borrow state immutably.
+        if let Some(mut ui) = state.fair_copy.take() {
+            fair_copy_push_settings(state, &mut ui);
+            fair_copy_push_prompts(state, &mut ui);
+            state.fair_copy = Some(ui);
+        }
+    }
+
     fn save_config(state: &ManagerState, config: &AppConfig) -> Result<(), String> {
         let path = state
             .config_path
@@ -5265,10 +5900,14 @@ mod windows_app {
             let card = &geometry.cards[0];
             assert_eq!(card.0.left, 0);
             assert_eq!(card.0.right, 1240 - 2 * super::CONTENT_PADDING);
-            // Cards stretch to absorb vertical extra space.
+            // Cards stretch to absorb vertical extra space. The wide window
+            // is tall enough that the five-card minimum stack leaves slack;
+            // the compact one leaves none.
             let compact_geometry =
                 super::page_geometry(super::View::Settings, 980, 760 - super::TAB_BAR_HEIGHT, 1);
-            let wide_card = &geometry.cards[0];
+            let wide_geometry =
+                super::page_geometry(super::View::Settings, 1240, 1100 - super::TAB_BAR_HEIGHT, 1);
+            let wide_card = &wide_geometry.cards[0];
             let compact_card = &compact_geometry.cards[0];
             assert!(
                 wide_card.0.bottom - wide_card.0.top > compact_card.0.bottom - compact_card.0.top
@@ -5278,10 +5917,10 @@ mod windows_app {
         #[test]
         fn settings_geometry_matches_hand_computed_default_layout() {
             // 980-wide window: content spans the page minus padding; the
-            // three cards share the vertical slack by field count; fields
-            // distribute evenly inside each card.
+            // four field cards share the vertical slack by field count;
+            // fields distribute evenly inside each card.
             let geometry = super::page_geometry(super::View::Settings, 980, 664, 8);
-            let tops = [64, 258, 408, 602];
+            let tops = [64, 258, 408, 602, 828];
             for (card, top) in geometry.cards.iter().zip(tops) {
                 assert_eq!(card.0.left, 0);
                 assert_eq!(card.0.right, 916);
@@ -5290,11 +5929,12 @@ mod windows_app {
             assert_eq!(geometry.cards[0].0.bottom, 248);
             assert_eq!(geometry.cards[1].0.bottom, 398);
             assert_eq!(geometry.cards[2].0.bottom, 592);
+            assert_eq!(geometry.cards[3].0.bottom, 818);
             // The Profiles order card grows with the row count (8 rows) and
             // pushes the page past the container: the geometry reports the
             // overflow for the page scrollbar.
-            assert_eq!(geometry.cards[3].0.bottom, 930);
-            assert_eq!(geometry.scroll_max, 326);
+            assert_eq!(geometry.cards[4].0.bottom, 1156);
+            assert_eq!(geometry.scroll_max, 552);
             let slot = |slot: super::Slot| {
                 geometry
                     .slots
@@ -5311,7 +5951,7 @@ mod windows_app {
             assert_eq!(endpoint.bottom, endpoint.top + 28);
             let save = slot(super::Slot::SaveSettings);
             assert_eq!(save.left, 0);
-            assert_eq!(save.top, 954);
+            assert_eq!(save.top, 1180);
             // History geometry: the entries split absorbs the remaining height.
             let history = super::page_geometry(super::View::History, 980, 664, 8);
             let list = history
