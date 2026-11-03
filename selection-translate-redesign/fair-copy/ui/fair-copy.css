@@ -395,7 +395,9 @@
   .railwrap { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
   .rail {
     display: inline-flex; align-items: center; gap: 2px;
-    background: var(--paper);
+    /* Partially transparent: an opaque slab behind glass pills reads as a
+       solid rectangle over the screen; the tint must let it show through. */
+    background: rgba(247, 243, 235, .45);
     border-radius: 999px;
     padding: 5px 6px;
     box-shadow: var(--lift);
@@ -433,7 +435,7 @@
      holding the same glass pills, with room for the rounded ends to read. */
   .rmenu {
     display: flex; flex-direction: column; gap: 3px;
-    background: var(--paper);
+    background: rgba(247, 243, 235, .45);
     padding: 5px 6px;
     border-radius: 21px;
     box-shadow: var(--lift);
