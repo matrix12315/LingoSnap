@@ -445,8 +445,10 @@ unsafe extern "system" fn window_proc(
             LRESULT(0)
         }
         WM_APP_EVENT => {
-            // Content arrived: the window may become visible now.
-            show_once(hwnd);
+            // Content arrived: do NOT show yet — the geometry settle (the
+            // content_size handler) applies the anchor and sizes the window
+            // first, then shows. Showing here would flash the window at its
+            // pre-anchor position and visibly jump it to the selection.
             // lparam owns a Box<String> holding one protocol line.
             let raw = lparam.0 as *mut String;
             if !raw.is_null() {
@@ -477,48 +479,8 @@ fn execute_script(hwnd: HWND, script: &str) {
 /// Move the companion window to an event anchor. The process is per-monitor
 /// aware: anchors and window coordinates are both physical screen pixels,
 /// no conversion needed.
-fn reposition_for_anchor(hwnd: HWND, anchor: (i32, i32), above: bool) {
-    let monitor_point = POINT {
-        x: anchor.0,
-        y: anchor.1,
-    };
-    let monitor = unsafe { MonitorFromPoint(monitor_point, MONITOR_DEFAULTTONEAREST) };
-    let mut rect = RECT::default();
-    let _ = unsafe { GetWindowRect(hwnd, &mut rect) };
-    let width = rect.right - rect.left;
-    let height = rect.bottom - rect.top;
-    let mut info = MONITORINFO {
-        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-        ..Default::default()
-    };
-    let _ = unsafe { GetMonitorInfoW(monitor, &mut info) };
-    let mut x = anchor.0 - width / 2;
-    let mut y = if above {
-        anchor.1 - height - 12
-    } else {
-        anchor.1 + 12
-    };
-    x = x.clamp(
-        info.rcWork.left,
-        (info.rcWork.right - width).max(info.rcWork.left),
-    );
-    y = y.clamp(
-        info.rcWork.top,
-        (info.rcWork.bottom - height).max(info.rcWork.top),
-    );
-    unsafe {
-        let _ = SetWindowPos(
-            hwnd,
-            Some(HWND_TOPMOST),
-            x,
-            y,
-            0,
-            0,
-            SWP_NOSIZE | SWP_NOACTIVATE,
-        );
-    }
-}
-
+/// The on-screen position for an anchored surface of the given size,
+/// clamped into the monitor's work area. Chooser surfaces sit above the
 /// Make the companion window visible exactly once. Any incoming content
 /// counts, so a lazily or eagerly started companion never floats an empty
 /// card over the desktop, and the idle-quit timer stops once there is
@@ -541,6 +503,33 @@ fn show_once(hwnd: HWND) {
             );
         }
     }
+}
+
+/// The on-screen position for an anchored surface of the given size,
+/// clamped into the monitor's work area. Chooser surfaces sit above the
+/// anchor, result surfaces below.
+fn anchored_position(
+    anchor: (i32, i32),
+    above: bool,
+    width: i32,
+    height: i32,
+    info: &MONITORINFO,
+) -> (i32, i32) {
+    let mut x = anchor.0 - width / 2;
+    let mut y = if above {
+        anchor.1 - height - 12
+    } else {
+        anchor.1 + 12
+    };
+    x = x.clamp(
+        info.rcWork.left,
+        (info.rcWork.right - width).max(info.rcWork.left),
+    );
+    y = y.clamp(
+        info.rcWork.top,
+        (info.rcWork.bottom - height).max(info.rcWork.top),
+    );
+    (x, y)
 }
 
 fn handle_event_line(hwnd: HWND, line: &str) {
@@ -801,32 +790,43 @@ fn create_webview(
                 };
                 let max_h = (info.rcWork.bottom - info.rcWork.top - 20).max(200);
                 let height = ((size.h * scale).round() as i32).clamp(48, max_h);
-                // No-op guard: the settled re-posts repeat the same size, and
-                // resizing a live WebView2 window forces a full recomposite —
-                // skipping identical sizes kills the render flicker.
-                if width == rect.right - rect.left && height == rect.bottom - rect.top {
-                    return Ok(());
-                }
-                // Resize in place, then apply the pending anchor: the anchor
-                // owns the final position, centered on the selection.
-                unsafe {
-                    let _ = SetWindowPos(
-                        hwnd,
-                        None,
-                        0,
-                        0,
-                        width,
-                        height,
-                        SWP_NOZORDER | SWP_NOACTIVATE,
-                    );
-                }
-                // Re-apply on every settled report (kept, not consumed):
-                // the first post races the height change; the last one lands
-                // the window correctly at the final size.
+                // Position: the pending anchor owns it, computed with the
+                // NEW size so the clamp uses the settled geometry. The anchor
+                // is re-applied on every settled report — the first one races
+                // the height change; the last one lands the window correctly.
                 let pending = *PENDING_ANCHOR.lock().expect("anchor lock");
-                if let Some((ax, ay, above)) = pending {
-                    reposition_for_anchor(hwnd, (ax, ay), above);
+                let (x, y) = match pending {
+                    Some((ax, ay, above)) => {
+                        anchored_position((ax, ay), above, width, height, &info)
+                    }
+                    None => (rect.left, rect.top),
+                };
+                // No-op guard: the settled re-posts repeat the same size AND
+                // position — resizing/moving a live WebView2 window forces a
+                // full recomposite, and repeated identical geometry is the
+                // flicker the user sees. Only apply real changes, in ONE call
+                // (a separate resize then move shows as a visible two-step).
+                let same = width == rect.right - rect.left
+                    && height == rect.bottom - rect.top
+                    && x == rect.left
+                    && y == rect.top;
+                if !same {
+                    unsafe {
+                        let _ = SetWindowPos(
+                            hwnd,
+                            Some(HWND_TOPMOST),
+                            x,
+                            y,
+                            width,
+                            height,
+                            SWP_NOACTIVATE,
+                        );
+                    }
                 }
+                // The geometry is settled: this is the moment the window may
+                // appear — showing earlier (on the raw event) would flash it
+                // at the pre-anchor position and jump.
+                show_once(hwnd);
                 return Ok(());
             }
             capture_log(&format!("fwd: {:.90}", message));
@@ -841,6 +841,10 @@ fn create_webview(
                 .map(|_| message.contains("begin_drag"))
                 .unwrap_or(false)
             {
+                // The drag owns the position from here: a kept anchor would
+                // re-apply on the next settled report and snap the card back
+                // to the selection mid-drag.
+                *PENDING_ANCHOR.lock().expect("anchor lock") = None;
                 let mut pt = POINT::default();
                 let _ = unsafe { GetCursorPos(&mut pt) };
                 let lparam = (((pt.y as u32) & 0xffff) << 16 | ((pt.x as u32) & 0xffff)) as i32;

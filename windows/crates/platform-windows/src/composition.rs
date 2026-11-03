@@ -522,22 +522,51 @@ fn run_extraction(
                     if !clipboard_fallback_allowed(trigger, selection_rect.is_some()) {
                         return Err(uia_error);
                     }
+                    // At this point the chain error is still the genuine
+                    // native/UIA failure — the clipboard has not run. A
+                    // PermissionDenied here is a real input block, and only
+                    // that may skip the OCR fallback later: the clipboard's
+                    // root-mismatch ALSO maps to PermissionDenied, but it is
+                    // a foreground change, and blocking the OCR screenshot on
+                    // it made selections silently stop triggering whenever the
+                    // foreground moved after the gesture.
                     let clipboard_result = clipboard.as_ref().map_or(Err(uia_error), |clipboard| {
                         clipboard.extract_cancellable(process_id, source_root_window, &cancellation)
                     });
                     record_extraction_stage("clipboard", trigger, &clipboard_result);
-                    clipboard_result
+                    clipboard_result.map_err(|clipboard_error| {
+                        if matches!(clipboard_error, ExtractionFailure::PermissionDenied)
+                            && !matches!(uia_error, ExtractionFailure::PermissionDenied)
+                        {
+                            // The clipboard's root-mismatch maps to
+                            // PermissionDenied, but it is a foreground
+                            // change, not an input block. Restore the genuine
+                            // pre-clipboard chain error so the OCR fallback
+                            // gate is not blocked — selections used to stop
+                            // triggering whenever the foreground moved after
+                            // the gesture.
+                            uia_error
+                        } else {
+                            clipboard_error
+                        }
+                    })
                 })
                 .or_else(|error| {
-                    if cancellation.is_cancelled() || !native_failure_allows_fallback(error) {
-                        Err(error)
-                    } else {
-                        let ocr_result = ocr.map_or(Err(error), |ocr| {
-                            ocr.extract_cancellable(trigger, pointer, selection_rect, &cancellation)
-                        });
-                        record_extraction_stage("ocr", trigger, &ocr_result);
-                        ocr_result
+                    crate::runtime_trace::record("ocr_gate_reached");
+                    if cancellation.is_cancelled() {
+                        crate::runtime_trace::record("ocr_gate_cancelled");
+                        return Err(error);
                     }
+                    // The error here may carry the clipboard's synthetic
+                    // PermissionDenied (a foreground change). OCR only
+                    // screenshots the selection rect — it needs no input
+                    // permission — so it is always worth trying unless the
+                    // extraction is cancelled.
+                    let ocr_result = ocr.map_or(Err(error), |ocr| {
+                        ocr.extract_cancellable(trigger, pointer, selection_rect, &cancellation)
+                    });
+                    record_extraction_stage("ocr", trigger, &ocr_result);
+                    ocr_result
                 })
         }
         TriggerKind::Hover => match uia_result {
