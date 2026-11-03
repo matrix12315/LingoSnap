@@ -587,7 +587,10 @@ fn handle_event_line(hwnd: HWND, line: &str) {
         execute_script(
             hwnd,
             &format!(
-                "window.LINGO && window.LINGO.applyManager({}); undefined",
+                // The manager bridge exports LINGO_MANAGER, not LINGO; the
+                // wrong name silently dropped every config snapshot and the
+                // page kept its mockup defaults.
+                "window.LINGO_MANAGER && window.LINGO_MANAGER.applyManager({}); undefined",
                 line
             ),
         );
