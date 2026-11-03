@@ -606,9 +606,11 @@ fn handle_event_line(hwnd: HWND, line: &str) {
             };
         }
         UiEvent::Close { .. } => {
+            capture_log("close: hiding window");
             // Reset the once-flag: the next event (a new selection) must
             // re-show the window, or a closed companion never appears again.
             WINDOW_SHOWN.store(false, std::sync::atomic::Ordering::Relaxed);
+            SHOW_PENDING.store(false, std::sync::atomic::Ordering::Relaxed);
             unsafe {
                 let _ = ShowWindow(hwnd, SW_HIDE);
             };
