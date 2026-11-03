@@ -37,6 +37,7 @@ mod windows_app {
     };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::System::LibraryLoader::LoadLibraryW;
+    use windows::Win32::System::Threading::CreateMutexW;
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
     use windows::Win32::System::Ole::CF_UNICODETEXT;
     use windows::Win32::UI::Controls::RichEdit::{
@@ -970,6 +971,9 @@ mod windows_app {
     struct ManagerState {
         config: AppConfig,
         config_path: Option<PathBuf>,
+        /// Last seen mtime of config.toml: a tray skin switch saves the file,
+        /// and an open manager must follow the popup/manager skin change.
+        config_skin_mtime: Option<std::time::SystemTime>,
         load_error: Option<String>,
         /// True when `config` was loaded from an existing, valid file. When
         /// false it is only defaults, and saves must not clobber a config
@@ -1037,6 +1041,24 @@ mod windows_app {
                 windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
             );
         }
+        // Single instance: a second manager process would race the first one
+        // for the single-instance fair-copy pipe and fall back to the native
+        // UI, so instead surface the existing manager window.
+        let single_instance = unsafe {
+            CreateMutexW(None, false, windows::core::w!("SelectionTranslateManagerInstance"))
+        }
+        .map_err(|error| windows::core::Error::from(error))?;
+        let already_running =
+            unsafe { windows::Win32::Foundation::GetLastError() } == windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
+        if already_running {
+            if let Some(hwnd) = unsafe {
+                FindWindowW(windows::core::w!("SelectionTranslateManager"), PCWSTR::null()).ok()
+            } {
+                let _ = unsafe { ShowWindow(hwnd, SW_SHOW) };
+                let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd) };
+            }
+            return Ok(());
+        }
         let resident_start = ensure_resident_running();
         let instance = unsafe { GetModuleHandleW(None)? };
         let class = WNDCLASSW {
@@ -1067,6 +1089,7 @@ mod windows_app {
         let state = Box::new(ManagerState {
             config,
             config_path: default_config_path(),
+            config_skin_mtime: None,
             load_error,
             loaded_from_disk,
             handles: Handles::default(),
@@ -1225,6 +1248,7 @@ mod windows_app {
             );
             apply_manager_layout(hwnd, &mut *state);
             start_fair_copy_view(hwnd, &mut *state);
+            let _ = SetTimer(Some(hwnd), CONFIG_POLL_TIMER_ID, 1000, None);
             return LRESULT(0);
         }
         let state = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut ManagerState;
@@ -1238,6 +1262,36 @@ mod windows_app {
                 if !raw.is_null() {
                     let line = unsafe { Box::from_raw(raw) };
                     handle_fair_copy_command(hwnd, &mut *state, &line);
+                }
+                LRESULT(0)
+            }
+            WM_TIMER if wparam.0 == CONFIG_POLL_TIMER_ID => {
+                // A tray skin switch saves config.toml; an open manager must
+                // follow the popup/manager skin change live.
+                if let Some(path) = &(*state).config_path {
+                    if let Ok(meta) = std::fs::metadata(path) {
+                        let mtime = meta.modified().ok();
+                        if mtime != (*state).config_skin_mtime {
+                            let first = (*state).config_skin_mtime.is_some();
+                            (*state).config_skin_mtime = mtime;
+                            if let Ok(current) = selection_core::AppConfig::load(path) {
+                                let skin = current.ui.popup_skin;
+                                (*state).config.ui.popup_skin = skin;
+                                // Retry on every poll while the fair-copy skin
+                                // is active and the view is down: a failed or
+                                // orphan-blocked spawn self-heals here.
+                                if skin == selection_core::config::PopupSkin::FairCopy {
+                                    start_fair_copy_view(hwnd, &mut *state);
+                                } else if (*state).fair_copy.is_some() {
+                                    if let Some(mut ui) = (*state).fair_copy.take() {
+                                        ui.shutdown();
+                                        let _ = KillTimer(Some(hwnd), FAIR_COPY_POLL_TIMER_ID);
+                                        let _ = ShowWindow(hwnd, SW_SHOW);
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 LRESULT(0)
             }
@@ -5366,6 +5420,8 @@ mod windows_app {
     /// Timer that watches the companion process so closing the page restores
     /// the native manager window.
     const FAIR_COPY_POLL_TIMER_ID: usize = 1;
+    /// Polls config.toml so a tray skin switch reaches an open manager.
+    const CONFIG_POLL_TIMER_ID: usize = 2;
 
     /// Set while the fair-copy view owns the presentation: the startup
     /// ShowWindow must then leave the native window hidden (WM_CREATE hides
@@ -5383,7 +5439,14 @@ mod windows_app {
         }
         // Respect the skin setting: the fair-copy manager view only exists
         // while the fair-copy skin is active; with the classic skin the
-        // native manager stays (the user switches via the tray menu).
+        // native manager stays (the user switches via the tray menu). The
+        // skin is re-read from config.toml — the manager's in-memory
+        // snapshot predates any tray switch made after this process started.
+        if let Some(path) = default_config_path() {
+            if let Ok(current) = selection_core::AppConfig::load(&path) {
+                state.config.ui.popup_skin = current.ui.popup_skin;
+            }
+        }
         if state.config.ui.popup_skin != selection_core::config::PopupSkin::FairCopy {
             return;
         }

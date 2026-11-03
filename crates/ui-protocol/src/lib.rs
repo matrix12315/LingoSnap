@@ -62,6 +62,11 @@ pub enum UiEvent {
         profiles: Vec<String>,
         highlight: Option<usize>,
         anchor: Anchor,
+        /// True when the chooser was raised from inside a result card
+        /// (in-card selection): the page keeps the previous card under the
+        /// rail. A fresh external selection replaces the card.
+        #[serde(default)]
+        keeps_card: bool,
     },
     ShowLoading {
         id: u64,

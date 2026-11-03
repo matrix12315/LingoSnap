@@ -62,6 +62,10 @@ const IDLE_QUIT_MS: u32 = 600_000;
 /// immediate reposition races the content-height resize and clamps the
 /// window to the wrong screen edge.
 static PENDING_ANCHOR: std::sync::Mutex<Option<(i32, i32, bool)>> = std::sync::Mutex::new(None);
+/// Set when a render event arrives, cleared when the surface is dismissed.
+/// The settled content_size re-posts only show the window while this is set,
+/// so a dismissed chooser is not resurrected by a stale layout report.
+static SHOW_PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 /// Set once per process; demo mode shows the window without waiting for a
 /// host event.
 static DEMO_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
@@ -470,7 +474,14 @@ fn execute_script(hwnd: HWND, script: &str) {
         return;
     }
     let webview = unsafe { &*raw };
-    let handler = ExecuteScriptCompletedHandler::create(Box::new(|_, _| Ok(())));
+    // The page's return value ('applied' / 'no-lingo' / 'err:...') is the only
+    // signal whether a bridged event actually reached the page; log it.
+    let handler = ExecuteScriptCompletedHandler::create(Box::new(|result, value| {
+        if result.is_ok() {
+            capture_log(&format!("script: {:.80}", value));
+        }
+        Ok(())
+    }));
     unsafe {
         let _ = webview.ExecuteScript(&windows::core::HSTRING::from(script), &handler);
     }
@@ -551,6 +562,9 @@ fn handle_event_line(hwnd: HWND, line: &str) {
     // The companion is reused across requests, so its window must follow the
     // selection: chooser events anchor above it, translation events below.
     if let Some(event) = enveloped.as_ref().or(bare.as_ref()) {
+        if !matches!(event, UiEvent::Shutdown) {
+            SHOW_PENDING.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         if let UiEvent::ShowChooser { highlight, .. } = event {
             capture_log(&format!("chooser: highlight={:?}", highlight));
         }
@@ -717,6 +731,11 @@ fn create_webview(
             // empty card over the desktop. Demo mode shows immediately: the
             // dev preview has no host events to wait for.
             if DEMO_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+                show_once(hwnd);
+            } else if MANAGER_SURFACE.load(std::sync::atomic::Ordering::Relaxed) {
+                // The manager surface has no content-size negotiation: the
+                // resident already positioned it over the native manager's
+                // rect, so show as soon as the page is ready.
                 show_once(hwnd);
             } else {
                 // Idle kill: a companion that loaded but never received

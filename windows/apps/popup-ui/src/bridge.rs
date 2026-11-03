@@ -11,8 +11,12 @@ html, body { background: transparent !important; width: max-content !important;
 body, .rail, .railwrap, .chrome, .foot { user-select: none !important; -webkit-user-select: none !important; }
 .manuscript, .sourcepanel { user-select: text !important; -webkit-user-select: text !important; }
 .rail, .card { box-shadow: none !important; }
+.rpill:hover { color: var(--btn-primary-ink) !important; font-weight: 600 !important;
+  background: var(--btn-primary-bg) !important; }
 .card { width: 460px !important; max-height: calc(100vh - 20px) !important;
-  display: flex !important; flex-direction: column !important; }
+  /* display must stay overridable: the chooser hides the card inline
+     (an !important stylesheet rule would beat style.display='none'). */
+  display: flex; flex-direction: column !important; }
 .manuscript { overflow-y: auto !important; min-height: 0 !important; flex: 1 1 auto !important; }
 body { display: flex !important; flex-direction: column; align-items: center;
        justify-content: center; gap: 0 !important; padding: 0 !important; }
@@ -33,11 +37,18 @@ pub const BRIDGE_JS: &str = r#"<script>
   // layout settle: a single measurement races the final render and leaves
   // the bottom of the card clipped by the window edge.
   function reportHeight() {
-    var visible = document.getElementById('chooser');
-    var el = (visible && visible.style.display !== 'none')
-      ? visible
-      : document.querySelector('.card');
-    if (el) post({ cmd: 'content_size', w: el.offsetWidth, h: el.offsetHeight });
+    var wrap = document.getElementById('chooser');
+    var card = document.querySelector('.card');
+    var chooserUp = wrap && wrap.style.display !== 'none';
+    var w = 0, h = 0;
+    if (chooserUp) {
+      // Rail + kept card stack vertically: the window covers both.
+      w = Math.max(wrap.offsetWidth, card ? card.offsetWidth : 0);
+      h = wrap.offsetHeight + (card ? card.offsetHeight : 0);
+    } else if (card) {
+      w = card.offsetWidth; h = card.offsetHeight;
+    }
+    if (w > 0 || h > 0) post({ cmd: 'content_size', w: w, h: h });
   }
   function reportHeightSettled() {
     reportHeight();
@@ -144,18 +155,28 @@ pub const BRIDGE_JS: &str = r#"<script>
         ev = (typeof json === 'string') ? JSON.parse(json) : json;
       } catch (e) { return; }
       var p = ev.payload || ev;
-      // The chooser rail and the result card never show together: a
-      // selection first presents the rail (like the classic popup's profile
-      // bar), and the card only returns once a profile was picked.
-      function setChooser(visible) {
+      // The chooser rail and the result card: a selection first presents
+      // the rail (like the classic popup's profile bar). When the rail was
+      // triggered from inside the card (an in-card selection), the card
+      // KEEPS its result while the rail floats above it — the classic keeps
+      // the source popup visible too. A rail over a card with nothing to
+      // keep hides the card instead of floating over stale sample content.
+      function setChooser(visible, showCard, keepsCard) {
         var wrap = document.getElementById('chooser');
         if (wrap) wrap.style.display = visible ? 'flex' : 'none';
         var card = document.querySelector('.card');
-        if (card) card.style.display = visible ? 'none' : '';
+        if (card) {
+          // Chooser over a kept result keeps the card; a loading result
+          // shows it; a chooser with nothing to keep hides the demo card.
+          var keep = (showCard === undefined)
+            ? !!keepsCard
+            : !!showCard;
+          card.style.display = keep ? '' : 'none';
+        }
       }
       switch (p.type) {
         case 'show_loading':
-          setChooser(false);
+          setChooser(false, true);
           streamText = '';
           lastOutput = '';
           setSource(p.target || '', p.context || '');
@@ -213,7 +234,9 @@ pub const BRIDGE_JS: &str = r#"<script>
           inline.forEach(function (index) {
             var b = document.createElement('button');
             b.type = 'button';
-            b.className = 'rpill' + (p.highlight === index ? ' on' : '');
+            // Dark styling means hover/click only — the profile that will
+            // run is the position of the rail itself, not a pre-selected pill.
+            b.className = 'rpill';
             b.textContent = compact(p.profiles[index]);
             b.addEventListener('click', function () {
               rail.querySelectorAll('.rpill').forEach(function (p) { p.classList.remove('on'); });
@@ -258,7 +281,7 @@ pub const BRIDGE_JS: &str = r#"<script>
             rail.appendChild(m);
             wrap.appendChild(menu);
           }
-          setChooser(true);
+          setChooser(true, undefined, p.keeps_card);
           break;
         }
         default:

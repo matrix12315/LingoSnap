@@ -2169,6 +2169,7 @@ mod windows_impl {
                             profiles: profile_names.clone(),
                             highlight,
                             anchor: fair_copy_anchor(state.popup_anchor),
+                            keeps_card: false,
                         },
                     );
                     true
@@ -2354,6 +2355,7 @@ mod windows_impl {
                                 &pending.spec,
                                 anchor,
                             )),
+                            keeps_card: false,
                         },
                     );
                     true
@@ -2503,6 +2505,19 @@ mod windows_impl {
         let cached_output = state.cache.get(&cache_key).map(|output| {
             selection_core::normalize_terminal_response(preflight_prepared.prompt_id(), output)
         });
+        // The anchor must be committed BEFORE the result surface is created:
+        // the surface's ShowLoading event carries it, and a chooser-first
+        // flow never set popup_anchor earlier, which left the loading and
+        // result cards stuck at (0,0) instead of the selection.
+        let selection_anchor = pending
+            .spec
+            .selection_rect
+            .map(|rect| popup::Point {
+                x: rect.left,
+                y: rect.top,
+            })
+            .unwrap_or(anchor);
+        state.popup_anchor = selection_anchor;
         let mut surface = match ensure_result_surface(hwnd, state, anchor, &pending.spec) {
             Ok(surface) => surface,
             Err(ResultSurfaceError::ProtectedCapacity) => {
@@ -2588,18 +2603,9 @@ mod windows_impl {
         // produced a valid target, coordination and RequestGate admitted it,
         // and a native result surface is already visible. Until this point
         // the prior popup and Retry/Prompt request remain authoritative.
-        let selection_anchor = pending
-            .spec
-            .selection_rect
-            .map(|rect| popup::Point {
-                x: rect.left,
-                y: rect.top,
-            })
-            .unwrap_or(anchor);
         state.last_request = Some(pending.spec);
         state.presented_trigger = Some(trigger);
         state.popup_guard_root_window = foreground_guard_root_window;
-        state.popup_anchor = selection_anchor;
         let popup_request = state.last_request.clone();
         let popup_text = text.clone();
         if let Some(entry) = popup_entry_mut(state, surface.popup_id) {
@@ -2791,8 +2797,9 @@ mod windows_impl {
             UiCommand::SelfTranslate { text, .. } => {
                 // Recursive translation of fair-copy output: the resident's
                 // mouse hook cannot see selection inside a WebView, so the
-                // page reports the selected text and it is admitted directly,
-                // exactly like a selection gesture on the result.
+                // page reports the selected text. Like a selection gesture on
+                // the result, the CHOOSER is presented first (a fresh popup)
+                // and the pipeline runs once a profile is picked.
                 let spec = RequestSpec {
                     trigger: TriggerKind::Selection,
                     process_id: std::process::id(),
@@ -2811,7 +2818,59 @@ mod windows_impl {
                     config_generation: state.config_generation,
                 };
                 let context = TextContext::new(text, selection_core::ExtractionSource::Clipboard);
-                admit_extracted_request(hwnd, state, pending, context, state.popup_anchor);
+                let anchor = state.popup_anchor;
+                let admission = ensure_popup(hwnd, state, anchor, None, None, true);
+                let popup_id = admission.map(|admission| admission.popup_id);
+                ensure_companion(hwnd, state);
+                let ordered = profile_chooser_order(&state.runtime.config.profiles);
+                let profile_ids: Vec<String> = ordered
+                    .iter()
+                    .map(|&index| state.runtime.config.profiles[index].id.clone())
+                    .collect();
+                let profile_names: Vec<String> = ordered
+                    .iter()
+                    .map(|&index| state.runtime.config.profiles[index].name.clone())
+                    .collect();
+                let highlight = profile_ids
+                    .iter()
+                    .position(|id| *id == pending.spec.prompt_id);
+                let shown = if companion_presents(state) {
+                    popup_id.is_some_and(|id| {
+                        send_fair_copy(
+                            state,
+                            UiEvent::ShowChooser {
+                                id: id as u64,
+                                profiles: profile_names.clone(),
+                                highlight,
+                                anchor: fair_copy_anchor(anchor),
+                                keeps_card: true,
+                            },
+                        );
+                        true
+                    })
+                } else {
+                    popup_id
+                        .and_then(|id| popup_entry_mut(state, id))
+                        .is_some_and(|entry| {
+                            entry.popup.show_profile_choices(&profile_names, highlight)
+                        })
+                };
+                if !shown {
+                    if let Some(id) = popup_id {
+                        remove_popup(state, id, true);
+                    }
+                    return;
+                }
+                state.popup_job_id = None;
+                state.presented_trigger = Some(TriggerKind::Selection);
+                state.pending_profile_choice = Some(PendingProfileChoice {
+                    popup_id: popup_id.expect("shown chooser has a popup"),
+                    pending,
+                    text: context,
+                    anchor,
+                    profile_ids,
+                });
+                runtime_trace::record("selection_profile_chooser_shown");
             }
             UiCommand::PageReady => {
                 // The page finished loading: replay the event that may have
