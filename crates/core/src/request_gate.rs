@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use crate::job::JobInput;
 use crate::normalize::{normalize_optional, normalize_text, sanitize_hover_text_context};
 pub use crate::prompt::{PromptConfig, RenderedPrompt};
-use crate::sentence::sentence_for_target;
+use crate::sentence::selection_context;
 
 /// The maximum target size, measured in Unicode scalar values (not bytes).
 pub const MAX_TARGET_SCALARS: usize = 4_000;
@@ -279,7 +279,7 @@ pub fn prepare_request(
         hover_text.and_then(|text| text.context)
     } else {
         normalize_optional(input.text.context.as_deref())
-            .and_then(|context| sentence_for_target(&context, &target))
+            .and_then(|context| selection_context(&context, &target))
     };
     if input.trigger == crate::TriggerKind::Hover && context.is_none() {
         return Err(RequestRejection::MissingTarget);
@@ -631,6 +631,37 @@ mod tests {
         .expect("valid request");
         assert_eq!(unrelated.context(), None);
         assert_eq!(unrelated.user_prompt(), "Target=term; Context=");
+    }
+
+    #[test]
+    fn selection_context_drops_noise_the_target_already_covers() {
+        let profile = PromptConfig::with_template("translate", "Translate.", "{target}|{context}");
+        let whole = prepare_request(
+            &input(
+                9,
+                "Use the term here",
+                Some("Intro.\nUse the term here!\nNext line"),
+            ),
+            9,
+            false,
+            std::slice::from_ref(&profile),
+            Some(&provider()),
+        )
+        .expect("valid request");
+        assert_eq!(whole.context(), None);
+        let heading = prepare_request(
+            &input(
+                10,
+                "term",
+                Some("Glossary\nterm\nA long paragraph that does not mention it."),
+            ),
+            10,
+            false,
+            &[profile],
+            Some(&provider()),
+        )
+        .expect("valid request");
+        assert_eq!(heading.context(), None);
     }
 
     #[test]

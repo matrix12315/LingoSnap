@@ -106,6 +106,31 @@
     el.style.backdropFilter = 'url(#ll-' + id + ')';
   };
 
-  document.querySelectorAll('.btn, .rpill, .mnav button, .iconbtn, .sourcepanel')
-    .forEach((el, i) => buildFilter(el, i));
+  // Apply to every glass element under `root` that has no lens yet. Pages
+  // that build controls later (the app's chooser rail) call it again; each
+  // filter gets a unique id so a later pass never overwrites an earlier one.
+  let next = 0;
+  const SELECTOR = '.btn, .rpill, .mnav button, .iconbtn, .sourcepanel';
+  const apply = (root) => {
+    root = root || document;
+    const els = [...root.querySelectorAll(SELECTOR)];
+    if (root.matches && root.matches(SELECTOR)) els.unshift(root);
+    els.forEach((el) => {
+        if (el.dataset.lens) return;
+        const rect = el.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;   // not laid out yet
+        el.dataset.lens = String(next);
+        buildFilter(el, next++);
+      });
+  };
+  // Rebuild one element's lens after its size changed (new quotation text).
+  apply.refresh = (el) => {
+    if (!el) return;
+    const old = el.dataset.lens && document.getElementById('ll-' + el.dataset.lens);
+    if (old && old.parentNode) old.parentNode.remove();
+    delete el.dataset.lens;
+    apply(el);
+  };
+  window.liquidLens = apply;
+  apply(document);
 })();

@@ -94,3 +94,39 @@ Status: approved 2026-10-07. Implements the fair-copy mockup in
 - Known limitation: the very first popup after the companion process is
   started may arrive while the page is still navigating, so its content can
   be missed on screen (the request itself still completes normally).
+
+## Fixes 2026-11-08 (r56)
+
+- Transparent surfaces: the companion window has no redirection bitmap
+  (`WS_EX_NOREDIRECTIONBITMAP`) and a transparent WebView2 background, so
+  the chooser reads as a pill and the card and manager keep rounded corners.
+- Mockup measure: the sheets' `@media (max-width: 900px)` rule fired inside
+  the content-sized window (the card grew to its longest line, the manager
+  grids collapsed). App CSS holds the 448px card and the manager's two
+  columns. A compact lift shadow fits a 6–10px margin around card and rail.
+- The controller slot used an invalid window-long index; it now uses the
+  class's extra bytes, so the webview follows window resizes.
+- Dismissal: size reports the page scheduled before a Close can no longer
+  re-show the window; only presentation events (chooser, loading card,
+  anchored error) arm a show. A hidden companion no longer counts as
+  "inside" for the resident's outside-click check.
+- Classic parity: an in-card chooser grows the window upward and keeps the
+  card in place; closing only that chooser keeps the card. The open-popup
+  hot key re-presents the last fair-copy card instead of the hidden native
+  popup. Page-ready replays the whole current presentation.
+- Card states follow the streaming and error sheets (status "writing…",
+  ink caret, Copy disabled; grey seal, "idle", `.errbox`). Markdown maps to
+  the manuscript grammar. Rebuilt pills get liquid-lens filters
+  (`liquid-lens.js` now exposes `window.liquidLens`).
+- Manager: the page has its own window class and is a normal taskbar
+  window (centered, minimize/close in the title bar, drag by the title
+  bar). Closing it closes the manager; a second launch focuses it; the
+  native window appears only as a fallback or after a switch to classic.
+  API key save/delete, default profiles, interface language, history
+  filters, copy, and delete run through the native save paths, and the
+  native status line is shown on the page. Not done: page text is not
+  localized, and the Theme field is page-local (there is no config field).
+- Selection context: one sentence on the target's own line, at most 300
+  characters around the unchanged target; none when the target spans
+  sentences or lines, is 120+ characters, or is already (nearly) the whole
+  sentence (`selection_core::sentence::selection_context`).

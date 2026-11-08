@@ -4,7 +4,7 @@
 //! does not expose TextPattern. It prefers the focused control owned by the
 //! originating process, then falls back to the window under the mouse-up point.
 
-use selection_core::{sentence::sentence_for_target_at, ExtractionSource, ScreenRect, TextContext};
+use selection_core::{ExtractionSource, ScreenRect, TextContext};
 use selection_platform_interface::{
     CancellationToken, ExtractionFailure, ExtractionResult, ScreenPoint,
 };
@@ -249,7 +249,7 @@ fn derive_context(full_text: &str, byte_offset: usize, target: &str) -> Option<S
         .char_indices()
         .find(|(_, ch)| !ch.is_whitespace() && !matches!(ch, '\u{200B}' | '\u{2060}' | '\u{FEFF}'))
         .map_or(byte_offset, |(offset, _)| byte_offset + offset);
-    sentence_for_target_at(full_text, target, adjusted_offset)
+    selection_core::sentence::selection_context_at(full_text, target, adjusted_offset)
         .map(|value| selection_core::normalize::normalize_text(&value))
         .filter(|value| value != target && !value.is_empty())
 }

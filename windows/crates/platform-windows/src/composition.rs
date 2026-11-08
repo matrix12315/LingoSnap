@@ -627,7 +627,9 @@ fn enrich_missing_selection_context(
     cancellation: &CancellationToken,
 ) {
     let needs_context = result.as_ref().is_ok_and(|text| {
-        text.source != ExtractionSource::Ocr && selection_sentence(text).is_none()
+        text.source != ExtractionSource::Ocr
+            && selection_core::sentence::selection_target_wants_context(&text.target)
+            && selection_sentence(text).is_none()
     });
     if !needs_context || selection_rect.is_none() {
         return;
@@ -659,9 +661,10 @@ fn selection_sentence(text: &TextContext) -> Option<String> {
 }
 
 fn merge_selection_context(primary: &mut TextContext, candidate: &TextContext) -> bool {
-    let context = candidate.context.as_deref().and_then(|context| {
-        selection_core::sentence::sentence_for_target(context, &primary.target)
-    });
+    let context = candidate
+        .context
+        .as_deref()
+        .and_then(|context| selection_core::sentence::selection_context(context, &primary.target));
     let Some(context) = context else { return false };
     primary.context = Some(context);
     true

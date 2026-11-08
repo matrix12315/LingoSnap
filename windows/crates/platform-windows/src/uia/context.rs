@@ -100,3 +100,15 @@ pub(crate) fn sentence_context_for_range(
     let (context, target_offset) = context_for_range(range, expand_unit)?;
     sentence_for_target_at(&context, target, target_offset)
 }
+
+/// Selection variant: the target's own sentence on its own line, bounded,
+/// or nothing (see `selection_core::sentence::selection_context`).
+#[cfg(windows)]
+pub(crate) fn selection_context_for_range(
+    range: &IUIAutomationTextRange,
+    expand_unit: TextUnit,
+    target: &str,
+) -> Option<String> {
+    let (context, target_offset) = context_for_range(range, expand_unit)?;
+    selection_core::sentence::selection_context_at(&context, target, target_offset)
+}

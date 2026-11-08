@@ -37,9 +37,9 @@ mod windows_app {
     };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::System::LibraryLoader::LoadLibraryW;
-    use windows::Win32::System::Threading::CreateMutexW;
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
     use windows::Win32::System::Ole::CF_UNICODETEXT;
+    use windows::Win32::System::Threading::CreateMutexW;
     use windows::Win32::UI::Controls::RichEdit::{
         CFE_EFFECTS, CFM_COLOR, CHARFORMATW, EM_SETCHARFORMAT, SCF_ALL,
     };
@@ -1006,6 +1006,9 @@ mod windows_app {
         /// Fair-copy manager view companion. The native window stays the
         /// source of truth; the page mirrors it and posts edits back.
         fair_copy: Option<webview_ui::FairCopyUi>,
+        /// The page reported it loaded: from then on it IS the manager
+        /// window, so its exit closes the manager.
+        fair_copy_ready: bool,
         theme: ThemeResources,
         dpi: u32,
         /// Vertical scroll offset of the Settings page in logical pixels.
@@ -1044,18 +1047,46 @@ mod windows_app {
         // Single instance: a second manager process would race the first one
         // for the single-instance fair-copy pipe and fall back to the native
         // UI, so instead surface the existing manager window.
-        let single_instance = unsafe {
-            CreateMutexW(None, false, windows::core::w!("SelectionTranslateManagerInstance"))
-        }
-        .map_err(|error| windows::core::Error::from(error))?;
-        let already_running =
-            unsafe { windows::Win32::Foundation::GetLastError() } == windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
+        let _single_instance = unsafe {
+            CreateMutexW(
+                None,
+                false,
+                windows::core::w!("SelectionTranslateManagerInstance"),
+            )
+        }?;
+        let already_running = unsafe { windows::Win32::Foundation::GetLastError() }
+            == windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
         if already_running {
-            if let Some(hwnd) = unsafe {
-                FindWindowW(windows::core::w!("SelectionTranslateManager"), PCWSTR::null()).ok()
-            } {
-                let _ = unsafe { ShowWindow(hwnd, SW_SHOW) };
-                let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd) };
+            // Surface whichever window presents the running manager: the
+            // fair-copy page when it is up (the native window is hidden
+            // behind it and must stay hidden), otherwise the native window.
+            let page = unsafe {
+                FindWindowW(
+                    windows::core::w!("SelectionTranslateManagerUi"),
+                    PCWSTR::null(),
+                )
+                .ok()
+            }
+            .filter(|hwnd| {
+                unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(*hwnd) }.as_bool()
+            });
+            let native = unsafe {
+                FindWindowW(
+                    windows::core::w!("SelectionTranslateManager"),
+                    PCWSTR::null(),
+                )
+                .ok()
+            };
+            if let Some(hwnd) = page.or(native) {
+                unsafe {
+                    if windows::Win32::UI::WindowsAndMessaging::IsIconic(hwnd).as_bool() {
+                        let _ =
+                            ShowWindow(hwnd, windows::Win32::UI::WindowsAndMessaging::SW_RESTORE);
+                    } else {
+                        let _ = ShowWindow(hwnd, SW_SHOW);
+                    }
+                    let _ = windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd);
+                }
             }
             return Ok(());
         }
@@ -1104,6 +1135,7 @@ mod windows_app {
             resident_start,
             credential_status: CredentialStatusState::Absent,
             fair_copy: None,
+            fair_copy_ready: false,
             theme: ThemeResources::new(dpi),
             dpi,
             settings_scroll: 0,
@@ -1116,8 +1148,8 @@ mod windows_app {
                 CLASS_NAME,
                 PCWSTR(window_title.as_ptr()),
                 WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN,
-                0,
-                0,
+                windows::Win32::UI::WindowsAndMessaging::CW_USEDEFAULT,
+                windows::Win32::UI::WindowsAndMessaging::CW_USEDEFAULT,
                 scale_for_dpi(980, dpi),
                 scale_for_dpi(760, dpi),
                 None,
@@ -1141,7 +1173,7 @@ mod windows_app {
                 0,
                 scale_for_dpi(980, window_dpi),
                 scale_for_dpi(760, window_dpi),
-                SWP_NOACTIVATE | SWP_NOZORDER,
+                SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOMOVE,
             );
             if !FAIR_COPY_ACTIVE.load(std::sync::atomic::Ordering::Relaxed) {
                 let _ = ShowWindow(
@@ -1244,7 +1276,7 @@ mod windows_app {
                 0,
                 scale_for_dpi(980, window_dpi),
                 scale_for_dpi(760, window_dpi),
-                SWP_NOACTIVATE | SWP_NOZORDER,
+                SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOMOVE,
             );
             apply_manager_layout(hwnd, &mut *state);
             start_fair_copy_view(hwnd, &mut *state);
@@ -1272,18 +1304,20 @@ mod windows_app {
                     if let Ok(meta) = std::fs::metadata(path) {
                         let mtime = meta.modified().ok();
                         if mtime != (*state).config_skin_mtime {
-                            let first = (*state).config_skin_mtime.is_some();
                             (*state).config_skin_mtime = mtime;
                             if let Ok(current) = selection_core::AppConfig::load(path) {
                                 let skin = current.ui.popup_skin;
                                 (*state).config.ui.popup_skin = skin;
-                                // Retry on every poll while the fair-copy skin
-                                // is active and the view is down: a failed or
-                                // orphan-blocked spawn self-heals here.
+                                // Follow a tray skin switch: start the page
+                                // for fair-copy, hand back to the native
+                                // window for classic.
                                 if skin == selection_core::config::PopupSkin::FairCopy {
                                     start_fair_copy_view(hwnd, &mut *state);
                                 } else if (*state).fair_copy.is_some() {
                                     if let Some(mut ui) = (*state).fair_copy.take() {
+                                        (*state).fair_copy_ready = false;
+                                        FAIR_COPY_ACTIVE
+                                            .store(false, std::sync::atomic::Ordering::Relaxed);
                                         ui.shutdown();
                                         let _ = KillTimer(Some(hwnd), FAIR_COPY_POLL_TIMER_ID);
                                         let _ = ShowWindow(hwnd, SW_SHOW);
@@ -1306,7 +1340,23 @@ mod windows_app {
                     unsafe {
                         let _ = KillTimer(Some(hwnd), FAIR_COPY_POLL_TIMER_ID);
                     };
-                    let _ = ShowWindow(hwnd, SW_SHOW);
+                    let ready = std::mem::take(&mut (*state).fair_copy_ready);
+                    if ready
+                        && (*state).config.ui.popup_skin
+                            == selection_core::config::PopupSkin::FairCopy
+                    {
+                        // The user closed the fair-copy manager window: that
+                        // closes the manager, exactly like closing the native
+                        // window. Revealing the hidden classic UI here is
+                        // what made the two skins tangle.
+                        FAIR_COPY_ACTIVE.store(false, std::sync::atomic::Ordering::Relaxed);
+                        let _ = DestroyWindow(hwnd);
+                    } else {
+                        // The page never came up (missing runtime, load
+                        // failure): the native manager is the fallback.
+                        FAIR_COPY_ACTIVE.store(false, std::sync::atomic::Ordering::Relaxed);
+                        let _ = ShowWindow(hwnd, SW_SHOW);
+                    }
                 }
                 LRESULT(0)
             }
@@ -5458,39 +5508,12 @@ mod windows_app {
         fair_copy_push_settings(state, &mut ui);
         fair_copy_push_prompts(state, &mut ui);
         state.fair_copy = Some(ui);
+        state.fair_copy_ready = false;
         FAIR_COPY_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
-        // The companion takes over the native manager's exact rect, so the
-        // hand-off reads as the same window changing skin, not a second
-        // floating panel next to it.
+        // The page positions itself (centered, at the shell's designed
+        // 860×700 size) and is the manager's taskbar window; the native
+        // window stays hidden behind it as the source of truth.
         unsafe {
-            use windows::Win32::Foundation::RECT;
-            use windows::Win32::UI::WindowsAndMessaging::{
-                GetWindowRect, SetWindowPos, SWP_NOACTIVATE, SWP_NOZORDER,
-            };
-            let mut rect = RECT::default();
-            if GetWindowRect(hwnd, &mut rect).is_ok() {
-                let wide: Vec<u16> = selection_ui_protocol::COMPANION_WINDOW_CLASS
-                    .encode_utf16()
-                    .chain(Some(0))
-                    .collect();
-                if let Some(companion) = FindWindowW(
-                    windows::core::PCWSTR(wide.as_ptr()),
-                    windows::core::PCWSTR::null(),
-                )
-                .ok()
-                .filter(|h| !h.0.is_null())
-                {
-                    let _ = SetWindowPos(
-                        companion,
-                        None,
-                        rect.left,
-                        rect.top,
-                        rect.right - rect.left,
-                        rect.bottom - rect.top,
-                        SWP_NOZORDER | SWP_NOACTIVATE,
-                    );
-                }
-            }
             let _ = SetTimer(Some(hwnd), FAIR_COPY_POLL_TIMER_ID, 500, None);
             let _ = ShowWindow(hwnd, SW_HIDE);
         }
@@ -5525,14 +5548,16 @@ mod windows_app {
                         UiLanguage::SimplifiedChinese => "zh-CN",
                         UiLanguage::English => "en",
                     },
-                    "selectionDefault": state
-                        .config
-                        .profile(&state.config.defaults.selection)
-                        .map(profile_option_label),
-                    "hoverDefault": state
-                        .config
-                        .profile(&state.config.defaults.hover)
-                        .map(profile_option_label),
+                    "selectionId": state.config.defaults.selection,
+                    "hoverId": state.config.defaults.hover,
+                    "credentialPresent": matches!(
+                        state.credential_status,
+                        CredentialStatusState::Present
+                    ),
+                    "credentialStatus": status_text(
+                        state.language(),
+                        credential_status_event(&state.credential_status),
+                    ),
                     "profiles": profiles,
                     "order": order,
                 }
@@ -5548,7 +5573,11 @@ mod windows_app {
             .iter()
             .map(|profile| serde_json::json!({ "id": profile.id, "name": profile.name }))
             .collect();
-        let payload = state.config.profiles.get(state.profile_index).map_or_else(
+        // An unsaved New prompt is the form's content until it is saved,
+        // exactly as in the native Prompts page.
+        let draft = state.draft_prompt.as_ref();
+        let shown = draft.or_else(|| state.config.profiles.get(state.profile_index));
+        let payload = shown.map_or_else(
             || {
                 serde_json::json!({
                     "apply": { "kind": "prompts", "profiles": profiles, "selectedId": null }
@@ -5560,6 +5589,7 @@ mod windows_app {
                         "kind": "prompts",
                         "profiles": profiles,
                         "selectedId": profile.id,
+                        "draft": draft.is_some(),
                         "selected": {
                             "name": profile.name,
                             "model": profile.model,
@@ -5579,20 +5609,19 @@ mod windows_app {
         state
             .history_entries
             .iter()
-            .take(100)
+            .take(200)
             .map(|entry| {
-                let time = entry
-                    .created_at_utc
-                    .get(11..16)
-                    .map(str::to_owned)
-                    .unwrap_or_default();
-                let preview = entry.output.lines().next().unwrap_or_default().to_owned();
+                let preview = entry.output.lines().find(|line| !line.trim().is_empty());
+                let preview = preview
+                    .unwrap_or_default()
+                    .trim_start_matches(['#', '-', '*', ' '])
+                    .to_owned();
                 serde_json::json!({
-                    "time": time,
+                    "utc": entry.created_at_utc,
                     "target": entry.target,
                     "preview": preview,
                     "prompt": entry.prompt_id,
-                    "source": format!("{:?}", entry.source).to_lowercase(),
+                    "source": source_label(state.language(), entry.source),
                     "context": entry.context,
                     "output": entry.output,
                 })
@@ -5602,11 +5631,14 @@ mod windows_app {
 
     fn fair_copy_push_history(state: &mut ManagerState) {
         let entries = fair_copy_history_entries(state);
+        let selected =
+            selected_history_index(state.handles.history_list, state.history_entries.len())
+                .unwrap_or(0);
         let payload = serde_json::json!({
             "apply": {
                 "kind": "history",
                 "total": state.history_entries.len(),
-                "selected": 0,
+                "selected": selected,
                 "entries": entries,
             }
         });
@@ -5627,6 +5659,62 @@ mod windows_app {
         }
     }
 
+    /// Mirror the native status line (and the prompt status, which the
+    /// native Prompts page shows separately) onto the page.
+    fn fair_copy_push_status(state: &mut ManagerState, prompt_page: bool) {
+        let handle = if prompt_page {
+            state.handles.prompt_status
+        } else {
+            state.handles.status
+        };
+        let message = read_text(handle);
+        if message.trim().is_empty() {
+            return;
+        }
+        let payload = serde_json::json!({
+            "apply": {
+                "kind": "status",
+                "message": message,
+                "ok": !status_looks_failed(&message),
+            }
+        });
+        if let Some(ui) = state.fair_copy.as_mut() {
+            let _ = ui.send_raw(&payload.to_string());
+        }
+    }
+
+    /// The native status strings carry no severity flag; failures are the
+    /// ones that explain what could not be done.
+    fn status_looks_failed(message: &str) -> bool {
+        let lower = message.to_lowercase();
+        [
+            "fail",
+            "cannot",
+            "could not",
+            "unavailable",
+            "error",
+            "invalid",
+            "失败",
+            "无法",
+            "错误",
+        ]
+        .iter()
+        .any(|word| lower.contains(word))
+    }
+
+    /// Select one native history row, so the native copy/delete operations
+    /// act on the entry the page shows.
+    fn select_native_history_row(state: &ManagerState, index: usize) {
+        unsafe {
+            let _ = SendMessageW(
+                state.handles.history_list,
+                windows::Win32::UI::WindowsAndMessaging::LB_SETCURSEL,
+                Some(WPARAM(index)),
+                Some(LPARAM(0)),
+            );
+        }
+    }
+
     /// Commands posted by the fair-copy page. The native state stays the
     /// source of truth: every command flows through the same validation and
     /// save path as the native controls, then the fresh state is pushed back.
@@ -5634,50 +5722,58 @@ mod windows_app {
         let Ok(command) = serde_json::from_str::<serde_json::Value>(line) else {
             return;
         };
-        // The page announces itself after loading: the settings/prompts/
-        // history snapshots pushed at spawn raced the navigation and were
-        // lost, so the page would show mockup sample data instead of the
-        // user's real configuration. Re-push everything now.
+        let text = |key: &str| {
+            command
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let index = |key: &str| {
+            command
+                .get(key)
+                .and_then(serde_json::Value::as_u64)
+                .map(|value| value as usize)
+        };
+        // The page announces itself after loading: the snapshots pushed at
+        // spawn raced the navigation and were lost, so the page would show
+        // mockup sample data instead of the user's real configuration.
         if command.get("type").and_then(serde_json::Value::as_str) == Some("page_ready") {
+            state.fair_copy_ready = true;
+            update_credential_status(state);
             fair_copy_push_all(state);
-            fair_copy_push_history(state);
+            refresh_history(state);
+            fair_copy_push_history_detail(state, 0);
             return;
         }
         match command.get("mcmd").and_then(serde_json::Value::as_str) {
             Some("save_settings") => {
                 let mut next = state.config.clone();
-                if let Some(value) = command.get("endpoint").and_then(serde_json::Value::as_str) {
-                    next.provider.endpoint = value.trim().to_owned();
-                }
-                if let Some(value) = command.get("model").and_then(serde_json::Value::as_str) {
-                    next.provider.model = value.trim().to_owned();
-                }
-                if let Some(value) = command
-                    .get("credtarget")
-                    .and_then(serde_json::Value::as_str)
-                {
-                    next.provider.credential_target = value.trim().to_owned();
-                }
-                let normalize = |raw: Option<&str>| -> Option<String> {
-                    let text = raw?;
-                    let normalized: Vec<_> = text
+                next.provider.endpoint = text("endpoint").trim().to_owned();
+                next.provider.model = text("model").trim().to_owned();
+                next.provider.credential_target = text("credtarget").trim().to_owned();
+                // "Off" is an empty field and is stored as no hot key.
+                let normalize = |raw: String| -> Option<String> {
+                    let normalized: Vec<_> = raw
                         .split('+')
                         .map(str::trim)
                         .filter(|part| !part.is_empty())
                         .collect();
-                    Some(normalized.join("+"))
+                    (!normalized.is_empty()).then(|| normalized.join("+"))
                 };
-                next.hotkeys.selection_translate = normalize(
-                    command
-                        .get("hkSelection")
-                        .and_then(serde_json::Value::as_str),
-                );
-                next.hotkeys.hover_translate =
-                    normalize(command.get("hkHover").and_then(serde_json::Value::as_str));
-                next.hotkeys.pause_resume =
-                    normalize(command.get("hkPause").and_then(serde_json::Value::as_str));
-                next.hotkeys.open_popup =
-                    normalize(command.get("hkPopup").and_then(serde_json::Value::as_str));
+                next.hotkeys.selection_translate = normalize(text("hkSelection"));
+                next.hotkeys.hover_translate = normalize(text("hkHover"));
+                next.hotkeys.pause_resume = normalize(text("hkPause"));
+                next.hotkeys.open_popup = normalize(text("hkPopup"));
+                for (key, slot) in [
+                    ("selectionDefault", &mut next.defaults.selection),
+                    ("hoverDefault", &mut next.defaults.hover),
+                ] {
+                    let id = text(key);
+                    if !id.is_empty() && state.config.profile(&id).is_some() {
+                        *slot = id;
+                    }
+                }
                 if let Some(order) = command.get("order").and_then(serde_json::Value::as_array) {
                     let ids: Vec<_> = order
                         .iter()
@@ -5697,106 +5793,213 @@ mod windows_app {
                         next.profiles = reordered;
                     }
                 }
-                if next.validate().is_ok() && save_config(state, &next).is_ok() {
-                    state.config = next;
-                    refresh_settings_form(state);
-                    apply_static_localization(hwnd, state);
+                if next == state.config {
+                    fair_copy_push_all(state);
+                    return;
+                }
+                match next.validate() {
+                    Err(error) => set_status(
+                        state,
+                        &status_text(
+                            state.language(),
+                            StatusEvent::CannotSavePrompt {
+                                detail: &error.to_string(),
+                            },
+                        ),
+                    ),
+                    Ok(()) => match save_config(state, &next) {
+                        Err(error) => set_status(state, &error),
+                        Ok(()) => {
+                            state.config = next;
+                            refresh_settings_form(state);
+                            populate_profile_selectors(state);
+                            populate_history_filters(state);
+                            let refresh = notify_config_changed();
+                            set_status(state, &config_refresh_status(state.language(), refresh));
+                            update_credential_status(state);
+                        }
+                    },
                 }
                 fair_copy_push_all(state);
+                fair_copy_push_status(state, false);
+            }
+            Some("save_language") => {
+                let language = if text("language") == "zh-CN" { 1 } else { 0 };
+                set_combo_selection(state.handles.language, language);
+                save_manager_language(hwnd, state);
+                fair_copy_push_all(state);
+                fair_copy_push_status(state, false);
+            }
+            Some("save_key") => {
+                // The key lives in the native password edit only for the
+                // duration of the native save path, which clears it.
+                set_text(state.handles.credential_target, &text("target"));
+                set_text(state.handles.api_key, &text("key"));
+                save_key(state);
+                set_text(state.handles.api_key, "");
+                fair_copy_push_all(state);
+                fair_copy_push_status(state, false);
+            }
+            Some("delete_key") => {
+                set_text(state.handles.credential_target, &text("target"));
+                delete_key(state);
+                fair_copy_push_all(state);
+                fair_copy_push_status(state, false);
             }
             Some("select_prompt") => {
-                if let Some(id) = command.get("id").and_then(serde_json::Value::as_str) {
-                    if let Some(index) = state.config.profiles.iter().position(|p| p.id == id) {
-                        state.profile_index = index;
-                        state.draft_prompt = None;
-                        refresh_prompt_form(state);
-                    }
+                let id = text("id");
+                if let Some(index) = state.config.profiles.iter().position(|p| p.id == id) {
+                    state.profile_index = index;
+                    state.draft_prompt = None;
+                    refresh_prompt_form(state);
+                } else if state
+                    .draft_prompt
+                    .as_ref()
+                    .is_some_and(|draft| draft.id == id)
+                {
+                    // Restore on an unsaved draft: start the draft over.
+                    new_prompt(state);
                 }
                 fair_copy_push_all(state);
             }
             Some("new_prompt") => {
                 new_prompt(state);
                 fair_copy_push_all(state);
+                fair_copy_push_status(state, true);
             }
             Some("save_prompt") => {
-                let value = |key: &str| {
-                    command
-                        .get(key)
-                        .and_then(serde_json::Value::as_str)
-                        .unwrap_or_default()
-                        .to_owned()
-                };
-                let id = value("id");
-                let name = value("name");
-                if id.is_empty() || name.trim().is_empty() {
-                    return;
-                }
-                let mut next = state.config.clone();
-                let prompt = PromptConfig {
-                    id: id.clone(),
-                    name: name.trim().to_owned(),
-                    system_prompt: value("sys"),
-                    user_template: value("user"),
-                    model: {
-                        let model = value("model");
-                        let trimmed = model.trim();
-                        (!trimmed.is_empty()).then(|| trimmed.to_owned())
-                    },
-                    temperature: command
-                        .get("temp")
-                        .and_then(serde_json::Value::as_str)
-                        .and_then(|text| text.trim().parse::<f32>().ok()),
-                    max_output_tokens: command
-                        .get("tokens")
-                        .and_then(serde_json::Value::as_str)
-                        .and_then(|text| text.trim().parse::<usize>().ok())
-                        .map(|tokens| tokens as u32),
-                };
-                if prompt.validate().is_ok() {
-                    if let Some(position) =
-                        next.profiles.iter().position(|profile| profile.id == id)
-                    {
-                        next.profiles[position] = prompt;
-                    } else {
-                        next.profiles.push(prompt);
-                    }
-                    if next.validate().is_ok() && save_config(state, &next).is_ok() {
-                        state.config = next;
-                        if let Some(index) = state
-                            .config
-                            .profiles
-                            .iter()
-                            .position(|profile| profile.id == id)
-                        {
-                            state.profile_index = index;
-                        }
-                        state.draft_prompt = None;
-                        refresh_prompt_form(state);
-                        populate_profile_selectors(state);
-                    }
-                }
+                fair_copy_save_prompt(state, &command);
+                populate_profile_selectors(state);
                 fair_copy_push_all(state);
+                fair_copy_push_status(state, true);
             }
             Some("history_query") => {
-                if let Some(search) = command.get("search").and_then(serde_json::Value::as_str) {
-                    set_text(state.handles.history_search, search);
-                }
+                set_text(state.handles.history_search, &text("search"));
+                set_combo_selection(state.handles.history_prompt, index("prompt").unwrap_or(0));
+                set_combo_selection(state.handles.history_source, index("source").unwrap_or(0));
+                set_combo_selection(state.handles.history_order, index("order").unwrap_or(0));
                 refresh_history(state);
-                fair_copy_push_history(state);
                 fair_copy_push_history_detail(state, 0);
             }
             Some("refresh_history") => {
                 refresh_history(state);
-                fair_copy_push_history(state);
                 fair_copy_push_history_detail(state, 0);
             }
             Some("select_history") => {
-                if let Some(index) = command.get("index").and_then(serde_json::Value::as_u64) {
-                    fair_copy_push_history_detail(state, index as usize);
+                if let Some(index) = index("index") {
+                    select_native_history_row(state, index);
+                    fair_copy_push_history_detail(state, index);
+                }
+            }
+            Some("copy_history") => {
+                if let Some(index) = index("index") {
+                    select_native_history_row(state, index);
+                    copy_history_output(hwnd, state);
+                    fair_copy_push_status(state, false);
+                }
+            }
+            Some("delete_history") => {
+                if let Some(index) = index("index") {
+                    select_native_history_row(state, index);
+                    // The confirmation belongs to the page's window, which
+                    // the user is looking at (the native one is hidden).
+                    let owner = unsafe {
+                        FindWindowW(
+                            windows::core::w!("SelectionTranslateManagerUi"),
+                            PCWSTR::null(),
+                        )
+                    }
+                    .unwrap_or(hwnd);
+                    delete_history(owner, state);
+                    fair_copy_push_history(state);
+                    fair_copy_push_history_detail(state, 0);
+                    fair_copy_push_status(state, false);
                 }
             }
             _ => {}
         }
+    }
+
+    /// The native Prompts save, fed from the page's form: same parsing,
+    /// validation, draft and rename handling, and status text.
+    fn fair_copy_save_prompt(state: &mut ManagerState, command: &serde_json::Value) {
+        let text = |key: &str| {
+            command
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or_default()
+                .to_owned()
+        };
+        let language = state.language();
+        let parsed = parse_optional_f32(&text("temp"), language).and_then(|temperature| {
+            parse_optional_u32(&text("tokens"), language).map(|tokens| (temperature, tokens))
+        });
+        let (temperature, max_output_tokens) = match parsed {
+            Ok(values) => values,
+            Err(error) => {
+                set_text(state.handles.prompt_status, &error);
+                return;
+            }
+        };
+        let prompt = PromptConfig {
+            id: text("id").trim().to_owned(),
+            name: text("name").trim().to_owned(),
+            system_prompt: text("sys"),
+            user_template: text("user"),
+            model: nonempty(text("model")),
+            temperature,
+            max_output_tokens,
+        };
+        if let Err(error) = prompt.validate() {
+            set_text(
+                state.handles.prompt_status,
+                &status_text(
+                    language,
+                    StatusEvent::PromptInvalid {
+                        detail: &error.to_string(),
+                    },
+                ),
+            );
+            return;
+        }
+        let was_draft = state.draft_prompt.is_some();
+        if !was_draft && state.profile_index >= state.config.profiles.len() {
+            set_text(
+                state.handles.prompt_status,
+                &status_text(language, StatusEvent::NoPromptProfile),
+            );
+            return;
+        }
+        let old_id = (!was_draft).then(|| state.config.profiles[state.profile_index].id.clone());
+        let next = apply_prompt(
+            &state.config,
+            (!was_draft).then_some(state.profile_index),
+            old_id.as_deref(),
+            prompt,
+        );
+        let saved = next
+            .validate()
+            .map_err(|error| error.to_string())
+            .and_then(|()| save_config(state, &next));
+        if let Err(error) = saved {
+            set_text(
+                state.handles.prompt_status,
+                &status_text(language, StatusEvent::CannotSavePrompt { detail: &error }),
+            );
+            return;
+        }
+        state.config = next;
+        let refresh = notify_config_changed();
+        populate_history_filters(state);
+        state.draft_prompt = None;
+        if was_draft {
+            state.profile_index = state.config.profiles.len() - 1;
+        }
+        refresh_prompt_form(state);
+        set_text(
+            state.handles.prompt_status,
+            &config_refresh_status(language, refresh),
+        );
     }
 
     /// Push settings and prompts snapshots after a page-initiated change.

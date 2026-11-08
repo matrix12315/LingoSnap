@@ -18,6 +18,10 @@ pub const MANAGER_PIPE_NAME: &str = r"\\.\pipe\SelectionTranslateManagerUi";
 /// clicks against it so choosing a profile is not dismissed as an outside
 /// click by the resident's own mouse hook.
 pub const COMPANION_WINDOW_CLASS: &str = "SelectionTranslatePopupUi";
+/// Window class of the manager's fair-copy page. It differs from the popup
+/// companion's class so the resident's outside-click check never mistakes the
+/// manager page for the popup, and a second manager launch can find it.
+pub const MANAGER_WINDOW_CLASS: &str = "SelectionTranslateManagerUi";
 
 /// First line the UI process sends after connecting.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -85,6 +89,11 @@ pub enum UiEvent {
     LocalError {
         id: u64,
         message: String,
+        /// Set when the error is the first thing presented for a request
+        /// (no loading card came before it), so the card is placed at the
+        /// selection instead of wherever the previous card was.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        anchor: Option<Anchor>,
     },
     SetPinned {
         id: u64,
@@ -167,6 +176,7 @@ mod tests {
                 profiles: vec!["Translate".into(), "Expert".into()],
                 highlight: Some(0),
                 anchor: Anchor { x: 100, y: 200 },
+                keeps_card: false,
             },
         );
         let line = serde_json::to_string(&event).expect("serialize event");

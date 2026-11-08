@@ -265,9 +265,15 @@ mod windows_impl {
         /// Fair-copy WebView2 companion, present only while the fair-copy
         /// skin is active and the companion could actually be started.
         fair_copy: Option<webview_ui::FairCopyUi>,
-        /// Last event sent to the companion, replayed when the page reports
-        /// it finished loading (events sent during navigation are dropped).
-        fair_copy_last_event: Option<UiEvent>,
+        /// Events of the current presentation (the chooser or loading card
+        /// and everything after it), replayed when the page reports it
+        /// finished loading: events sent during navigation are dropped, and
+        /// replaying only the last one lost the card's source text.
+        fair_copy_last_event: Vec<UiEvent>,
+        /// The most recent completed card (its loading event and result), so
+        /// the open-popup hot key re-presents it in the fair-copy skin
+        /// instead of revealing the hidden native bookkeeping popup.
+        fair_copy_last_result: Option<(UiEvent, UiEvent)>,
         /// When the last companion start failed: retries after a cooldown
         /// instead of disabling the fair-copy skin for the whole session.
         fair_copy_failed_at: Option<Instant>,
@@ -497,7 +503,8 @@ mod windows_impl {
             popup_failure_reported: false,
             hover_trace_deadline: None,
             fair_copy: None,
-            fair_copy_last_event: None,
+            fair_copy_last_event: Vec::new(),
+            fair_copy_last_result: None,
             fair_copy_failed_at: None,
             fair_copy_retry_after: Duration::from_secs(60),
             companion_window: None,
@@ -1594,7 +1601,15 @@ mod windows_impl {
             .find(|entry| entry.popup.is_completed() && entry.popup.is_result_surface_available())
             .map(|entry| entry.id);
         if let Some(id) = target {
-            if let Some(entry) = popup_entry_mut(state, id) {
+            if companion_presents(state) {
+                // The fair-copy page presents the card; the native popup is
+                // hidden bookkeeping and must never be shown in this skin.
+                if let Some((loading, completed)) = state.fair_copy_last_result.clone() {
+                    send_fair_copy(state, loading);
+                    send_fair_copy(state, completed);
+                    return;
+                }
+            } else if let Some(entry) = popup_entry_mut(state, id) {
                 if entry.popup.present_result() {
                     return;
                 }
@@ -1858,7 +1873,8 @@ mod windows_impl {
         if let Some(choice) = state.pending_profile_choice.take() {
             remove_popup(state, choice.popup_id, true);
         }
-        state.fair_copy_last_event = None;
+        state.fair_copy_last_event.clear();
+        state.fair_copy_last_result = None;
         match state.runtime.config.ui.popup_skin {
             PopupSkin::Classic => {
                 // Dropping the companion terminates popup-ui.exe.
@@ -1930,6 +1946,12 @@ mod windows_impl {
             return false;
         };
         let hwnd = HWND(raw as *mut _);
+        // A hidden (dismissed) companion is not on screen: a press over its
+        // old rect is an outside press, exactly like over a destroyed
+        // classic popup, and it may start a new selection.
+        if !unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(hwnd) }.as_bool() {
+            return false;
+        }
         let mut rect = RECT::default();
         if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
             return false;
@@ -1943,7 +1965,44 @@ mod windows_impl {
         if let Some(ui) = state.fair_copy.as_mut() {
             let _ = ui.send(event.clone());
         }
-        state.fair_copy_last_event = Some(event);
+        record_fair_copy_event(state, event);
+    }
+
+    /// Keep the replay log of the current presentation and the last
+    /// completed card (see `fair_copy_last_event` / `fair_copy_last_result`).
+    fn record_fair_copy_event(state: &mut ShellState, event: UiEvent) {
+        match &event {
+            UiEvent::ShowChooser { .. }
+            | UiEvent::ShowLoading { .. }
+            | UiEvent::LocalError {
+                anchor: Some(_), ..
+            } => {
+                state.fair_copy_last_event.clear();
+            }
+            UiEvent::Close { .. } | UiEvent::Shutdown => {
+                state.fair_copy_last_event.clear();
+                return;
+            }
+            UiEvent::Completed { .. } => {
+                // The result supersedes the streamed deltas.
+                state
+                    .fair_copy_last_event
+                    .retain(|previous| !matches!(previous, UiEvent::Delta { .. }));
+                if let Some(loading) = state
+                    .fair_copy_last_event
+                    .iter()
+                    .find(|previous| matches!(previous, UiEvent::ShowLoading { .. }))
+                    .cloned()
+                {
+                    state.fair_copy_last_result = Some((loading, event.clone()));
+                }
+            }
+            _ => {}
+        }
+        // A runaway stream must not grow the replay log without bound.
+        if state.fair_copy_last_event.len() < 4096 {
+            state.fair_copy_last_event.push(event);
+        }
     }
 
     /// The fair-copy surfaces anchor at the SELECTED TEXT, not at the
@@ -2873,9 +2932,10 @@ mod windows_impl {
                 runtime_trace::record("selection_profile_chooser_shown");
             }
             UiCommand::PageReady => {
-                // The page finished loading: replay the event that may have
-                // been sent while it was still navigating.
-                if let Some(event) = state.fair_copy_last_event.clone() {
+                // The page finished loading: replay the presentation that may
+                // have been sent while it was still navigating.
+                let events = std::mem::take(&mut state.fair_copy_last_event);
+                for event in events {
                     send_fair_copy(state, event);
                 }
             }
@@ -2948,6 +3008,7 @@ mod windows_impl {
                         UiEvent::LocalError {
                             id: job_id,
                             message: "Provider returned no text".to_owned(),
+                            anchor: None,
                         },
                     );
                 }
@@ -2973,6 +3034,7 @@ mod windows_impl {
                         UiEvent::LocalError {
                             id: job_id,
                             message: message.clone(),
+                            anchor: None,
                         },
                     );
                 }
@@ -3323,6 +3385,7 @@ mod windows_impl {
                 UiEvent::LocalError {
                     id: job_id,
                     message: message.to_owned(),
+                    anchor: Some(fair_copy_anchor(anchor)),
                 },
             );
             return;

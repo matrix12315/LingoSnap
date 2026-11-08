@@ -299,8 +299,8 @@ fn context_for_range(
     range: &windows::Win32::UI::Accessibility::IUIAutomationTextRange,
     target: &str,
 ) -> Option<String> {
-    super::context::sentence_context_for_range(range, TextUnit_Paragraph, target)
-        .or_else(|| super::context::sentence_context_for_range(range, TextUnit_Line, target))
+    super::context::selection_context_for_range(range, TextUnit_Paragraph, target)
+        .or_else(|| super::context::selection_context_for_range(range, TextUnit_Line, target))
         .filter(|text| !normalize_target(text).is_empty())
         .or_else(|| Some(target.to_owned()))
 }
