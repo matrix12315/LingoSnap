@@ -9,6 +9,29 @@
   .cap { font: 500 10.5px var(--mono); letter-spacing: .12em; color: rgba(241, 235, 223, .55); }
   /* product shot: show the whole settings page, no inner scroll cap */
   .mpage { max-height: none; }
+
+  /* Prompts: the five profile fields share one compact row (as in the
+     classic manager), so the two editors take the rest of the page. */
+  #page-prompts:not([hidden]) { display: flex; flex-direction: column; overflow: hidden; }
+  #page-prompts .group { margin-bottom: 10px; flex-shrink: 0; }
+  #page-prompts .fields2 {
+    grid-template-columns: minmax(150px, 1.1fr) minmax(0, 1.6fr) minmax(0, 1.3fr) 92px 92px;
+    gap: 10px 12px;
+  }
+  #page-prompts .field .fhint { display: none; }
+  #page-prompts .vaultnote { margin-top: 6px; }
+  #page-prompts .edgrid { flex: 1 1 auto; min-height: 0; margin-top: 4px; }
+  #page-prompts .edcol { min-height: 0; }
+  #page-prompts .edcol .input.area { flex: 1 1 auto; min-height: 0; height: auto; }
+  #page-prompts .actions { flex-shrink: 0; }
+
+  /* History: the page holds still; the entry list and the detail scroll
+     on their own, so the detail stays in view beside the entry you pick. */
+  #page-history:not([hidden]) { display: flex; flex-direction: column; overflow: hidden; }
+  #page-history .pagehead, #page-history .sub, #page-history .htoolbar { flex-shrink: 0; }
+  #page-history .hsplit { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+  #page-history .hlist { height: auto; min-height: 0; overflow-y: auto; }
+  #page-history .hdetail { min-height: 0; overflow-y: auto; padding-right: 4px; }
 </style>
 </head>
 <body>

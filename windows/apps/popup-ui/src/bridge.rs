@@ -427,16 +427,15 @@ pub const BRIDGE_JS: &str = r##"<script>
         }
         case 'show_chooser':
           if (!buildRail(p)) break;
-          // In-card selection keeps the card being read under the rail; a
-          // fresh selection shows the rail alone.
-          setChooser(true, !!p.keeps_card && cardVisible());
+          // Every popup is its own window: the chooser window shows the
+          // rail alone, and the card it was raised from stays in its own.
+          setChooser(true, false);
           lens(document.getElementById('chooser'));
           break;
         case 'close': {
-          // The host hides the window; the rail must not linger in the page
-          // and re-report its size.
-          var wrap = document.getElementById('chooser');
-          if (wrap) wrap.style.display = 'none';
+          // This window is going back to the pool: clear everything so its
+          // next popup never shows a trace of this one.
+          resetPage();
           break;
         }
         default:
@@ -462,9 +461,77 @@ pub const BRIDGE_JS: &str = r##"<script>
     togglePin: function () {
       var pin = document.getElementById('pinBtn');
       var on = pin && pin.getAttribute('aria-pressed') === 'true';
+      // Show the new state at once; the resident confirms with set_pinned.
+      if (pin) pin.setAttribute('aria-pressed', String(!on));
       post({ cmd: 'pin', pinned: !on });
+    },
+    // The user dragged an edge: the card takes exactly the new size (CSS
+    // px), the manuscript scrolls inside it, and later content keeps it.
+    userSize: function (w, h) {
+      if (!card) return;
+      card.style.setProperty('width', w + 'px', 'important');
+      card.style.setProperty('height', h + 'px', 'important');
+      card.style.setProperty('max-height', 'none', 'important');
+      var m = manuscript();
+      if (m) m.style.setProperty('max-height', 'none', 'important');
     }
   };
+  // Back to the pristine sheet for the next popup that uses this window.
+  function resetPage() {
+    var wrap = document.getElementById('chooser');
+    if (wrap) {
+      wrap.style.display = 'none';
+      var menu = wrap.querySelector('.rmenu');
+      if (menu) menu.style.display = 'none';
+    }
+    if (card) {
+      card.style.display = 'none';
+      ['width', 'height', 'max-height'].forEach(function (prop) { card.style.removeProperty(prop); });
+    }
+    var m = manuscript();
+    if (m) { m.innerHTML = ''; m.style.removeProperty('max-height'); m.scrollTop = 0; }
+    var pin = document.getElementById('pinBtn');
+    if (pin) pin.setAttribute('aria-pressed', 'false');
+    streamText = '';
+    lastOutput = '';
+    setSource('', '');
+    if (sourcepanel) sourcepanel.style.display = '';
+    setMode('result');
+    var sel = window.getSelection();
+    if (sel) sel.removeAllRanges();
+  }
+  // Edge resizing, like the classic popup: near the card's border the
+  // cursor turns into a resize arrow and a press hands the drag to the host
+  // (edge bits: 1 left, 2 top, 4 right, 8 bottom).
+  var EDGE = 6;
+  function edgesAt(e) {
+    if (!card || card.style.display === 'none') return 0;
+    var r = card.getBoundingClientRect();
+    var x = e.clientX, y = e.clientY;
+    if (x < r.left - 2 || x > r.right + 2 || y < r.top - 2 || y > r.bottom + 2) return 0;
+    var edges = 0;
+    if (x - r.left < EDGE) edges |= 1;
+    if (r.right - x < EDGE) edges |= 4;
+    if (y - r.top < EDGE) edges |= 2;
+    if (r.bottom - y < EDGE) edges |= 8;
+    if (e.target.closest && e.target.closest('.resize-grip')) edges = 12;
+    return edges;
+  }
+  var CURSORS = { 1: 'ew-resize', 4: 'ew-resize', 2: 'ns-resize', 8: 'ns-resize',
+    3: 'nwse-resize', 12: 'nwse-resize', 6: 'nesw-resize', 9: 'nesw-resize' };
+  document.addEventListener('mousemove', function (e) {
+    if (e.buttons) return;
+    var edges = edgesAt(e);
+    document.documentElement.style.cursor = edges ? (CURSORS[edges] || '') : '';
+  }, true);
+  document.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
+    var edges = edgesAt(e);
+    if (!edges) return;
+    e.preventDefault();
+    e.stopPropagation();
+    post({ cmd: 'begin_resize', edges: edges });
+  }, true);
   function wire() {
     if (copyBtn) copyBtn.addEventListener('click', function () { window.LINGO.copy(); });
     var pin = document.getElementById('pinBtn');
@@ -505,7 +572,10 @@ pub const BRIDGE_JS: &str = r##"<script>
     if (!sel || !sel.rangeCount) return;
     if (!m.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
     var text = String(sel).trim();
-    if (text.length) post({ cmd: 'self_translate', text: text });
+    if (!text.length) return;
+    // Where the selection sits, so the chooser appears at it.
+    var r = sel.getRangeAt(0).getBoundingClientRect();
+    post({ cmd: 'self_translate', text: text, x: r.left + r.width / 2, y: r.top });
   });
 })();
 </script>"##;

@@ -1,13 +1,22 @@
 //! Fair-copy UI companion: hosts the mockup pages in WebView2 and speaks
 //! protocol v1 with the resident over the named pipe. See FAIR_COPY_UI_PLAN.md.
+//!
+//! Every popup is its own window, exactly like the classic skin: a chooser
+//! raised from a card opens a new window beside it, a pinned card stays while
+//! new ones appear, and closing one never touches the others. Windows share
+//! one WebView2 environment and are pooled: a closed popup's window is
+//! cleared and kept hidden for the next popup, so a selection never waits for
+//! a fresh page load.
 
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![cfg(windows)]
 
 use selection_ui_protocol::{
-    Envelope, Handshake, Surface, UiCommand, UiEvent, MANAGER_PIPE_NAME, PIPE_NAME,
+    Anchor, Envelope, Handshake, Surface, UiCommand, UiEvent, MANAGER_PIPE_NAME, PIPE_NAME,
 };
+use std::cell::{Cell, RefCell};
 use std::io::Write;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use webview2_com::Microsoft::Web::WebView2::Win32::{
@@ -31,74 +40,72 @@ use windows::Win32::Storage::FileSystem::{
 };
 use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
-use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, ReleaseCapture, VK_LBUTTON};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect, GetCursorPos,
-    GetMessageW, GetWindowLongPtrW, GetWindowRect, KillTimer, MessageBoxW, PostMessageW,
-    PostQuitMessage, RegisterClassW, SetTimer, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-    TranslateMessage, CS_HREDRAW, CS_VREDRAW, GWLP_USERDATA, HTCAPTION, HWND_TOPMOST, MB_ICONERROR,
-    MSG, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW,
-    WINDOW_LONG_PTR_INDEX, WM_APP, WM_DESTROY, WM_KEYDOWN, WM_NCLBUTTONDOWN, WM_TIMER, WNDCLASSW,
+    GetMessageW, GetWindowRect, IsWindowVisible, KillTimer, LoadCursorW, MessageBoxW, PostMessageW,
+    PostQuitMessage, RegisterClassW, SetCursor, SetForegroundWindow, SetTimer, SetWindowPos,
+    ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, HTCAPTION, HWND_MESSAGE, HWND_TOPMOST,
+    IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, MB_ICONERROR, MSG, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE,
+    WM_APP, WM_DESTROY, WM_DPICHANGED, WM_NCLBUTTONDOWN, WM_SIZE, WM_TIMER, WNDCLASSW,
     WS_EX_APPWINDOW, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_MINIMIZEBOX,
     WS_POPUP, WS_SYSMENU,
 };
 
+/// Host message window: one boxed protocol line in lparam.
 const WM_APP_EVENT: u32 = WM_APP + 1;
-/// Dev mode (--hold=ms): quits the message loop so the process can be
-/// measured and does not require the resident's pipe.
+
+// Timers on the host message window (process-wide).
+/// Dev mode (--hold=ms) quits after the hold so the process can be measured.
 const DEMO_QUIT_TIMER_ID: usize = 1;
-/// Dev capture target shared between run() and the window proc.
-static PENDING_CAPTURE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 const DEMO_FORCE_QUIT_TIMER_ID: usize = 2;
-/// The window becomes visible only when the page has rendered; if the page
-/// never loads, this timer exits the process so no invisible topmost window
-/// can linger over the desktop.
+/// The first page must load in time, or the process exits and the resident
+/// falls back to the classic popup.
 const LOAD_TIMEOUT_TIMER_ID: usize = 3;
-/// A companion that loaded but never received content exits after this long
-/// (the plan's 600 s idle kill); the host restarts it on demand.
+/// A companion that loaded but never presented anything exits after this
+/// long (the plan's 600 s idle kill); the host restarts it on demand.
 const IDLE_QUIT_TIMER_ID: usize = 4;
 const IDLE_QUIT_MS: u32 = 600_000;
-/// The last event anchor, applied after the window height settles: an
-/// immediate reposition races the content-height resize and clamps the
-/// window to the wrong screen edge.
-static PENDING_ANCHOR: std::sync::Mutex<Option<Placement>> = std::sync::Mutex::new(None);
 
-/// Where the next settled size report places the window.
-#[derive(Clone, Copy, Debug)]
-enum Placement {
-    /// Centered on the anchor x, above (chooser) or below (card) anchor y.
-    Anchor { x: i32, y: i32, above: bool },
-    /// Keep the window's bottom-left corner fixed: a chooser raised over a
-    /// kept card grows the window upward so the card does not move, the way
-    /// the classic chooser floats above the source popup without moving it.
-    KeepBottom { left: i32, bottom: i32 },
-}
-/// Popup id of the card currently presented (from ShowLoading).
-static CARD_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-/// True while a chooser rail floats over a kept card (in-card selection).
-static CHOOSER_OVER_CARD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-/// Set when a render event arrives, cleared when the surface is dismissed.
-/// The settled content_size re-posts only show the window while this is set,
-/// so a dismissed chooser is not resurrected by a stale layout report.
-static SHOW_PENDING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-/// Set once per process; demo mode shows the window without waiting for a
-/// host event.
+// Timers on a surface window.
+/// Show a pending surface once its geometry has been quiet this long: the
+/// page re-reports its size as fonts and layout settle, and the window must
+/// not appear before the last report placed it.
+const SHOW_TIMER_ID: usize = 11;
+const SHOW_SETTLE_MS: u32 = 45;
+/// Hide a released window only after its cleared page has painted, so the
+/// next time it is shown it never flashes the previous card.
+const HIDE_TIMER_ID: usize = 12;
+const HIDE_AFTER_MS: u32 = 60;
+/// Edge-resize loop (the page hands the press over; the host follows the
+/// cursor until the button is released).
+const RESIZE_TIMER_ID: usize = 13;
+/// The manager page shows when it reports its first painted frame; this is
+/// the fallback if that report never comes.
+const MANAGER_SHOW_TIMER_ID: usize = 14;
+
+/// Idle windows kept for reuse; more are destroyed.
+const MAX_IDLE_WINDOWS: usize = 2;
+/// Body padding of the popup page (APP_CSS): 6px top, 10px bottom, 8px sides.
+const BODY_PAD_W: f64 = 16.0;
+const BODY_PAD_H: f64 = 16.0;
+/// Smallest card a user may resize to (CSS px).
+const MIN_CARD_W: f64 = 320.0;
+const MIN_CARD_H: f64 = 180.0;
+
 static DEMO_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-/// Shared with the window proc for Esc handling; the pipe handle is cheap to
-/// clone (it wraps an Arc).
+/// One surface kind per process: the manager page, or popups.
+static MANAGER_SURFACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static SHARED_PIPE: std::sync::Mutex<Option<pipe_connection::Pipe>> = std::sync::Mutex::new(None);
-static WINDOW_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Dev capture target.
+static PENDING_CAPTURE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
 // Keep in sync with selection_ui_protocol::COMPANION_WINDOW_CLASS (the
 // resident matches clicks against this class) and MANAGER_WINDOW_CLASS.
 const CLASS_NAME: PCWSTR = w!("SelectionTranslatePopupUi");
 const MANAGER_CLASS_NAME: PCWSTR = w!("SelectionTranslateManagerUi");
-/// GWLP slots on the window: the boxed live WebView2 (user data) and its
-/// controller (the class's first extra-bytes slot; the class reserves it via
-/// `cbWndExtra`). An offset from GWLP_USERDATA is NOT a valid index — it
-/// silently failed, leaking the controller and leaving resizes unbounded.
-const WEBVIEW_SLOT: WINDOW_LONG_PTR_INDEX = WINDOW_LONG_PTR_INDEX(GWLP_USERDATA.0);
-const CONTROLLER_SLOT: WINDOW_LONG_PTR_INDEX = WINDOW_LONG_PTR_INDEX(0);
+const HOST_CLASS_NAME: PCWSTR = w!("SelectionTranslatePopupUiHost");
 
 mod bridge;
 mod bridge_manager;
@@ -125,12 +132,16 @@ mod assets {
     pub const MANAGER_HTML: &str = asset!("manager.html");
 }
 
-/// One surface per process; marks whether the page speaks the manager data
-/// bridge instead of the popup event bridge.
-static MANAGER_SURFACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
 fn is_manager_surface(surface: Surface) -> bool {
     surface == Surface::Manager
+}
+
+fn manager_mode() -> bool {
+    MANAGER_SURFACE.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn demo_mode() -> bool {
+    DEMO_MODE.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Device scale of the window's monitor (1.0 at 96 DPI).
@@ -194,236 +205,85 @@ fn parse_surface(arg: Option<&str>) -> Surface {
     }
 }
 
-fn main() {
-    capture_log(&format!(
-        "start: pid={} exe={:?} cwd={:?}",
-        std::process::id(),
-        std::env::current_exe().map(|e| e.display().to_string()),
-        std::env::current_dir().map(|d| d.display().to_string())
-    ));
-    // Per-monitor aware V2: the card must render at the monitor's device
-    // scale and follow selections on ANY monitor. Everything below works in
-    // physical pixels; the webview rasterization scale is set explicitly on
-    // the controller after creation.
-    let aware = unsafe {
-        windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext(
-            windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
-        )
-    }
-    .is_ok();
-    capture_log(&format!("start: per-monitor-aware={aware}"));
-    let result = std::panic::catch_unwind(run);
-    if result.is_err() {
-        fatal("The fair-copy UI crashed.");
-    }
+// —— Surface windows ——
+
+/// Where the next settled size report places a window.
+#[derive(Clone, Copy, Debug)]
+enum Placement {
+    /// Centered on the anchor x, above (chooser) or below (card) anchor y.
+    Anchor { x: i32, y: i32, above: bool },
+    /// Beside a source card (self-translation), like the classic cascade:
+    /// to its right when it fits, otherwise to its left, top-aligned.
+    Beside { source: RECT },
 }
 
-fn run() {
-    unsafe {
-        if CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_err() {
-            fatal("Could not initialize COM for the fair-copy UI.");
-            return;
-        }
-    }
-    let mut surface = Surface::Popup;
-    let mut capture: Option<String> = None;
-    let mut hold_ms: Option<u32> = None;
-    let args: Vec<String> = std::env::args().collect();
-    if let Some(index) = args.iter().position(|arg| arg == "--surface") {
-        surface = parse_surface(args.get(index + 1).map(String::as_str));
-    }
-    for arg in &args {
-        if let Some(value) = arg.strip_prefix("--capture=") {
-            capture = Some(value.to_owned());
-        } else if let Some(value) = arg.strip_prefix("--hold=") {
-            hold_ms = value.parse::<u32>().ok();
-        }
-    }
-    if capture.is_none() {
-        if let Some(index) = args.iter().position(|arg| arg == "--capture") {
-            capture = args.get(index + 1).cloned();
-        }
-    }
-    if hold_ms.is_none() {
-        if let Some(index) = args.iter().position(|arg| arg == "--hold") {
-            hold_ms = args
-                .get(index + 1)
-                .and_then(|value| value.parse::<u32>().ok());
-        }
-    }
+/// An edge-resize in progress (edge bits: 1 left, 2 top, 4 right, 8 bottom).
+#[derive(Clone, Copy, Debug)]
+struct Resize {
+    edges: u8,
+    cursor: POINT,
+    rect: RECT,
+}
 
-    let instance = match unsafe { GetModuleHandleW(None) } {
-        Ok(instance) => instance,
-        Err(_) => {
-            fatal("Could not acquire the module handle.");
-            return;
-        }
-    };
-    let manager = is_manager_surface(surface);
-    let class_name = if manager {
-        MANAGER_CLASS_NAME
-    } else {
-        CLASS_NAME
-    };
-    let class = WNDCLASSW {
-        lpfnWndProc: Some(window_proc),
-        hInstance: instance.into(),
-        lpszClassName: class_name,
-        style: CS_HREDRAW | CS_VREDRAW,
-        cbWndExtra: std::mem::size_of::<isize>() as i32,
-        ..Default::default()
-    };
-    if unsafe { RegisterClassW(&class) } == 0 {
-        fatal("Could not register the fair-copy UI window class.");
-        return;
-    }
+/// One popup (or the manager) window and its page.
+struct Win {
+    hwnd: HWND,
+    surface: Surface,
+    webview: RefCell<Option<ICoreWebView2>>,
+    controller: RefCell<Option<ICoreWebView2Controller>>,
+    /// The resident's popup id this window presents; 0 while pooled.
+    popup_id: Cell<u64>,
+    /// The page finished loading; earlier scripts wait in `queue`.
+    ready: Cell<bool>,
+    queue: RefCell<Vec<String>>,
+    placement: Cell<Option<Placement>>,
+    /// A presentation is waiting to be shown (or is shown).
+    show_pending: Cell<bool>,
+    shown: Cell<bool>,
+    /// A result card is on screen: a retry keeps its position.
+    card: Cell<bool>,
+    /// Popup id of the card this chooser was raised from.
+    cascade_from: Cell<Option<u64>>,
+    resize: Cell<Option<Resize>>,
+    /// Window size the user chose by dragging an edge (physical px).
+    user_size: Cell<Option<(i32, i32)>>,
+}
 
-    *PENDING_CAPTURE.lock().expect("capture lock") = capture.clone();
-    let (width, height) = window_size(surface);
-    let anchor = cursor_anchor();
-    // No redirection bitmap: the window has no opaque surface of its own,
-    // so the transparent WebView2 background composites straight onto the
-    // desktop and the rail/card keep their rounded paper shape instead of
-    // sitting in a black or paper rectangle.
-    //
-    // The popup surfaces are topmost tool windows (no taskbar button), like
-    // the classic popup. The manager page is the manager's main window: a
-    // normal, taskbar-visible, non-topmost app window titled like the native
-    // manager, so it behaves like the window it replaces.
-    let (ex_style, style, title) = if manager {
-        (
-            WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
-            WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX,
-            "Selection Translate — Manager",
-        )
-    } else {
-        (
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP,
-            WS_POPUP,
-            "LingoSnap fair-copy",
-        )
-    };
-    let title: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
-    let hwnd = match unsafe {
-        CreateWindowExW(
-            ex_style,
-            class_name,
-            PCWSTR(title.as_ptr()),
-            style,
-            anchor.x,
-            anchor.y,
-            width,
-            height,
-            None,
-            None,
-            Some(instance.into()),
-            None,
-        )
-    } {
-        Ok(hwnd) => hwnd,
-        Err(_) => {
-            fatal("Could not create the fair-copy UI window.");
-            return;
-        }
-    };
-    {
-        let (base_w, base_h) = window_size(surface);
-        let scale = window_scale(hwnd);
-        let scaled_w = (base_w as f64 * scale).round() as i32;
-        let scaled_h = (base_h as f64 * scale).round() as i32;
-        if manager {
-            // Open centered on the monitor under the cursor, like a normal
-            // application window, never at the screen's top-left corner.
-            let info = monitor_info_at(POINT {
-                x: anchor.x,
-                y: anchor.y,
-            });
-            let work = info.rcWork;
-            let x = work.left + ((work.right - work.left - scaled_w) / 2).max(0);
-            let y = work.top + ((work.bottom - work.top - scaled_h) / 2).max(0);
-            unsafe {
-                let _ = SetWindowPos(
-                    hwnd,
-                    None,
-                    x,
-                    y,
-                    scaled_w,
-                    scaled_h,
-                    SWP_NOZORDER | SWP_NOACTIVATE,
-                );
-            }
-        } else {
-            unsafe {
-                let _ = SetWindowPos(
-                    hwnd,
-                    None,
-                    0,
-                    0,
-                    scaled_w,
-                    scaled_h,
-                    SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
-                );
-            }
-        }
-    }
+thread_local! {
+    static WINS: RefCell<Vec<Rc<Win>>> = const { RefCell::new(Vec::new()) };
+    static ENVIRONMENT: RefCell<Option<ICoreWebView2Environment>> = const { RefCell::new(None) };
+    static HOST: Cell<HWND> = const { Cell::new(HWND(std::ptr::null_mut())) };
+    static INSTANCE: Cell<isize> = const { Cell::new(0) };
+    static FIRST_LOAD: Cell<bool> = const { Cell::new(false) };
+}
 
-    let demo = hold_ms.is_some();
-    DEMO_MODE.store(demo, std::sync::atomic::Ordering::Relaxed);
-    let pipe = match pipe_connection::connect(is_manager_surface(surface)) {
-        Ok(pipe) => Some(pipe),
-        Err(_) if demo => None,
-        Err(_) => {
-            // Without the resident the companion has nothing to present.
-            capture_log("exit: pipe connect failed");
-            unsafe {
-                let _ = DestroyWindow(hwnd);
-            }
-            return;
-        }
-    };
-    if let Some(hold) = hold_ms {
-        unsafe {
-            let _ = SetTimer(Some(hwnd), DEMO_QUIT_TIMER_ID, hold, None);
-        }
-    }
-    // Nothing may linger invisibly: if the page has not loaded within the
-    // timeout, the process exits and the resident falls back to classic.
-    unsafe {
-        let _ = SetTimer(Some(hwnd), LOAD_TIMEOUT_TIMER_ID, 15_000, None);
-    }
-    *SHARED_PIPE.lock().expect("pipe lock") = pipe.clone();
-    MANAGER_SURFACE.store(
-        is_manager_surface(surface),
-        std::sync::atomic::Ordering::Relaxed,
-    );
-    if !create_webview(hwnd, surface, pipe.clone(), capture.clone()) {
-        capture_log("capture: create_webview failed");
-        // Missing WebView2 runtime: exit quietly; the resident falls back to
-        // the classic native popup when the pipe never comes up.
-        unsafe {
-            let _ = DestroyWindow(hwnd);
-        }
-        return;
-    }
-    // The window stays hidden until content arrives (see show_once), so a slow
-    // or failed page load can never leave an invisible topmost window.
+fn wins() -> Vec<Rc<Win>> {
+    WINS.with(|wins| wins.borrow().clone())
+}
 
-    if let Some(pipe) = pipe {
-        pipe_thread::spawn(hwnd, pipe, surface);
-    }
+fn win_for(hwnd: HWND) -> Option<Rc<Win>> {
+    WINS.with(|wins| wins.borrow().iter().find(|win| win.hwnd == hwnd).cloned())
+}
 
-    let mut message = MSG::default();
-    loop {
-        let result = unsafe { GetMessageW(&mut message, None, 0, 0) };
-        if result.0 <= 0 {
-            capture_log("exit: message loop ended");
-            break;
-        }
-        unsafe {
-            let _ = TranslateMessage(&message);
-            DispatchMessageW(&message);
-        }
+fn win_by_id(id: u64) -> Option<Rc<Win>> {
+    if id == 0 {
+        return None;
     }
+    WINS.with(|wins| {
+        wins.borrow()
+            .iter()
+            .find(|win| win.popup_id.get() == id)
+            .cloned()
+    })
+}
+
+fn manager_win() -> Option<Rc<Win>> {
+    WINS.with(|wins| {
+        wins.borrow()
+            .iter()
+            .find(|win| win.surface == Surface::Manager)
+            .cloned()
+    })
 }
 
 fn monitor_info_at(point: POINT) -> MONITORINFO {
@@ -437,20 +297,19 @@ fn monitor_info_at(point: POINT) -> MONITORINFO {
     info
 }
 
+fn window_rect(hwnd: HWND) -> RECT {
+    let mut rect = RECT::default();
+    let _ = unsafe { GetWindowRect(hwnd, &mut rect) };
+    rect
+}
+
 fn cursor_anchor() -> POINT {
-    unsafe {
-        let mut point = POINT::default();
-        let _ = GetCursorPos(&mut point);
-        let mut info = MONITORINFO {
-            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-            ..Default::default()
-        };
-        let _ = GetMonitorInfoW(MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST), &mut info);
-        let work = info.rcWork;
-        let x = point.x.clamp(work.left, (work.right - 460).max(work.left));
-        let y = point.y.clamp(work.top, (work.bottom - 200).max(work.top));
-        POINT { x, y }
-    }
+    let mut point = POINT::default();
+    let _ = unsafe { GetCursorPos(&mut point) };
+    let work = monitor_info_at(point).rcWork;
+    let x = point.x.clamp(work.left, (work.right - 460).max(work.left));
+    let y = point.y.clamp(work.top, (work.bottom - 200).max(work.top));
+    POINT { x, y }
 }
 
 fn fatal(message: &str) {
@@ -466,131 +325,430 @@ fn fatal(message: &str) {
     }
 }
 
-unsafe extern "system" fn window_proc(
-    hwnd: HWND,
-    message: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
-    match message {
-        WM_DESTROY => {
-            drop_webview(hwnd);
-            unsafe { PostQuitMessage(0) };
-            LRESULT(0)
-        }
-        windows::Win32::UI::WindowsAndMessaging::WM_SIZE => {
-            // Keep the webview covering the client area: a window that grew
-            // past its creation size (rail over a long card) would otherwise
-            // clip the page at the old bounds.
-            let raw =
-                unsafe { GetWindowLongPtrW(hwnd, CONTROLLER_SLOT) } as *mut ICoreWebView2Controller;
-            if !raw.is_null() {
-                let mut rect = RECT::default();
-                unsafe {
-                    let _ = GetClientRect(hwnd, &mut rect);
-                    let _ = (*raw).SetBounds(rect);
-                }
-            }
-            LRESULT(0)
-        }
-        WM_TIMER if wparam.0 == DEMO_QUIT_TIMER_ID => {
-            unsafe {
-                let _ = KillTimer(Some(hwnd), DEMO_QUIT_TIMER_ID);
-            }
-            if let Some(path) = PENDING_CAPTURE.lock().expect("capture lock").clone() {
-                capture_page(hwnd, &path);
-                // The preview write is asynchronous; the completion handler
-                // closes the window. Force-quit in case it never returns.
-                unsafe {
-                    let _ = SetTimer(Some(hwnd), DEMO_FORCE_QUIT_TIMER_ID, 4000, None);
-                }
-            } else {
-                unsafe { PostQuitMessage(0) };
-            }
-            LRESULT(0)
-        }
-        WM_TIMER if wparam.0 == LOAD_TIMEOUT_TIMER_ID => {
-            // The page never finished loading: exit instead of lingering as
-            // an invisible topmost window.
-            capture_log("timer: load timeout fired");
-            unsafe {
-                let _ = KillTimer(Some(hwnd), LOAD_TIMEOUT_TIMER_ID);
-                PostQuitMessage(0);
-            }
-            LRESULT(0)
-        }
-        WM_TIMER if wparam.0 == IDLE_QUIT_TIMER_ID => {
-            // Loaded but never presented anything (the skin was switched but
-            // no translation happened): exit so the idle companion does not
-            // sit in memory forever. The host restarts it on demand.
-            capture_log("timer: idle quit fired");
-            unsafe {
-                let _ = KillTimer(Some(hwnd), IDLE_QUIT_TIMER_ID);
-                PostQuitMessage(0);
-            }
-            LRESULT(0)
-        }
-        WM_KEYDOWN if wparam.0 as u32 == VK_ESCAPE.0 as u32 => {
-            // Borderless companion window: Esc is the manual close affordance
-            // (the page also maps Esc to its Close command while it has
-            // keyboard focus). The manager page is a normal window and does
-            // not close on Esc.
-            if MANAGER_SURFACE.load(std::sync::atomic::Ordering::Relaxed) {
-                return LRESULT(0);
-            }
-            if let Some(pipe) = SHARED_PIPE.lock().expect("pipe lock").clone() {
-                if let Ok(line) =
-                    serde_json::to_string(&Envelope::new(0, UiCommand::UserClose { id: 0 }))
-                {
-                    let _ = pipe.write_line(&line);
-                }
-            }
-            // The resident answers with Close for the surface it retired.
-            // Over a kept card only the rail closes, so that reply decides;
-            // otherwise hide now so Esc never depends on a round trip.
-            if !CHOOSER_OVER_CARD.load(std::sync::atomic::Ordering::Relaxed) {
-                hide_surface(hwnd);
-            }
-            LRESULT(0)
-        }
-        WM_TIMER if wparam.0 == DEMO_FORCE_QUIT_TIMER_ID => {
-            unsafe {
-                let _ = KillTimer(Some(hwnd), DEMO_FORCE_QUIT_TIMER_ID);
-                PostQuitMessage(0);
-            }
-            LRESULT(0)
-        }
-        WM_APP_EVENT => {
-            // Content arrived: do NOT show yet — the geometry settle (the
-            // content_size handler) applies the anchor and sizes the window
-            // first, then shows. Showing here would flash the window at its
-            // pre-anchor position and visibly jump it to the selection.
-            // lparam owns a Box<String> holding one protocol line.
-            let raw = lparam.0 as *mut String;
-            if !raw.is_null() {
-                let line = unsafe { Box::from_raw(raw) };
-                handle_event_line(hwnd, &line);
-            }
-            LRESULT(0)
-        }
-        _ => unsafe { DefWindowProcW(hwnd, message, wparam, lparam) },
+fn main() {
+    capture_log(&format!(
+        "start: pid={} exe={:?}",
+        std::process::id(),
+        std::env::current_exe().map(|e| e.display().to_string()),
+    ));
+    // Per-monitor aware V2: cards render at the monitor's device scale and
+    // follow selections on ANY monitor; everything below is physical pixels.
+    let _ = unsafe {
+        windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext(
+            windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+        )
+    };
+    let result = std::panic::catch_unwind(run);
+    if result.is_err() {
+        fatal("The fair-copy UI crashed.");
     }
 }
 
-/// Run one script on the page. A script failure is only visible in the page
-/// console, never a crash here — so the completion result is traced.
-fn execute_script(hwnd: HWND, script: &str) {
-    let raw = unsafe { GetWindowLongPtrW(hwnd, WEBVIEW_SLOT) } as *mut ICoreWebView2;
-    if raw.is_null() {
-        capture_log("script: no webview slot");
+fn run() {
+    unsafe {
+        if CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_err() {
+            fatal("Could not initialize COM for the fair-copy UI.");
+            return;
+        }
+    }
+    let args: Vec<String> = std::env::args().collect();
+    let mut surface = Surface::Popup;
+    let mut capture: Option<String> = None;
+    let mut hold_ms: Option<u32> = None;
+    if let Some(index) = args.iter().position(|arg| arg == "--surface") {
+        surface = parse_surface(args.get(index + 1).map(String::as_str));
+    }
+    for (index, arg) in args.iter().enumerate() {
+        if let Some(value) = arg.strip_prefix("--capture=") {
+            capture = Some(value.to_owned());
+        } else if arg == "--capture" {
+            capture = args.get(index + 1).cloned();
+        } else if let Some(value) = arg.strip_prefix("--hold=") {
+            hold_ms = value.parse::<u32>().ok();
+        } else if arg == "--hold" {
+            hold_ms = args.get(index + 1).and_then(|value| value.parse().ok());
+        }
+    }
+    let Ok(instance) = (unsafe { GetModuleHandleW(None) }) else {
+        fatal("Could not acquire the module handle.");
+        return;
+    };
+    INSTANCE.with(|cell| cell.set(instance.0 as isize));
+    for (class_name, proc_fn) in [
+        (
+            CLASS_NAME,
+            surface_proc as unsafe extern "system" fn(_, _, _, _) -> _,
+        ),
+        (MANAGER_CLASS_NAME, surface_proc),
+        (HOST_CLASS_NAME, host_proc),
+    ] {
+        let class = WNDCLASSW {
+            lpfnWndProc: Some(proc_fn),
+            hInstance: instance.into(),
+            lpszClassName: class_name,
+            style: CS_HREDRAW | CS_VREDRAW,
+            ..Default::default()
+        };
+        if unsafe { RegisterClassW(&class) } == 0 {
+            fatal("Could not register the fair-copy UI window class.");
+            return;
+        }
+    }
+    // A message-only window receives the pipe lines and process timers, so
+    // popup windows can come and go freely.
+    let Ok(host) = (unsafe {
+        CreateWindowExW(
+            Default::default(),
+            HOST_CLASS_NAME,
+            PCWSTR::null(),
+            Default::default(),
+            0,
+            0,
+            0,
+            0,
+            Some(HWND_MESSAGE),
+            None,
+            Some(instance.into()),
+            None,
+        )
+    }) else {
+        fatal("Could not create the fair-copy UI host window.");
+        return;
+    };
+    HOST.with(|cell| cell.set(host));
+    *PENDING_CAPTURE.lock().expect("capture lock") = capture;
+    let demo = hold_ms.is_some();
+    DEMO_MODE.store(demo, std::sync::atomic::Ordering::Relaxed);
+    MANAGER_SURFACE.store(
+        is_manager_surface(surface),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    let pipe = match pipe_connection::connect(is_manager_surface(surface)) {
+        Ok(pipe) => Some(pipe),
+        Err(_) if demo => None,
+        Err(_) => {
+            capture_log("exit: pipe connect failed");
+            return;
+        }
+    };
+    *SHARED_PIPE.lock().expect("pipe lock") = pipe.clone();
+    if let Some(hold) = hold_ms {
+        unsafe {
+            let _ = SetTimer(Some(host), DEMO_QUIT_TIMER_ID, hold, None);
+        }
+    }
+    unsafe {
+        let _ = SetTimer(Some(host), LOAD_TIMEOUT_TIMER_ID, 15_000, None);
+    }
+    // The first window is created up front (the manager page, or a pooled
+    // popup window that the first selection uses without a page load).
+    if create_surface(surface).is_none() {
+        capture_log("exit: first surface failed");
         return;
     }
-    let webview = unsafe { &*raw };
-    // The page's return value ('applied' / 'no-lingo' / 'err:...') is the only
-    // signal whether a bridged event actually reached the page; log it.
+    if let Some(pipe) = pipe {
+        pipe_thread::spawn(host, pipe, surface);
+    }
+    let mut message = MSG::default();
+    loop {
+        let result = unsafe { GetMessageW(&mut message, None, 0, 0) };
+        if result.0 <= 0 {
+            capture_log("exit: message loop ended");
+            break;
+        }
+        unsafe {
+            let _ = TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+    }
+    for win in wins() {
+        unsafe {
+            let _ = DestroyWindow(win.hwnd);
+        }
+    }
+}
+
+fn environment() -> Option<ICoreWebView2Environment> {
+    if let Some(environment) = ENVIRONMENT.with(|cell| cell.borrow().clone()) {
+        return Some(environment);
+    }
+    let (tx, rx) = std::sync::mpsc::channel::<Option<ICoreWebView2Environment>>();
+    let handler = CreateCoreWebView2EnvironmentCompletedHandler::create(Box::new(
+        move |error_code, environment| {
+            error_code?;
+            let _ = tx.send(environment);
+            Ok(())
+        },
+    ));
+    let user_data = user_data_dir();
+    let started = unsafe {
+        CreateCoreWebView2EnvironmentWithOptions(None, PCWSTR(user_data.as_ptr()), None, &handler)
+    };
+    if started.is_err() {
+        capture_log("webview: environment creation call failed");
+        return None;
+    }
+    let environment = wait_with_pump(rx, std::time::Duration::from_secs(15)).flatten()?;
+    ENVIRONMENT.with(|cell| *cell.borrow_mut() = Some(environment.clone()));
+    Some(environment)
+}
+
+/// Create one surface window with its page. Returns None (and leaves no
+/// window behind) when the WebView2 runtime cannot host it.
+fn create_surface(surface: Surface) -> Option<Rc<Win>> {
+    let manager = is_manager_surface(surface);
+    let instance = INSTANCE.with(Cell::get);
+    let anchor = cursor_anchor();
+    let (base_w, base_h) = window_size(surface);
+    // No redirection bitmap: the window has no opaque surface of its own,
+    // so the transparent page composites onto the desktop and the rail and
+    // card keep their rounded paper shape. Popups are topmost tool windows
+    // (no taskbar button), like the classic popup; the manager page is the
+    // manager's normal, taskbar-visible main window.
+    let (class_name, ex_style, style, title) = if manager {
+        (
+            MANAGER_CLASS_NAME,
+            WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
+            WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX,
+            "Selection Translate — Manager",
+        )
+    } else {
+        (
+            CLASS_NAME,
+            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP,
+            WS_POPUP,
+            "LingoSnap fair-copy",
+        )
+    };
+    let title: Vec<u16> = title.encode_utf16().chain(Some(0)).collect();
+    let hwnd = unsafe {
+        CreateWindowExW(
+            ex_style,
+            class_name,
+            PCWSTR(title.as_ptr()),
+            style,
+            anchor.x,
+            anchor.y,
+            base_w,
+            base_h,
+            None,
+            None,
+            Some(windows::Win32::Foundation::HINSTANCE(instance as *mut _)),
+            None,
+        )
+    }
+    .ok()?;
+    let scale = window_scale(hwnd);
+    let scaled_w = (base_w as f64 * scale).round() as i32;
+    let scaled_h = (base_h as f64 * scale).round() as i32;
+    if manager {
+        // Open centered on the monitor under the cursor, like an app window.
+        let work = monitor_info_at(anchor).rcWork;
+        let x = work.left + ((work.right - work.left - scaled_w) / 2).max(0);
+        let y = work.top + ((work.bottom - work.top - scaled_h) / 2).max(0);
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                None,
+                x,
+                y,
+                scaled_w,
+                scaled_h,
+                SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+        }
+    } else {
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                scaled_w,
+                scaled_h,
+                SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE,
+            );
+        }
+    }
+    let win = Rc::new(Win {
+        hwnd,
+        surface,
+        webview: RefCell::new(None),
+        controller: RefCell::new(None),
+        popup_id: Cell::new(0),
+        ready: Cell::new(false),
+        queue: RefCell::new(Vec::new()),
+        placement: Cell::new(None),
+        show_pending: Cell::new(false),
+        shown: Cell::new(false),
+        card: Cell::new(false),
+        cascade_from: Cell::new(None),
+        resize: Cell::new(None),
+        user_size: Cell::new(None),
+    });
+    WINS.with(|wins| wins.borrow_mut().push(win.clone()));
+    if !attach_webview(&win) {
+        capture_log("webview: attach failed");
+        unsafe {
+            let _ = DestroyWindow(hwnd);
+        }
+        return None;
+    }
+    Some(win)
+}
+
+/// Controller bounds for a window. Popups get a fixed viewport as large as
+/// the monitor's work area: the page lays out at its own content size either
+/// way, and a viewport that never changes means a resize or a growing card
+/// only reveals pixels that were already painted — no black or white block
+/// while the window catches up. The manager page fills its window.
+fn controller_bounds(win: &Win) -> RECT {
+    if win.surface == Surface::Manager {
+        let mut rect = RECT::default();
+        let _ = unsafe { GetClientRect(win.hwnd, &mut rect) };
+        return rect;
+    }
+    let rect = window_rect(win.hwnd);
+    let work = monitor_info_at(POINT {
+        x: rect.left,
+        y: rect.top,
+    })
+    .rcWork;
+    RECT {
+        left: 0,
+        top: 0,
+        right: (work.right - work.left).max(800),
+        bottom: (work.bottom - work.top).max(600),
+    }
+}
+
+fn attach_webview(win: &Rc<Win>) -> bool {
+    let Some(environment) = environment() else {
+        return false;
+    };
+    let hwnd = win.hwnd;
+    let (tx, rx) = std::sync::mpsc::channel::<Option<ICoreWebView2Controller>>();
+    let handler = CreateCoreWebView2ControllerCompletedHandler::create(Box::new(
+        move |error_code, controller| {
+            error_code?;
+            let _ = tx.send(controller);
+            Ok(())
+        },
+    ));
+    if unsafe { environment.CreateCoreWebView2Controller(hwnd, &handler) }.is_err() {
+        capture_log("webview: controller creation call failed");
+        return false;
+    }
+    let Some(Some(controller)) = wait_with_pump(rx, std::time::Duration::from_secs(15)) else {
+        capture_log("webview: controller timeout");
+        return false;
+    };
+    unsafe {
+        let _ = controller.SetBounds(controller_bounds(win));
+        // IsVisible defaults to false: without this the browser never
+        // composites a pixel into the window.
+        let _ = controller.SetIsVisible(true);
+        // Fully transparent browser background: with no redirection bitmap
+        // the pixels outside the rounded rail and card show the desktop.
+        if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
+            let _ = controller2.SetDefaultBackgroundColor(
+                webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_COLOR {
+                    A: 0,
+                    R: 0,
+                    G: 0,
+                    B: 0,
+                },
+            );
+        }
+        if let Ok(controller3) = controller.cast::<ICoreWebView2Controller3>() {
+            let _ = controller3.SetRasterizationScale(window_scale(hwnd));
+        }
+    }
+    let Ok(webview) = (unsafe { controller.CoreWebView2() }) else {
+        capture_log("webview: CoreWebView2 getter failed");
+        return false;
+    };
+    let navigation_handler =
+        webview2_com::NavigationCompletedEventHandler::create(Box::new(move |_, _| {
+            on_page_loaded(hwnd);
+            Ok(())
+        }));
+    let message_handler =
+        webview2_com::WebMessageReceivedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else { return Ok(()) };
+            let mut raw = windows::core::PWSTR::null();
+            unsafe { args.TryGetWebMessageAsString(&mut raw) }?;
+            let message = take_pwstr(raw);
+            on_page_message(hwnd, &message);
+            Ok(())
+        }));
+    unsafe {
+        let mut token = 0i64;
+        let _ = webview.add_NavigationCompleted(&navigation_handler, &mut token);
+        let _ = webview.add_WebMessageReceived(&message_handler, &mut token);
+    }
+    *win.webview.borrow_mut() = Some(webview.clone());
+    *win.controller.borrow_mut() = Some(controller);
+    let page = inlined_page(win.surface);
+    if unsafe { webview.NavigateToString(&windows::core::HSTRING::from(page)) }.is_err() {
+        capture_log("webview: NavigateToString failed");
+        return false;
+    }
+    true
+}
+
+fn on_page_loaded(hwnd: HWND) {
+    let Some(win) = win_for(hwnd) else { return };
+    win.ready.set(true);
+    let host = HOST.with(Cell::get);
+    if !FIRST_LOAD.with(|cell| cell.replace(true)) {
+        unsafe {
+            let _ = KillTimer(Some(host), LOAD_TIMEOUT_TIMER_ID);
+            if !demo_mode() && !manager_mode() {
+                let _ = SetTimer(Some(host), IDLE_QUIT_TIMER_ID, IDLE_QUIT_MS, None);
+            }
+        }
+        if let Some(pipe) = SHARED_PIPE.lock().expect("pipe lock").clone() {
+            if let Ok(line) = serde_json::to_string(&Envelope::new(0, UiCommand::PageReady)) {
+                let _ = pipe.write_line(&line);
+            }
+        }
+    }
+    let queued = std::mem::take(&mut *win.queue.borrow_mut());
+    for script in queued {
+        execute_script(&win, &script);
+    }
+    if demo_mode() {
+        win.show_pending.set(true);
+        show_now(&win);
+        if let Some(path) = PENDING_CAPTURE.lock().expect("capture lock").clone() {
+            capture_page(hwnd, &path);
+        }
+    } else if win.surface == Surface::Manager {
+        // Shown when the page reports a painted frame (window_ready); this
+        // fallback keeps a slow page from never appearing.
+        unsafe {
+            let _ = SetTimer(Some(hwnd), MANAGER_SHOW_TIMER_ID, 1500, None);
+        }
+    }
+}
+
+/// Run one script on the page, or queue it until the page has loaded.
+fn run_on_page(win: &Win, script: String) {
+    if win.ready.get() {
+        execute_script(win, &script);
+    } else {
+        win.queue.borrow_mut().push(script);
+    }
+}
+
+fn execute_script(win: &Win, script: &str) {
+    let Some(webview) = win.webview.borrow().clone() else {
+        return;
+    };
     let handler = ExecuteScriptCompletedHandler::create(Box::new(|result, value| {
-        if result.is_ok() {
-            capture_log(&format!("script: {:.80}", value));
+        if result.is_ok() && value.starts_with("\"err") {
+            capture_log(&format!("script: {:.120}", value));
         }
         Ok(())
     }));
@@ -599,41 +757,226 @@ fn execute_script(hwnd: HWND, script: &str) {
     }
 }
 
-/// Move the companion window to an event anchor. The process is per-monitor
-/// aware: anchors and window coordinates are both physical screen pixels,
-/// no conversion needed.
-/// The on-screen position for an anchored surface of the given size,
-/// clamped into the monitor's work area. Chooser surfaces sit above the
-/// Make the companion window visible exactly once. Any incoming content
-/// counts, so a lazily or eagerly started companion never floats an empty
-/// card over the desktop, and the idle-quit timer stops once there is
-/// something to present.
-fn show_once(hwnd: HWND) {
-    unsafe {
-        let _ = KillTimer(Some(hwnd), IDLE_QUIT_TIMER_ID);
+fn apply_page_event(win: &Win, event: &UiEvent) {
+    if let Ok(payload) = serde_json::to_string(event) {
+        run_on_page(
+            win,
+            format!(
+                "(function(){{ try {{ if (!window.LINGO) return 'no-lingo'; \
+                 window.LINGO.apply({payload}); return 'applied'; }} \
+                 catch (e) {{ return 'err:' + e.message; }} }})()"
+            ),
+        );
     }
-    if !WINDOW_SHOWN.swap(true, std::sync::atomic::Ordering::Relaxed) {
-        if MANAGER_SURFACE.load(std::sync::atomic::Ordering::Relaxed) {
-            // The manager page is a normal application window: shown and
-            // activated, never topmost.
+}
+
+/// Bring a window on screen without taking focus: a chooser raised by a
+/// selection in another app (the manager's prompt editor, a document) must
+/// leave that app's caret and typing untouched, like the classic popup.
+fn show_now(win: &Win) {
+    unsafe {
+        let _ = KillTimer(Some(HOST.with(Cell::get)), IDLE_QUIT_TIMER_ID);
+        let _ = KillTimer(Some(win.hwnd), HIDE_TIMER_ID);
+    }
+    if win.surface == Surface::Manager {
+        if !win.shown.replace(true) {
             unsafe {
-                let _ = ShowWindow(hwnd, SW_SHOW);
-                let _ = windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd);
+                let _ = ShowWindow(win.hwnd, SW_SHOW);
+                let _ = SetForegroundWindow(win.hwnd);
             }
-            return;
         }
+        return;
+    }
+    let first = !win.shown.replace(true);
+    unsafe {
+        if first {
+            let _ = ShowWindow(win.hwnd, SW_SHOWNOACTIVATE);
+        }
+        let _ = SetWindowPos(
+            win.hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+        );
+    }
+}
+
+/// Take a window for a popup id: its own window, else a pooled one, else a
+/// new one.
+fn assign(id: u64) -> Option<Rc<Win>> {
+    if let Some(win) = win_by_id(id) {
+        return Some(win);
+    }
+    let idle = WINS.with(|wins| {
+        wins.borrow()
+            .iter()
+            .find(|win| win.surface != Surface::Manager && win.popup_id.get() == 0)
+            .cloned()
+    });
+    let win = match idle {
+        Some(win) => win,
+        None => create_surface(Surface::Popup)?,
+    };
+    // A pooled window may still be on screen showing its cleared page (the
+    // hide is delayed one paint); it must start hidden for its new popup.
+    unsafe {
+        let _ = KillTimer(Some(win.hwnd), HIDE_TIMER_ID);
+        if IsWindowVisible(win.hwnd).as_bool() {
+            let _ = ShowWindow(win.hwnd, SW_HIDE);
+        }
+    }
+    win.shown.set(false);
+    win.popup_id.set(id);
+    win.placement.set(None);
+    win.show_pending.set(false);
+    win.card.set(false);
+    win.cascade_from.set(None);
+    win.user_size.set(None);
+    win.resize.set(None);
+    Some(win)
+}
+
+/// Return a closed popup's window to the pool: the page clears itself, and
+/// the window hides once that cleared frame has painted.
+fn release(win: &Win) {
+    let id = win.popup_id.replace(0);
+    win.show_pending.set(false);
+    win.placement.set(None);
+    win.card.set(false);
+    win.cascade_from.set(None);
+    win.user_size.set(None);
+    win.resize.set(None);
+    unsafe {
+        let _ = KillTimer(Some(win.hwnd), SHOW_TIMER_ID);
+        let _ = KillTimer(Some(win.hwnd), RESIZE_TIMER_ID);
+    }
+    apply_page_event(win, &UiEvent::Close { id });
+    if win.shown.get() {
         unsafe {
-            let _ = ShowWindow(hwnd, SW_SHOW);
-            let _ = SetWindowPos(
-                hwnd,
-                Some(HWND_TOPMOST),
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
+            let _ = SetTimer(Some(win.hwnd), HIDE_TIMER_ID, HIDE_AFTER_MS, None);
+        }
+    }
+    // Keep a small pool; extra idle windows (and their renderers) go.
+    let idle: Vec<Rc<Win>> = WINS.with(|wins| {
+        wins.borrow()
+            .iter()
+            .filter(|other| other.surface != Surface::Manager && other.popup_id.get() == 0)
+            .cloned()
+            .collect()
+    });
+    let mut surplus = idle.len().saturating_sub(MAX_IDLE_WINDOWS);
+    for extra in idle.iter().filter(|other| other.hwnd != win.hwnd) {
+        if surplus == 0 {
+            break;
+        }
+        surplus -= 1;
+        unsafe {
+            let _ = DestroyWindow(extra.hwnd);
+        }
+    }
+}
+
+fn handle_event_line(line: &str) {
+    // A broken host connection ends with a Shutdown line (bare from the
+    // local poll loop, or enveloped from the host); every surface honours it.
+    let bare = serde_json::from_str::<UiEvent>(line).ok();
+    let enveloped = serde_json::from_str::<Envelope<UiEvent>>(line)
+        .ok()
+        .map(|envelope| envelope.payload);
+    if matches!(bare, Some(UiEvent::Shutdown)) || matches!(enveloped, Some(UiEvent::Shutdown)) {
+        capture_log("exit: shutdown event");
+        unsafe { PostQuitMessage(0) };
+        return;
+    }
+    if manager_mode() {
+        // Manager lines are opaque data snapshots: {"apply": {...}}.
+        if let Some(win) = manager_win() {
+            run_on_page(
+                &win,
+                format!(
+                    "window.LINGO_MANAGER && window.LINGO_MANAGER.applyManager({line}); undefined"
+                ),
             );
         }
+        return;
+    }
+    let Some(event) = enveloped else { return };
+    match &event {
+        UiEvent::ShowChooser {
+            id, anchor, source, ..
+        } => {
+            let Some(win) = assign(*id) else { return };
+            win.cascade_from.set(*source);
+            if !(win.shown.get() && win.card.get()) {
+                set_anchor(&win, *anchor, true);
+            }
+            win.show_pending.set(true);
+            apply_page_event(&win, &event);
+        }
+        UiEvent::ShowLoading { id, anchor, .. } => {
+            let Some(win) = assign(*id) else { return };
+            // A retry keeps a card where it is (the user may have moved it);
+            // a chooser turning into its result moves below the selection,
+            // or beside the source card it was raised from.
+            if !(win.shown.get() && win.card.get()) {
+                let beside = win
+                    .cascade_from
+                    .get()
+                    .and_then(win_by_id)
+                    .filter(|source| unsafe { IsWindowVisible(source.hwnd) }.as_bool())
+                    .map(|source| Placement::Beside {
+                        source: window_rect(source.hwnd),
+                    });
+                match beside {
+                    Some(placement) => win.placement.set(Some(placement)),
+                    None => set_anchor(&win, *anchor, false),
+                }
+            }
+            win.card.set(true);
+            win.show_pending.set(true);
+            apply_page_event(&win, &event);
+        }
+        UiEvent::LocalError {
+            id,
+            anchor: Some(anchor),
+            ..
+        } => {
+            let Some(win) = assign(*id) else { return };
+            if !(win.shown.get() && win.card.get()) {
+                set_anchor(&win, *anchor, false);
+            }
+            win.card.set(true);
+            win.show_pending.set(true);
+            apply_page_event(&win, &event);
+        }
+        UiEvent::Close { id } => {
+            if let Some(win) = win_by_id(*id) {
+                capture_log("close: releasing window");
+                release(&win);
+            }
+        }
+        UiEvent::Delta { id, .. }
+        | UiEvent::Completed { id, .. }
+        | UiEvent::LocalError { id, .. }
+        | UiEvent::SetPinned { id, .. } => {
+            if let Some(win) = win_by_id(*id) {
+                apply_page_event(&win, &event);
+            }
+        }
+        UiEvent::Shutdown => {}
+    }
+}
+
+fn set_anchor(win: &Win, anchor: Anchor, above: bool) {
+    if anchor.x != 0 || anchor.y != 0 {
+        win.placement.set(Some(Placement::Anchor {
+            x: anchor.x,
+            y: anchor.y,
+            above,
+        }));
     }
 }
 
@@ -664,501 +1007,451 @@ fn anchored_position(
     (x, y)
 }
 
-fn handle_event_line(hwnd: HWND, line: &str) {
-    // A broken host connection ends with a Shutdown line; every surface must
-    // honor it, or an orphaned companion floats a window nobody owns. The
-    // line may be a bare UiEvent (the local poll loop's own farewell) or a
-    // sequenced Envelope (the host's explicit shutdown).
-    let bare = serde_json::from_str::<UiEvent>(line).ok();
-    let enveloped = serde_json::from_str::<Envelope<UiEvent>>(line)
-        .ok()
-        .map(|envelope| envelope.payload);
-    if matches!(bare, Some(UiEvent::Shutdown)) || matches!(enveloped, Some(UiEvent::Shutdown)) {
-        capture_log("exit: shutdown event");
+/// Beside a source card: right of it when it fits, else left, top-aligned,
+/// clamped into the work area (the classic cascade).
+fn beside_position(
+    source: RECT,
+    width: i32,
+    height: i32,
+    gap: i32,
+    info: &MONITORINFO,
+) -> (i32, i32) {
+    let work = info.rcWork;
+    let mut x = source.right + gap;
+    if x + width > work.right {
+        x = source.left - gap - width;
+    }
+    let x = x.clamp(work.left, (work.right - width).max(work.left));
+    let y = source
+        .top
+        .clamp(work.top, (work.bottom - height).max(work.top));
+    (x, y)
+}
+
+#[derive(serde::Deserialize)]
+struct ContentSize {
+    w: f64,
+    h: f64,
+}
+
+#[derive(serde::Deserialize)]
+struct BeginResize {
+    edges: u8,
+}
+
+/// A command posted by the page bridge (`window.chrome.webview.postMessage`).
+#[derive(Clone, Debug, serde::Deserialize)]
+#[serde(tag = "cmd", rename_all = "snake_case")]
+enum PageCommand {
+    Copy {
+        text: String,
+    },
+    Retry,
+    Close,
+    Pin {
+        pinned: bool,
+    },
+    SelectProfile {
+        index: usize,
+    },
+    SelfTranslate {
+        text: String,
+        /// Selection rectangle in page CSS pixels.
+        #[serde(default)]
+        x: Option<f64>,
+        #[serde(default)]
+        y: Option<f64>,
+    },
+}
+
+impl PageCommand {
+    fn into_protocol(self, id: u64, anchor: Option<Anchor>) -> UiCommand {
+        match self {
+            Self::Copy { text } => UiCommand::Copy { id, text },
+            Self::Retry => UiCommand::Retry { id },
+            Self::Close => UiCommand::UserClose { id },
+            Self::Pin { pinned } => UiCommand::TogglePin { id, pinned },
+            Self::SelectProfile { index } => UiCommand::SelectProfile { id, index },
+            Self::SelfTranslate { text, .. } => UiCommand::SelfTranslate { id, text, anchor },
+        }
+    }
+}
+
+fn send_to_host(command: UiCommand) {
+    if let Some(pipe) = SHARED_PIPE.lock().expect("pipe lock").clone() {
+        if let Ok(line) = serde_json::to_string(&Envelope::new(0, command)) {
+            let _ = pipe.write_line(&line);
+        }
+    }
+}
+
+fn on_page_message(hwnd: HWND, message: &str) {
+    let Some(win) = win_for(hwnd) else { return };
+    if let Ok(size) = serde_json::from_str::<ContentSize>(message) {
+        on_content_size(&win, size);
+        return;
+    }
+    if message.contains("\"begin_drag\"") {
+        // The drag owns the position from here on: a kept anchor would snap
+        // the card back to the selection on the next size report.
+        win.placement.set(None);
+        let mut point = POINT::default();
+        let _ = unsafe { GetCursorPos(&mut point) };
+        let lparam = (((point.y as u32) & 0xffff) << 16 | ((point.x as u32) & 0xffff)) as i32;
         unsafe {
-            let _ = DestroyWindow(hwnd);
-        };
+            let _ = ReleaseCapture();
+            let _ = PostMessageW(
+                Some(hwnd),
+                WM_NCLBUTTONDOWN,
+                WPARAM(HTCAPTION as usize),
+                LPARAM(lparam as isize),
+            );
+        }
         return;
     }
-    if MANAGER_SURFACE.load(std::sync::atomic::Ordering::Relaxed) {
-        // Manager lines are opaque data snapshots: {"apply": {...}}.
-        execute_script(
-            hwnd,
-            &format!(
-                // The manager bridge exports LINGO_MANAGER, not LINGO; the
-                // wrong name silently dropped every config snapshot and the
-                // page kept its mockup defaults.
-                "window.LINGO_MANAGER && window.LINGO_MANAGER.applyManager({}); undefined",
-                line
-            ),
-        );
+    if message.contains("\"begin_resize\"") {
+        if let Ok(resize) = serde_json::from_str::<BeginResize>(message) {
+            begin_resize(&win, resize.edges);
+        }
         return;
     }
-    let Some(event) = enveloped else {
+    if win.surface == Surface::Manager {
+        // Manager messages can carry an API key being saved: never log them.
+        if message.contains("\"window_minimize\"") {
+            unsafe {
+                let _ = ShowWindow(hwnd, windows::Win32::UI::WindowsAndMessaging::SW_MINIMIZE);
+            }
+            return;
+        }
+        if message.contains("\"window_close\"") {
+            // Ending the page ends the manager (it watches this process).
+            unsafe { PostQuitMessage(0) };
+            return;
+        }
+        if message.contains("\"window_ready\"") {
+            unsafe {
+                let _ = KillTimer(Some(hwnd), MANAGER_SHOW_TIMER_ID);
+            }
+            show_now(&win);
+            return;
+        }
+        if let Some(pipe) = SHARED_PIPE.lock().expect("pipe lock").clone() {
+            let _ = pipe.write_line(message);
+        }
+        return;
+    }
+    let Ok(command) = serde_json::from_str::<PageCommand>(message) else {
         return;
     };
-    use std::sync::atomic::Ordering::Relaxed;
-    // The companion is reused across requests, so its window must follow the
-    // selection: chooser events anchor above it, translation events below.
-    // Only events that START a presentation may (re)show the window; a late
-    // delta, result, or pin update must never resurrect a dismissed surface.
-    let placement = match &event {
-        UiEvent::ShowChooser {
-            anchor, keeps_card, ..
-        } => {
-            capture_log(&format!("chooser: keeps_card={keeps_card}"));
-            let shown = WINDOW_SHOWN.load(Relaxed) && SHOW_PENDING.load(Relaxed);
-            if *keeps_card && shown {
-                // The rail floats over the card being read: grow upward and
-                // leave the card where it is.
-                CHOOSER_OVER_CARD.store(true, Relaxed);
-                let mut rect = RECT::default();
-                let _ = unsafe { GetWindowRect(hwnd, &mut rect) };
-                Some(Placement::KeepBottom {
-                    left: rect.left,
-                    bottom: rect.bottom,
-                })
-            } else {
-                CHOOSER_OVER_CARD.store(false, Relaxed);
-                Some(Placement::Anchor {
-                    x: anchor.x,
-                    y: anchor.y,
-                    above: true,
-                })
-            }
-        }
-        UiEvent::ShowLoading { id, anchor, .. } => {
-            CARD_ID.store(*id, Relaxed);
-            CHOOSER_OVER_CARD.store(false, Relaxed);
-            Some(Placement::Anchor {
-                x: anchor.x,
-                y: anchor.y,
-                above: false,
-            })
-        }
-        UiEvent::LocalError {
-            anchor: Some(anchor),
+    capture_log(&format!("fwd: {:.60}", message));
+    let id = win.popup_id.get();
+    if id == 0 {
+        return;
+    }
+    let anchor = match &command {
+        PageCommand::SelfTranslate {
+            x: Some(x),
+            y: Some(y),
             ..
         } => {
-            CHOOSER_OVER_CARD.store(false, Relaxed);
-            Some(Placement::Anchor {
-                x: anchor.x,
-                y: anchor.y,
-                above: false,
+            let scale = window_scale(hwnd);
+            let rect = window_rect(hwnd);
+            Some(Anchor {
+                x: rect.left + (x * scale).round() as i32,
+                y: rect.top + (y * scale).round() as i32,
             })
         }
         _ => None,
     };
-    if let Some(placement) = placement {
-        SHOW_PENDING.store(true, Relaxed);
-        let usable = !matches!(placement, Placement::Anchor { x: 0, y: 0, .. });
-        if usable {
-            capture_log(&format!("placement: {placement:?}"));
-            // Deferred: applied after the content-height resize settles.
-            *PENDING_ANCHOR.lock().expect("anchor lock") = Some(placement);
-        }
-    }
-    match event {
-        UiEvent::Shutdown => {
-            unsafe {
-                let _ = DestroyWindow(hwnd);
-            };
-        }
-        UiEvent::Close { id } => {
-            if CHOOSER_OVER_CARD.load(Relaxed) && id != CARD_ID.load(Relaxed) {
-                // Only the rail over the kept card was retired (Esc, or a
-                // profile pick that is about to replace the card): the card
-                // stays on screen, exactly like the classic source popup.
-                capture_log("close: chooser over card");
-                CHOOSER_OVER_CARD.store(false, Relaxed);
-                apply_page_event(hwnd, &UiEvent::Close { id });
-                return;
-            }
-            capture_log("close: hiding window");
-            hide_surface(hwnd);
-            apply_page_event(hwnd, &UiEvent::Close { id });
-        }
-        // Everything else goes to the page bridge; the mockup stays the
-        // presentation and the host stays stateless.
-        event => apply_page_event(hwnd, &event),
+    let close = matches!(command, PageCommand::Close);
+    send_to_host(command.into_protocol(id, anchor));
+    if close {
+        // Close at once; the resident's Close for this id then finds the
+        // window already released.
+        release(&win);
     }
 }
 
-/// Hide the companion window and forget any pending presentation: the next
-/// presentation event (a new selection) re-shows it, and a size report the
-/// page scheduled before the dismissal can no longer bring it back.
-fn hide_surface(hwnd: HWND) {
-    use std::sync::atomic::Ordering::Relaxed;
-    WINDOW_SHOWN.store(false, Relaxed);
-    SHOW_PENDING.store(false, Relaxed);
-    CHOOSER_OVER_CARD.store(false, Relaxed);
-    *PENDING_ANCHOR.lock().expect("anchor lock") = None;
-    unsafe {
-        let _ = ShowWindow(hwnd, SW_HIDE);
-    };
-}
-
-fn apply_page_event(hwnd: HWND, event: &UiEvent) {
-    if let Ok(payload) = serde_json::to_string(event) {
-        execute_script(
-            hwnd,
-            &format!(
-                "(function(){{ try {{ if (!window.LINGO) return 'no-lingo'; \
-                 window.LINGO.apply({payload}); return 'applied'; }} \
-                 catch (e) {{ return 'err:' + e.message; }} }})()",
-                payload = payload
-            ),
-        );
+fn on_content_size(win: &Win, size: ContentSize) {
+    if win.surface == Surface::Manager {
+        return;
     }
-}
-
-fn create_webview(
-    hwnd: HWND,
-    surface: Surface,
-    pipe: Option<pipe_connection::Pipe>,
-    capture: Option<String>,
-) -> bool {
-    let (env_tx, env_rx) = std::sync::mpsc::channel::<Option<ICoreWebView2Environment>>();
-    let env_handler = CreateCoreWebView2EnvironmentCompletedHandler::create(Box::new(
-        move |error_code, environment| {
-            error_code?;
-            let _ = env_tx.send(environment);
-            Ok(())
-        },
-    ));
-    let user_data = user_data_dir();
-    let result = unsafe {
-        CreateCoreWebView2EnvironmentWithOptions(
-            None,
-            PCWSTR(user_data.as_ptr()),
-            None,
-            &env_handler,
-        )
-    };
-    if result.is_err() {
-        capture_log("webview: environment creation call failed");
-        return false;
+    // A size report scheduled before a dismissal (the page re-reports after
+    // 120/400 ms and on font load) must not move or re-show the window.
+    if !win.show_pending.get() && !demo_mode() {
+        return;
     }
-    // WebView2 completions are delivered through this thread's message
-    // loop, so the wait must pump messages instead of blocking.
-    let Some(Some(environment)) = wait_with_pump(env_rx, std::time::Duration::from_secs(15)) else {
-        capture_log("webview: environment timeout");
-        return false;
+    let hwnd = win.hwnd;
+    let scale = window_scale(hwnd);
+    let rect = window_rect(hwnd);
+    let info = monitor_info_at(POINT {
+        x: rect.left,
+        y: rect.top,
+    });
+    let max_h = (info.rcWork.bottom - info.rcWork.top - 20).max(200);
+    let (width, height) = match win.user_size.get() {
+        // The user sized this card; the page fits the card to it.
+        Some(size) => size,
+        None => (
+            ((size.w * scale).round() as i32).clamp(48, 3000),
+            ((size.h * scale).round() as i32).clamp(48, max_h),
+        ),
     };
-
-    let (ctl_tx, ctl_rx) = std::sync::mpsc::channel::<Option<ICoreWebView2Controller>>();
-    let ctl_handler = CreateCoreWebView2ControllerCompletedHandler::create(Box::new(
-        move |error_code, controller| {
-            error_code?;
-            let _ = ctl_tx.send(controller);
-            Ok(())
-        },
-    ));
-    if unsafe { environment.CreateCoreWebView2Controller(hwnd, &ctl_handler) }.is_err() {
-        capture_log("webview: controller creation call failed");
-        return false;
-    }
-    let Some(Some(controller)) = wait_with_pump(ctl_rx, std::time::Duration::from_secs(15)) else {
-        capture_log("webview: controller timeout");
-        return false;
+    let (x, y) = match win.placement.get() {
+        Some(Placement::Anchor { x, y, above }) => {
+            anchored_position((x, y), above, width, height, &info)
+        }
+        Some(Placement::Beside { source }) => {
+            beside_position(source, width, height, (8.0 * scale).round() as i32, &info)
+        }
+        None => (rect.left, rect.top),
     };
-    unsafe {
-        let mut rect = RECT::default();
-        let _ = GetClientRect(hwnd, &mut rect);
-        let _ = controller.SetBounds(rect);
-        // The controller's IsVisible defaults to false: without this call the
-        // browser never composites a single pixel into the window — the
-        // window shows (and blocks clicks) while the page stays invisible.
-        let _ = controller.SetIsVisible(true);
-        // Fully transparent browser background: with the window's
-        // redirection bitmap disabled (WS_EX_NOREDIRECTIONBITMAP) the pixels
-        // outside the rounded rail and card show the desktop underneath.
-        if let Ok(controller2) = controller.cast::<ICoreWebView2Controller2>() {
-            let _ = controller2.SetDefaultBackgroundColor(
-                webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_COLOR {
-                    A: 0,
-                    R: 0,
-                    G: 0,
-                    B: 0,
-                },
+    let same = width == rect.right - rect.left
+        && height == rect.bottom - rect.top
+        && x == rect.left
+        && y == rect.top;
+    if !same {
+        unsafe {
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_TOPMOST),
+                x,
+                y,
+                width,
+                height,
+                SWP_NOACTIVATE,
             );
         }
-        // Rasterize the page at the monitor's device scale: with per-monitor
-        // awareness the webview's default rasterization is 1.0, so at 250%
-        // the card rendered as a narrow strip inside the window.
-        if let Ok(controller3) = controller.cast::<ICoreWebView2Controller3>() {
-            let scale = window_scale(hwnd);
-            capture_log(&format!("webview: rasterization scale {scale}"));
-            let _ = controller3.SetRasterizationScale(scale);
-        }
     }
-    let Ok(webview) = (unsafe { controller.CoreWebView2() }) else {
-        capture_log("webview: CoreWebView2 getter failed");
-        return false;
-    };
-
-    // On page load, tell the host it can replay any event that arrived while
-    // the page was still navigating; in dev capture mode also save a PNG.
-    let navigation_pipe = pipe.clone();
-    let navigation_handler =
-        webview2_com::NavigationCompletedEventHandler::create(Box::new(move |result, _| {
-            let _ = result;
-            capture_log("navigation completed");
-            unsafe {
-                let _ = KillTimer(Some(hwnd), LOAD_TIMEOUT_TIMER_ID);
-            }
-            // The window becomes visible only when content arrives (see
-            // show_once), so an eagerly started companion never floats an
-            // empty card over the desktop. Demo mode shows immediately: the
-            // dev preview has no host events to wait for.
-            if DEMO_MODE.load(std::sync::atomic::Ordering::Relaxed) {
-                show_once(hwnd);
-            } else if MANAGER_SURFACE.load(std::sync::atomic::Ordering::Relaxed) {
-                // The manager surface has no content-size negotiation: the
-                // resident already positioned it over the native manager's
-                // rect, so show as soon as the page is ready.
-                show_once(hwnd);
-            } else {
-                // Idle kill: a companion that loaded but never received
-                // content must not linger forever; the host restarts it on
-                // demand.
-                unsafe {
-                    let _ = SetTimer(Some(hwnd), IDLE_QUIT_TIMER_ID, IDLE_QUIT_MS, None);
-                }
-            }
-            if let Some(pipe) = &navigation_pipe {
-                if let Ok(line) = serde_json::to_string(&Envelope::new(0, UiCommand::PageReady)) {
-                    let _ = pipe.write_line(&line);
-                }
-            }
-            if let Some(path) = &capture {
-                capture_page(hwnd, path);
-                // The preview write completes asynchronously; the completion
-                // handler inside capture_page closes the window.
-            }
-            Ok(())
-        }));
+    if win.shown.get() {
+        return;
+    }
+    // Hidden: appear once the reports go quiet, i.e. after the last layout
+    // the page settles on, never at an intermediate size or spot.
     unsafe {
-        let mut token = 0i64;
-        let _ = webview.add_NavigationCompleted(&navigation_handler, &mut token);
+        let _ = SetTimer(Some(hwnd), SHOW_TIMER_ID, SHOW_SETTLE_MS, None);
     }
-    let page = inlined_page(surface);
-    if unsafe { webview.NavigateToString(&windows::core::HSTRING::from(page)) }.is_err() {
-        capture_log("webview: NavigateToString failed");
-        return false;
-    }
-    capture_log("webview: navigation started");
-    // Page buttons post {"cmd": ...} messages; forward them to the resident.
-    let message_pipe = pipe.clone();
-    let message_handler =
-        webview2_com::WebMessageReceivedEventHandler::create(Box::new(move |_, args| {
-            let Some(args) = args else { return Ok(()) };
-            let mut raw = windows::core::PWSTR::null();
-            unsafe { args.TryGetWebMessageAsString(&mut raw) }?;
-            let message = take_pwstr(raw);
-            // The page reports its visible content height after every render;
-            // the host shrinks or grows the window so the floating card never
-            // sits inside an oversized slab that blocks the desktop.
-            #[derive(serde::Deserialize)]
-            struct ContentSize {
-                w: f64,
-                h: f64,
-            }
-            if let Ok(size) = serde_json::from_str::<ContentSize>(&message) {
-                // A size report scheduled before a dismissal (the page
-                // re-reports after 120/400 ms and on font load) must not
-                // resize or re-show a surface the resident already closed.
-                if !SHOW_PENDING.load(std::sync::atomic::Ordering::Relaxed)
-                    && !MANAGER_SURFACE.load(std::sync::atomic::Ordering::Relaxed)
-                    && !DEMO_MODE.load(std::sync::atomic::Ordering::Relaxed)
-                {
-                    return Ok(());
-                }
-                let scale = window_scale(hwnd);
-                let mut rect = RECT::default();
-                let _ = unsafe { GetWindowRect(hwnd, &mut rect) };
-                let width = ((size.w * scale).round() as i32).clamp(48, 3000);
-                // Clamp the height to the window's monitor work area: a long
-                // analysis scrolls inside the card instead of running past
-                // the screen edge.
-                let mut info = MONITORINFO {
-                    cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-                    ..Default::default()
-                };
-                let _ = unsafe {
-                    GetMonitorInfoW(
-                        MonitorFromPoint(
-                            POINT {
-                                x: rect.left,
-                                y: rect.top,
-                            },
-                            MONITOR_DEFAULTTONEAREST,
-                        ),
-                        &mut info,
-                    )
-                };
-                let max_h = (info.rcWork.bottom - info.rcWork.top - 20).max(200);
-                let height = ((size.h * scale).round() as i32).clamp(48, max_h);
-                // Position: the pending anchor owns it, computed with the
-                // NEW size so the clamp uses the settled geometry. The anchor
-                // is re-applied on every settled report — the first one races
-                // the height change; the last one lands the window correctly.
-                let pending = *PENDING_ANCHOR.lock().expect("anchor lock");
-                let (x, y) = match pending {
-                    Some(Placement::Anchor { x, y, above }) => {
-                        anchored_position((x, y), above, width, height, &info)
-                    }
-                    Some(Placement::KeepBottom { left, bottom }) => {
-                        let top = (bottom - height).max(info.rcWork.top);
-                        (left, top)
-                    }
-                    None => (rect.left, rect.top),
-                };
-                // No-op guard: the settled re-posts repeat the same size AND
-                // position — resizing/moving a live WebView2 window forces a
-                // full recomposite, and repeated identical geometry is the
-                // flicker the user sees. Only apply real changes, in ONE call
-                // (a separate resize then move shows as a visible two-step).
-                let same = width == rect.right - rect.left
-                    && height == rect.bottom - rect.top
-                    && x == rect.left
-                    && y == rect.top;
-                if !same {
-                    unsafe {
-                        let _ = SetWindowPos(
-                            hwnd,
-                            Some(HWND_TOPMOST),
-                            x,
-                            y,
-                            width,
-                            height,
-                            SWP_NOACTIVATE,
-                        );
-                    }
-                }
-                // The geometry is settled: this is the moment the window may
-                // appear — showing earlier (on the raw event) would flash it
-                // at the pre-anchor position and jump.
-                show_once(hwnd);
-                return Ok(());
-            }
-            // Manager messages can carry an API key being saved; never log
-            // their content.
-            if !MANAGER_SURFACE.load(std::sync::atomic::Ordering::Relaxed) {
-                capture_log(&format!("fwd: {:.90}", message));
-            }
-            // Window controls of the borderless manager page are handled
-            // here, not by the host.
-            if MANAGER_SURFACE.load(std::sync::atomic::Ordering::Relaxed) {
-                if message.contains("\"window_minimize\"") {
-                    unsafe {
-                        let _ =
-                            ShowWindow(hwnd, windows::Win32::UI::WindowsAndMessaging::SW_MINIMIZE);
-                    }
-                    return Ok(());
-                }
-                if message.contains("\"window_close\"") {
-                    // Ending the page ends the manager (it watches this
-                    // process), like closing the native manager window.
-                    unsafe {
-                        let _ = DestroyWindow(hwnd);
-                    }
-                    return Ok(());
-                }
-            }
-            // Drag hand-off (both surfaces): the page posts begin_drag once
-            // its press-move threshold is crossed; the host releases the
-            // webview's mouse capture and hands the move loop to Windows via
-            // the HTCAPTION modal drag, which follows the cursor and swallows
-            // the mouseup (a clean press-release stays a click).
-            #[derive(serde::Deserialize)]
-            struct BeginDrag {}
-            if serde_json::from_str::<BeginDrag>(&message)
-                .map(|_| message.contains("begin_drag"))
-                .unwrap_or(false)
-            {
-                // The drag owns the position from here: a kept anchor would
-                // re-apply on the next settled report and snap the card back
-                // to the selection mid-drag.
-                *PENDING_ANCHOR.lock().expect("anchor lock") = None;
-                let mut pt = POINT::default();
-                let _ = unsafe { GetCursorPos(&mut pt) };
-                let lparam = (((pt.y as u32) & 0xffff) << 16 | ((pt.x as u32) & 0xffff)) as i32;
-                unsafe {
-                    let _ = ReleaseCapture();
-                    let _ = PostMessageW(
-                        Some(hwnd),
-                        WM_NCLBUTTONDOWN,
-                        WPARAM(HTCAPTION as usize),
-                        LPARAM(lparam as isize),
-                    );
-                }
-                return Ok(());
-            }
-            if MANAGER_SURFACE.load(std::sync::atomic::Ordering::Relaxed) {
-                // Manager page commands are forwarded verbatim.
-                if let Some(pipe) = &message_pipe {
-                    let _ = pipe.write_line(&message);
-                }
-            } else if let Ok(command) = serde_json::from_str::<PageCommand>(&message) {
-                // The page's Close button is a user close: hide the window
-                // exactly like Esc does, in addition to notifying the host so
-                // it can retire its native bookkeeping popup.
-                let is_close = matches!(command, PageCommand::Close);
-                // The resident parses Envelope<UiCommand> (seq + payload), so
-                // the bare command must be wrapped — an unwrapped command is
-                // silently dropped by the resident's parser.
-                let command = command.into_protocol(0);
-                if let Ok(line) = serde_json::to_string(&Envelope::new(0, command)) {
-                    if let Some(pipe) = &message_pipe {
-                        let _ = pipe.write_line(&line);
-                    }
-                }
-                if is_close && !CHOOSER_OVER_CARD.load(std::sync::atomic::Ordering::Relaxed) {
-                    hide_surface(hwnd);
-                }
-            }
-            Ok(())
-        }));
-    unsafe {
-        let mut token = 0i64;
-        let _ = webview.add_WebMessageReceived(&message_handler, &mut token);
-    }
-    unsafe {
-        SetWindowLongPtrW(
-            hwnd,
-            WEBVIEW_SLOT,
-            Box::into_raw(Box::new(webview)) as isize,
-        );
-        // Keep the controller alive for the window's lifetime; released on
-        // WM_DESTROY alongside the webview.
-        SetWindowLongPtrW(
-            hwnd,
-            CONTROLLER_SLOT,
-            Box::into_raw(Box::new(controller)) as isize,
-        );
-    }
-    true
 }
 
-fn drop_webview(hwnd: HWND) {
-    // Recover each slot with its real type so the COM reference is released
-    // and the allocation is freed with the layout it was created with.
-    let raw = unsafe { GetWindowLongPtrW(hwnd, WEBVIEW_SLOT) };
-    if raw != 0 {
+fn begin_resize(win: &Win, edges: u8) {
+    if edges == 0 || win.surface == Surface::Manager {
+        return;
+    }
+    let mut cursor = POINT::default();
+    let _ = unsafe { GetCursorPos(&mut cursor) };
+    win.placement.set(None);
+    win.resize.set(Some(Resize {
+        edges,
+        cursor,
+        rect: window_rect(win.hwnd),
+    }));
+    unsafe {
+        let _ = ReleaseCapture();
+        let _ = SetTimer(Some(win.hwnd), RESIZE_TIMER_ID, 15, None);
+    }
+}
+
+fn resize_step(win: &Win) {
+    let Some(resize) = win.resize.get() else {
         unsafe {
-            SetWindowLongPtrW(hwnd, WEBVIEW_SLOT, 0);
-            drop(Box::from_raw(raw as *mut ICoreWebView2));
+            let _ = KillTimer(Some(win.hwnd), RESIZE_TIMER_ID);
+        }
+        return;
+    };
+    let pressed = unsafe { GetAsyncKeyState(VK_LBUTTON.0 as i32) } as u16 & 0x8000 != 0;
+    if !pressed {
+        win.resize.set(None);
+        unsafe {
+            let _ = KillTimer(Some(win.hwnd), RESIZE_TIMER_ID);
+        }
+        return;
+    }
+    let cursor_id = match resize.edges {
+        1 | 4 => IDC_SIZEWE,
+        2 | 8 => IDC_SIZENS,
+        3 | 12 => IDC_SIZENWSE,
+        _ => IDC_SIZENESW,
+    };
+    if let Ok(cursor) = unsafe { LoadCursorW(None, cursor_id) } {
+        unsafe {
+            let _ = SetCursor(Some(cursor));
         }
     }
-    let raw = unsafe { GetWindowLongPtrW(hwnd, CONTROLLER_SLOT) };
-    if raw != 0 {
-        unsafe {
-            SetWindowLongPtrW(hwnd, CONTROLLER_SLOT, 0);
-            let controller = Box::from_raw(raw as *mut ICoreWebView2Controller);
-            let _ = controller.Close();
-            drop(controller);
+    let mut point = POINT::default();
+    let _ = unsafe { GetCursorPos(&mut point) };
+    let (dx, dy) = (point.x - resize.cursor.x, point.y - resize.cursor.y);
+    let scale = window_scale(win.hwnd);
+    let min_w = ((MIN_CARD_W + BODY_PAD_W) * scale).round() as i32;
+    let min_h = ((MIN_CARD_H + BODY_PAD_H) * scale).round() as i32;
+    let mut rect = resize.rect;
+    if resize.edges & 1 != 0 {
+        rect.left = (rect.left + dx).min(rect.right - min_w);
+    }
+    if resize.edges & 4 != 0 {
+        rect.right = (rect.right + dx).max(rect.left + min_w);
+    }
+    if resize.edges & 2 != 0 {
+        rect.top = (rect.top + dy).min(rect.bottom - min_h);
+    }
+    if resize.edges & 8 != 0 {
+        rect.bottom = (rect.bottom + dy).max(rect.top + min_h);
+    }
+    let (width, height) = (rect.right - rect.left, rect.bottom - rect.top);
+    if win.user_size.get() == Some((width, height)) && window_rect(win.hwnd).left == rect.left {
+        return;
+    }
+    win.user_size.set(Some((width, height)));
+    unsafe {
+        let _ = SetWindowPos(
+            win.hwnd,
+            None,
+            rect.left,
+            rect.top,
+            width,
+            height,
+            SWP_NOZORDER | SWP_NOACTIVATE,
+        );
+    }
+    let css_w = (width as f64 / scale - BODY_PAD_W).floor();
+    let css_h = (height as f64 / scale - BODY_PAD_H).floor();
+    execute_script(
+        win,
+        &format!("window.LINGO && window.LINGO.userSize({css_w}, {css_h}); undefined"),
+    );
+}
+
+unsafe extern "system" fn surface_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match message {
+        WM_TIMER => {
+            let Some(win) = win_for(hwnd) else {
+                return LRESULT(0);
+            };
+            match wparam.0 {
+                SHOW_TIMER_ID => {
+                    unsafe {
+                        let _ = KillTimer(Some(hwnd), SHOW_TIMER_ID);
+                    }
+                    if win.show_pending.get() {
+                        show_now(&win);
+                    }
+                }
+                HIDE_TIMER_ID => {
+                    unsafe {
+                        let _ = KillTimer(Some(hwnd), HIDE_TIMER_ID);
+                    }
+                    if win.popup_id.get() == 0 {
+                        win.shown.set(false);
+                        unsafe {
+                            let _ = ShowWindow(hwnd, SW_HIDE);
+                        }
+                    }
+                }
+                RESIZE_TIMER_ID => resize_step(&win),
+                MANAGER_SHOW_TIMER_ID => {
+                    unsafe {
+                        let _ = KillTimer(Some(hwnd), MANAGER_SHOW_TIMER_ID);
+                    }
+                    show_now(&win);
+                }
+                _ => {}
+            }
+            LRESULT(0)
         }
+        WM_SIZE => {
+            // The manager page fills its window; popups keep their fixed,
+            // monitor-sized viewport (see controller_bounds).
+            if let Some(win) = win_for(hwnd) {
+                if win.surface == Surface::Manager {
+                    if let Some(controller) = win.controller.borrow().clone() {
+                        unsafe {
+                            let _ = controller.SetBounds(controller_bounds(&win));
+                        }
+                    }
+                }
+            }
+            LRESULT(0)
+        }
+        WM_DPICHANGED => {
+            // Moving to a monitor with another scale: rasterize for it.
+            if let Some(win) = win_for(hwnd) {
+                if let Some(controller) = win.controller.borrow().clone() {
+                    if let Ok(controller3) = controller.cast::<ICoreWebView2Controller3>() {
+                        let _ = unsafe { controller3.SetRasterizationScale(window_scale(hwnd)) };
+                    }
+                    let _ = unsafe { controller.SetBounds(controller_bounds(&win)) };
+                }
+            }
+            LRESULT(0)
+        }
+        WM_DESTROY => {
+            let removed = WINS.with(|wins| {
+                let mut wins = wins.borrow_mut();
+                wins.iter()
+                    .position(|win| win.hwnd == hwnd)
+                    .map(|index| wins.remove(index))
+            });
+            if let Some(win) = removed {
+                if let Some(controller) = win.controller.borrow_mut().take() {
+                    let _ = unsafe { controller.Close() };
+                }
+                win.webview.borrow_mut().take();
+                if win.surface == Surface::Manager {
+                    // The manager page is the manager window: closing it
+                    // ends the process (the manager then exits too).
+                    unsafe { PostQuitMessage(0) };
+                }
+            }
+            LRESULT(0)
+        }
+        _ => unsafe { DefWindowProcW(hwnd, message, wparam, lparam) },
+    }
+}
+
+unsafe extern "system" fn host_proc(
+    hwnd: HWND,
+    message: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    match message {
+        WM_APP_EVENT => {
+            let raw = lparam.0 as *mut String;
+            if !raw.is_null() {
+                let line = unsafe { Box::from_raw(raw) };
+                handle_event_line(&line);
+            }
+            LRESULT(0)
+        }
+        WM_TIMER => {
+            match wparam.0 {
+                DEMO_QUIT_TIMER_ID => {
+                    unsafe {
+                        let _ = KillTimer(Some(hwnd), DEMO_QUIT_TIMER_ID);
+                        let _ = SetTimer(Some(hwnd), DEMO_FORCE_QUIT_TIMER_ID, 4000, None);
+                    }
+                    if PENDING_CAPTURE.lock().expect("capture lock").is_none() {
+                        unsafe { PostQuitMessage(0) };
+                    }
+                }
+                DEMO_FORCE_QUIT_TIMER_ID => unsafe { PostQuitMessage(0) },
+                LOAD_TIMEOUT_TIMER_ID => {
+                    capture_log("timer: load timeout fired");
+                    unsafe { PostQuitMessage(0) };
+                }
+                IDLE_QUIT_TIMER_ID => {
+                    capture_log("timer: idle quit fired");
+                    unsafe { PostQuitMessage(0) };
+                }
+                _ => {}
+            }
+            LRESULT(0)
+        }
+        _ => unsafe { DefWindowProcW(hwnd, message, wparam, lparam) },
     }
 }
 
@@ -1173,31 +1466,6 @@ fn user_data_dir() -> Vec<u16> {
         .unwrap_or_else(|| std::env::temp_dir().join("SelectionTranslateWebview"));
     let _ = std::fs::create_dir_all(&base);
     format!("{}\0", base.display()).encode_utf16().collect()
-}
-
-/// A command posted by the page bridge (`window.chrome.webview.postMessage`).
-#[derive(Clone, Debug, serde::Deserialize)]
-#[serde(tag = "cmd", rename_all = "snake_case")]
-enum PageCommand {
-    Copy { text: String },
-    Retry,
-    Close,
-    Pin { pinned: bool },
-    SelectProfile { index: usize },
-    SelfTranslate { text: String },
-}
-
-impl PageCommand {
-    fn into_protocol(self, id: u64) -> UiCommand {
-        match self {
-            Self::Copy { text } => UiCommand::Copy { id, text },
-            Self::Retry => UiCommand::Retry { id },
-            Self::Close => UiCommand::UserClose { id },
-            Self::Pin { pinned } => UiCommand::TogglePin { id, pinned },
-            Self::SelectProfile { index } => UiCommand::SelectProfile { id, index },
-            Self::SelfTranslate { text } => UiCommand::SelfTranslate { id, text },
-        }
-    }
 }
 
 fn take_pwstr(raw: windows::core::PWSTR) -> String {
@@ -1288,12 +1556,10 @@ fn capture_page(hwnd: HWND, path: &str) {
     use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG;
     use windows::Win32::System::Com::{STGM_CREATE, STGM_READWRITE};
     use windows::Win32::UI::Shell::SHCreateStreamOnFileEx;
-    let raw = unsafe { GetWindowLongPtrW(hwnd, WEBVIEW_SLOT) } as *mut ICoreWebView2;
-    if raw.is_null() {
-        capture_log("capture: no webview slot");
+    let Some(webview) = win_for(hwnd).and_then(|win| win.webview.borrow().clone()) else {
+        capture_log("capture: no webview");
         return;
-    }
-    let webview = unsafe { &*raw };
+    };
     let wide: Vec<u16> = path.encode_utf16().chain(Some(0)).collect();
     let Ok(stream) = (unsafe {
         SHCreateStreamOnFileEx(
@@ -1477,7 +1743,9 @@ mod pipe_thread {
                     }
                 }
                 pending.drain(..consumed);
-                if pending.len() > 64 * 1024 {
+                // A line this long is a framing failure, not data: the
+                // largest real line (a full history snapshot) stays far below.
+                if pending.len() > 16 * 1024 * 1024 {
                     // Protocol framing broke down; drop the garbage rather
                     // than growing without bound.
                     pending.clear();

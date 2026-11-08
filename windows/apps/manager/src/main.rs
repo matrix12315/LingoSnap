@@ -5642,7 +5642,9 @@ mod windows_app {
                         "selected": {
                             "name": profile.name,
                             "model": profile.model,
-                            "temp": profile.temperature,
+                            "temp": profile
+                                .temperature
+                                .map(|t| (f64::from(t) * 100.0).round() / 100.0),
                             "tokens": profile.max_output_tokens,
                             "sys": profile.system_prompt,
                             "user": profile.user_template,

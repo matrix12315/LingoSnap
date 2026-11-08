@@ -66,6 +66,10 @@ impl FairCopyUi {
         } else {
             PIPE_NAME
         };
+        // Test harnesses run a second host beside the user's (the companion
+        // reads the same variable, and inherits it).
+        let override_name = std::env::var("LINGOSNAP_PIPE_NAME").ok();
+        let pipe_name = override_name.as_deref().unwrap_or(pipe_name);
         debug_log(&format!("start: surface={surface} spawning companion"));
         let pipe = create_pipe_server(pipe_name).map_err(|error| {
             debug_log(&format!("start: pipe server failed: {error}"));
@@ -135,7 +139,9 @@ impl FairCopyUi {
                     }
                 }
                 pending.drain(..consumed);
-                if pending.len() > 64 * 1024 {
+                // A line this long is a framing failure, not data: the
+                // largest real line (a full history snapshot) stays far below.
+                if pending.len() > 16 * 1024 * 1024 {
                     // Protocol framing broke down; drop the garbage rather
                     // than growing without bound.
                     pending.clear();

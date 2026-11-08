@@ -14,7 +14,7 @@ body { display: block !important; }
 /* The window is exactly the shell's 860px, so the mockup's narrow-viewport
    rule (max-width: 900px) would collapse every grid to one column. Keep the
    designed desktop layout. */
-.fields2, .edgrid { grid-template-columns: 1fr 1fr !important; }
+#page-settings .fields2, .edgrid { grid-template-columns: 1fr 1fr !important; }
 .hsplit { grid-template-columns: 272px 1fr !important; }
 .titlebar { cursor: default; user-select: none; -webkit-user-select: none; }
 .titlebar .winbtns { display: flex; gap: 6px; margin-left: 12px; }
@@ -318,6 +318,17 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     var detail = q('#page-history .hdetail');
     if (detail) detail.style.visibility = history.entries.length ? '' : 'hidden';
   }
+  // Inline Markdown as the popup renders it: **bold**, *em*, `code`.
+  function inline(text) {
+    var parts = String(text).split('`'), out = '';
+    for (var i = 0; i < parts.length; i++) {
+      if (i % 2 === 1 && i < parts.length - 1) { out += '<span class="alt">' + esc(parts[i]) + '</span>'; continue; }
+      out += esc((i % 2 === 1) ? '`' + parts[i] : parts[i])
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*\w])\*([^*\s][^*]*)\*(?!\*)/g, '$1<em>$2</em>');
+    }
+    return out;
+  }
   function renderOutput(markdown) {
     var out = q('#page-history .houtput');
     if (!out) return;
@@ -341,11 +352,11 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
       var div = document.createElement('div');
       div.className = 'sec';
       var html = '';
-      if (sec.title) html += '<h3>' + esc(sec.title) + '</h3>';
+      if (sec.title) html += '<h3>' + inline(sec.title) + '</h3>';
       if (sec.items.length) {
-        html += '<ul>' + sec.items.map(function (i) { return '<li>' + esc(i) + '</li>'; }).join('') + '</ul>';
+        html += '<ul>' + sec.items.map(function (i) { return '<li>' + inline(i) + '</li>'; }).join('') + '</ul>';
       }
-      sec.prose.forEach(function (p) { html += '<p class="fineprint">' + esc(p) + '</p>'; });
+      sec.prose.forEach(function (p) { html += '<p class="fineprint">' + inline(p) + '</p>'; });
       div.innerHTML = html;
       out.appendChild(div);
     });
@@ -373,7 +384,7 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
       try { data = (typeof json === 'string') ? JSON.parse(json) : json; } catch (e) { return; }
       var payload = data.apply || data;
       switch (payload.kind) {
-        case 'settings': applySettings(payload.config || {}); break;
+        case 'settings': applySettings(payload.config || {}); announceReady(); break;
         case 'prompts': applyPrompts(payload); break;
         case 'history': applyHistory(payload); break;
         case 'history_detail': applyHistoryDetail(payload); break;
@@ -492,6 +503,17 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     document.addEventListener('DOMContentLoaded', wire);
   } else {
     wire();
+  }
+  // The window appears once the page has painted the user's real settings
+  // (not the sheet's sample values), so opening the manager never flashes
+  // an empty window or mockup data.
+  var announced = false;
+  function announceReady() {
+    if (announced) return;
+    announced = true;
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () { post({ mcmd: 'window_ready' }); });
+    });
   }
 })();
 </script>"##;

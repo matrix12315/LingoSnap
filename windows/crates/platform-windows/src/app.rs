@@ -279,10 +279,6 @@ mod windows_impl {
         fair_copy_failed_at: Option<Instant>,
         /// How long to wait before retrying a failed companion start.
         fair_copy_retry_after: Duration,
-        /// The companion's top-level window, resolved once per start. Clicks
-        /// inside it belong to the page (profile rail, buttons) and must not
-        /// be treated as outside clicks by the mouse hook.
-        companion_window: Option<isize>,
         /// True while the current press started inside the companion window
         /// (a page drag): the hook must not feed those events to the gesture
         /// machinery. Presses outside stay resident-owned, and their moves
@@ -507,7 +503,6 @@ mod windows_impl {
             fair_copy_last_result: None,
             fair_copy_failed_at: None,
             fair_copy_retry_after: Duration::from_secs(60),
-            companion_window: None,
             companion_button_down: false,
         });
         unsafe {
@@ -1879,7 +1874,6 @@ mod windows_impl {
             PopupSkin::Classic => {
                 // Dropping the companion terminates popup-ui.exe.
                 state.fair_copy = None;
-                state.companion_window = None;
             }
             PopupSkin::FairCopy => {
                 // An explicit skin switch is a new attempt even if an earlier
@@ -1919,44 +1913,63 @@ mod windows_impl {
         }
         match webview_ui::FairCopyUi::start("popup", hwnd) {
             Ok(ui) => {
-                state.companion_window = companion_window_handle();
                 state.fair_copy = Some(ui);
             }
             Err(_) => state.fair_copy_failed_at = Some(Instant::now()),
         }
     }
 
-    /// The companion's top-level window, if it is up right now.
-    fn companion_window_handle() -> Option<isize> {
+    /// True when the physical screen point lies inside any visible
+    /// companion popup window. Every fair-copy popup is its own window; a
+    /// press on any of them belongs to the popup family (the classic rule:
+    /// interacting with one popup keeps them all), and a hidden or pooled
+    /// window is not on screen at all.
+    fn companion_window_contains(state: &ShellState, point: ScreenPoint) -> bool {
         use windows::core::PCWSTR;
-        use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
-        let wide: Vec<u16> = selection_ui_protocol::COMPANION_WINDOW_CLASS
+        use windows::Win32::Foundation::RECT;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            FindWindowExW, GetWindowRect, IsWindowVisible,
+        };
+        if state.fair_copy.is_none() {
+            return false;
+        }
+        let class: Vec<u16> = selection_ui_protocol::COMPANION_WINDOW_CLASS
             .encode_utf16()
             .chain(Some(0))
             .collect();
-        let hwnd = unsafe { FindWindowW(PCWSTR(wide.as_ptr()), PCWSTR::null()) }.ok()?;
-        (!hwnd.0.is_null()).then_some(hwnd.0 as isize)
+        let mut after: Option<HWND> = None;
+        // Bounded walk: the companion keeps at most a handful of windows.
+        for _ in 0..64 {
+            let Ok(hwnd) =
+                (unsafe { FindWindowExW(None, after, PCWSTR(class.as_ptr()), PCWSTR::null()) })
+            else {
+                return false;
+            };
+            if hwnd.0.is_null() {
+                return false;
+            }
+            after = Some(hwnd);
+            if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
+                continue;
+            }
+            let mut rect = RECT::default();
+            if unsafe { GetWindowRect(hwnd, &mut rect) }.is_ok()
+                && point.x >= rect.left
+                && point.x < rect.right
+                && point.y >= rect.top
+                && point.y < rect.bottom
+            {
+                return true;
+            }
+        }
+        false
     }
 
-    /// True when the physical screen point lies inside the companion window.
-    fn companion_window_contains(state: &ShellState, point: ScreenPoint) -> bool {
-        use windows::Win32::Foundation::RECT;
-        use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
-        let Some(raw) = state.companion_window else {
-            return false;
-        };
-        let hwnd = HWND(raw as *mut _);
-        // A hidden (dismissed) companion is not on screen: a press over its
-        // old rect is an outside press, exactly like over a destroyed
-        // classic popup, and it may start a new selection.
-        if !unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(hwnd) }.as_bool() {
-            return false;
-        }
-        let mut rect = RECT::default();
-        if unsafe { GetWindowRect(hwnd, &mut rect) }.is_err() {
-            return false;
-        }
-        point.x >= rect.left && point.x < rect.right && point.y >= rect.top && point.y < rect.bottom
+    /// Fair-copy events name the POPUP they belong to: every popup is its
+    /// own companion window. Streaming events arrive per job; they belong to
+    /// the popup presenting the active request.
+    fn fair_copy_popup_id(state: &ShellState, job_id: u64) -> u64 {
+        state.active_popup_id.map_or(job_id, |id| id as u64)
     }
 
     /// Best-effort event delivery; a dead companion never blocks the
@@ -2083,10 +2096,11 @@ mod windows_impl {
                         runtime_trace::record_id("delta_received", job_id);
                         state.stream_output.push_str(&delta);
                         if companion_presents(state) {
+                            let popup_event_id = fair_copy_popup_id(state, job_id);
                             send_fair_copy(
                                 state,
                                 UiEvent::Delta {
-                                    id: job_id,
+                                    id: popup_event_id,
                                     text: delta.clone(),
                                 },
                             );
@@ -2229,6 +2243,7 @@ mod windows_impl {
                             highlight,
                             anchor: fair_copy_anchor(state.popup_anchor),
                             keeps_card: false,
+                            source: None,
                         },
                     );
                     true
@@ -2415,6 +2430,7 @@ mod windows_impl {
                                 anchor,
                             )),
                             keeps_card: false,
+                            source: None,
                         },
                     );
                     true
@@ -2818,17 +2834,19 @@ mod windows_impl {
                 }
             }
             UiCommand::UserClose { id, .. } => {
-                if let Some(choice) = state.pending_profile_choice.take() {
-                    remove_popup(state, choice.popup_id, true);
+                // Every fair-copy popup is its own window and names itself:
+                // close exactly that popup, like the classic Close/Esc.
+                let id = if id != 0 {
+                    Some(id as popup::PopupId)
                 } else {
-                    let id = if id != 0 {
-                        id as popup::PopupId
-                    } else {
-                        state.active_popup_id.unwrap_or(0)
-                    };
-                    if id != 0 {
-                        remove_popup(state, id, true);
-                    }
+                    state
+                        .pending_profile_choice
+                        .as_ref()
+                        .map(|choice| choice.popup_id)
+                        .or(state.active_popup_id)
+                };
+                if let Some(id) = id {
+                    remove_popup(state, id, true);
                 }
             }
             UiCommand::Retry { id, .. } => {
@@ -2846,19 +2864,40 @@ mod windows_impl {
                     runtime_trace::record("fair_copy_copy");
                 }
             }
-            UiCommand::TogglePin { pinned, .. } => {
-                if let Some(id) = state.active_popup_id {
+            UiCommand::TogglePin { id, pinned } => {
+                let id = if id != 0 {
+                    Some(id as popup::PopupId)
+                } else {
+                    state.active_popup_id
+                };
+                if let Some(id) = id {
                     if let Some(entry) = popup_entry_mut(state, id) {
                         entry.popup.set_pinned(pinned);
+                        // The page shows the pin state the resident holds.
+                        send_fair_copy(
+                            state,
+                            UiEvent::SetPinned {
+                                id: id as u64,
+                                pinned,
+                            },
+                        );
                     }
                 }
             }
-            UiCommand::SelfTranslate { text, .. } => {
+            UiCommand::SelfTranslate { id, text, anchor } => {
                 // Recursive translation of fair-copy output: the resident's
                 // mouse hook cannot see selection inside a WebView, so the
-                // page reports the selected text. Like a selection gesture on
-                // the result, the CHOOSER is presented first (a fresh popup)
-                // and the pipeline runs once a profile is picked.
+                // page reports the selected text and where it sits. Like a
+                // selection gesture on a classic result, a fresh chooser
+                // popup appears at the selection, and its result becomes a
+                // new popup; the source card stays on screen.
+                if let Some(previous) = state
+                    .pending_profile_choice
+                    .as_ref()
+                    .map(|choice| choice.popup_id)
+                {
+                    remove_popup(state, previous, true);
+                }
                 let spec = RequestSpec {
                     trigger: TriggerKind::Selection,
                     process_id: std::process::id(),
@@ -2877,7 +2916,13 @@ mod windows_impl {
                     config_generation: state.config_generation,
                 };
                 let context = TextContext::new(text, selection_core::ExtractionSource::Clipboard);
-                let anchor = state.popup_anchor;
+                let anchor = anchor
+                    .map(|anchor| popup::Point {
+                        x: anchor.x,
+                        y: anchor.y,
+                    })
+                    .unwrap_or(state.popup_anchor);
+                let source = (id != 0).then_some(id);
                 let admission = ensure_popup(hwnd, state, anchor, None, None, true);
                 let popup_id = admission.map(|admission| admission.popup_id);
                 ensure_companion(hwnd, state);
@@ -2903,6 +2948,7 @@ mod windows_impl {
                                 highlight,
                                 anchor: fair_copy_anchor(anchor),
                                 keeps_card: true,
+                                source,
                             },
                         );
                         true
@@ -2932,12 +2978,8 @@ mod windows_impl {
                 runtime_trace::record("selection_profile_chooser_shown");
             }
             UiCommand::PageReady => {
-                // The page finished loading: replay the presentation that may
-                // have been sent while it was still navigating.
-                let events = std::mem::take(&mut state.fair_copy_last_event);
-                for event in events {
-                    send_fair_copy(state, event);
-                }
+                // The companion queues events for a page that is still
+                // loading, so nothing needs replaying here.
             }
             UiCommand::Ping => {}
             UiCommand::RegisterWindow { .. } => {
@@ -2984,10 +3026,11 @@ mod windows_impl {
                 state.active_request = None;
                 let output = state.stream_output.clone();
                 if companion_presents(state) {
+                    let popup_event_id = fair_copy_popup_id(state, job_id);
                     send_fair_copy(
                         state,
                         UiEvent::Completed {
-                            id: job_id,
+                            id: popup_event_id,
                             text: output.clone(),
                         },
                     );
@@ -3003,10 +3046,11 @@ mod windows_impl {
                 let _ = state.coordinator.finish(job_id);
                 state.active_request = None;
                 if companion_presents(state) {
+                    let popup_event_id = fair_copy_popup_id(state, job_id);
                     send_fair_copy(
                         state,
                         UiEvent::LocalError {
-                            id: job_id,
+                            id: popup_event_id,
                             message: "Provider returned no text".to_owned(),
                             anchor: None,
                         },
@@ -3029,10 +3073,11 @@ mod windows_impl {
                 state.active_request = None;
                 let message = provider_error(error);
                 if companion_presents(state) {
+                    let popup_event_id = fair_copy_popup_id(state, job_id);
                     send_fair_copy(
                         state,
                         UiEvent::LocalError {
-                            id: job_id,
+                            id: popup_event_id,
                             message: message.clone(),
                             anchor: None,
                         },
@@ -3376,14 +3421,27 @@ mod windows_impl {
         message: &str,
     ) {
         if companion_presents(state) {
-            // The companion owns the surface; only the bookkeeping matters.
+            // The companion presents the error in its own popup window; the
+            // native entry keeps the bookkeeping (outside-click dismissal,
+            // Close, pin) exactly as for a classic error popup.
+            let Some(admission) = ensure_popup(hwnd, state, anchor, None, None, false) else {
+                return;
+            };
+            let mut surface = ResultSurfaceReady {
+                popup_id: admission.popup_id,
+                staged_entry: admission.staged_entry,
+                evict_after_commit: admission.evict_after_commit,
+            };
+            commit_presented_staged_popup(state, &mut surface);
+            let id = surface.popup_id;
+            state.active_popup_id = Some(id);
             state.popup_job_id = Some(job_id);
             state.presented_trigger = None;
             state.popup_guard_root_window = 0;
             send_fair_copy(
                 state,
                 UiEvent::LocalError {
-                    id: job_id,
+                    id: id as u64,
                     message: message.to_owned(),
                     anchor: Some(fair_copy_anchor(anchor)),
                 },

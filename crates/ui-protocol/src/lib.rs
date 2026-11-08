@@ -67,10 +67,15 @@ pub enum UiEvent {
         highlight: Option<usize>,
         anchor: Anchor,
         /// True when the chooser was raised from inside a result card
-        /// (in-card selection): the page keeps the previous card under the
-        /// rail. A fresh external selection replaces the card.
+        /// (in-card selection).
         #[serde(default)]
         keeps_card: bool,
+        /// The popup whose text was selected (self-translation). Every
+        /// popup is its own window; the result card that replaces this
+        /// chooser is placed beside that source card, like the classic
+        /// cascade, and the source stays on screen.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source: Option<u64>,
     },
     ShowLoading {
         id: u64,
@@ -134,6 +139,10 @@ pub enum UiCommand {
     SelfTranslate {
         id: u64,
         text: String,
+        /// Screen position of the selection inside the source card, where
+        /// the chooser is presented (physical pixels).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        anchor: Option<Anchor>,
     },
     /// The page finished loading; the host may replay any event that was
     /// sent while the page was still navigating.
@@ -177,6 +186,7 @@ mod tests {
                 highlight: Some(0),
                 anchor: Anchor { x: 100, y: 200 },
                 keeps_card: false,
+                source: None,
             },
         );
         let line = serde_json::to_string(&event).expect("serialize event");
@@ -190,6 +200,7 @@ mod tests {
             UiCommand::SelfTranslate {
                 id: 3,
                 text: "hola".into(),
+                anchor: Some(Anchor { x: 4, y: 5 }),
             },
         );
         let line = serde_json::to_string(&command).expect("serialize command");
