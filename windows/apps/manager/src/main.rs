@@ -1047,13 +1047,15 @@ mod windows_app {
         // Single instance: a second manager process would race the first one
         // for the single-instance fair-copy pipe and fall back to the native
         // UI, so instead surface the existing manager window.
-        let _single_instance = unsafe {
-            CreateMutexW(
-                None,
-                false,
-                windows::core::w!("SelectionTranslateManagerInstance"),
-            )
-        }?;
+        // Test harnesses may name their own instance so a probe can run next
+        // to the user's manager; the default name is the product contract.
+        let instance_name: Vec<u16> = std::env::var("LINGOSNAP_MANAGER_INSTANCE")
+            .unwrap_or_else(|_| "SelectionTranslateManagerInstance".to_owned())
+            .encode_utf16()
+            .chain(Some(0))
+            .collect();
+        let _single_instance =
+            unsafe { CreateMutexW(None, false, PCWSTR(instance_name.as_ptr())) }?;
         let already_running = unsafe { windows::Win32::Foundation::GetLastError() }
             == windows::Win32::Foundation::ERROR_ALREADY_EXISTS;
         if already_running {
@@ -2554,7 +2556,24 @@ mod windows_app {
         // Responsive page geometry: every control takes its rect from the
         // same computation the painter uses, so components stretch to use
         // the whole window at any size.
-        let page_width = unscale_from_dpi(page_rect.right - page_rect.left, state.dpi);
+        // Measure the page the painter measures: its CLIENT width, which
+        // excludes the Settings scrollbar. Using the window width laid the
+        // controls out wider than the painted cards, so fields and the
+        // reorder buttons ran past the cards' right edges.
+        let active_page = match state.view {
+            View::Settings => state.handles.settings_page,
+            View::Prompts => state.handles.prompts_page,
+            View::History => state.handles.history_page,
+        };
+        let mut page_client = RECT::default();
+        let client_width = if unsafe { GetClientRect(active_page, &mut page_client) }.is_ok()
+            && page_client.right > 0
+        {
+            page_client.right
+        } else {
+            page_rect.right - page_rect.left
+        };
+        let page_width = unscale_from_dpi(client_width, state.dpi);
         let container_height = unscale_from_dpi(page_rect.bottom - page_rect.top, state.dpi);
         let mut geometry = page_geometry(
             state.view,
@@ -3462,13 +3481,27 @@ mod windows_app {
                     });
                 }
             }
+            // Controls created after startup missed the initial font pass:
+            // without it they render in the tiny system font.
+            apply_control_fonts(state);
         }
-        // Position and label every row.
+        // Position and label every row. The card rect is in page-content
+        // coordinates like every slot, so it carries the same left padding;
+        // rows below the rail limit leave room for the "beneath More…"
+        // divider instead of sitting under it.
         let row_h = 32;
-        let divider_h = if count > RAIL_INLINE_LIMIT { 26 } else { 0 };
-        let _ = divider_h;
+        let divider_gap = 26;
+        let card = RECT {
+            left: card.left + CONTENT_PADDING,
+            ..card
+        };
         for (index, row) in state.handles.profile_rows.iter().enumerate() {
-            let top = card.top + 30 + (index as i32) * row_h;
+            let folded = if index >= RAIL_INLINE_LIMIT {
+                divider_gap
+            } else {
+                0
+            };
+            let top = card.top + 30 + (index as i32) * row_h + folded;
             let label_rect = scaled_rect(
                 RECT {
                     left: card.left + 14,
@@ -3530,12 +3563,12 @@ mod windows_app {
         // Divider after the inline limit; hint below the card.
         if !state.handles.profiles_divider.0.is_null() {
             let show = count > RAIL_INLINE_LIMIT;
-            let divider_top = card.top + 30 + (RAIL_INLINE_LIMIT as i32) * row_h;
+            let divider_top = card.top + 30 + (RAIL_INLINE_LIMIT as i32) * row_h + 2;
             let rect = scaled_rect(
                 RECT {
-                    left: card.left + 6,
+                    left: card.left + 14,
                     top: divider_top,
-                    right: card.right - 6,
+                    right: card.right - 14,
                     bottom: divider_top + 20,
                 },
                 state.dpi,
@@ -3563,7 +3596,7 @@ mod windows_app {
                     left: card.left + 2,
                     top: hint_top,
                     right: card.right,
-                    bottom: hint_top + 16,
+                    bottom: hint_top + 18,
                 },
                 state.dpi,
             );
@@ -3606,11 +3639,14 @@ mod windows_app {
         is_static: bool,
     ) -> windows::core::Result<HWND> {
         if is_static {
+            // Single-line labels: vertically centred in their row (the row
+            // is taller than the text, beside the arrow buttons) and
+            // ellipsised instead of clipped.
             create_control(
                 parent,
                 w!("STATIC"),
                 text,
-                WS_CHILD | WS_VISIBLE,
+                WS_CHILD | WS_VISIBLE | WINDOW_STYLE(0x0200 | 0x4000),
                 0,
                 0,
                 100,
@@ -3688,6 +3724,12 @@ mod windows_app {
         }
         set_font(state.handles.status, note);
         for placement in &state.handles.placements {
+            if placement.hwnd == state.handles.profiles_divider
+                || placement.hwnd == state.handles.profiles_hint
+            {
+                set_font(placement.hwnd, note);
+                continue;
+            }
             let font = match placement.slot {
                 // History detail shares the popup's treatment: mono target
                 // pane, body context pane, mono output.
@@ -3707,6 +3749,10 @@ mod windows_app {
                 | Slot::SelectionLabel
                 | Slot::HoverLabel
                 | Slot::LangLabel
+                | Slot::HotkeySelectionLabel
+                | Slot::HotkeyHoverLabel
+                | Slot::HotkeyPauseLabel
+                | Slot::HotkeyOpenPopupLabel
                 | Slot::PromptIdLabel
                 | Slot::PromptNameLabel
                 | Slot::PromptModelLabel
@@ -4014,6 +4060,9 @@ mod windows_app {
                 .any(|placement| placement.hwnd == child && placement.view == View::Settings);
         let (background, foreground) = if child == state.handles.status {
             (TAB_BG, MUTED)
+        } else if child == state.handles.profiles_hint {
+            // The rail hint sits below the Profiles card, on the page.
+            (MANAGER_BG, MUTED)
         } else if on_void {
             (
                 MANAGER_BG,
@@ -5752,15 +5801,10 @@ mod windows_app {
                 next.provider.endpoint = text("endpoint").trim().to_owned();
                 next.provider.model = text("model").trim().to_owned();
                 next.provider.credential_target = text("credtarget").trim().to_owned();
-                // "Off" is an empty field and is stored as no hot key.
-                let normalize = |raw: String| -> Option<String> {
-                    let normalized: Vec<_> = raw
-                        .split('+')
-                        .map(str::trim)
-                        .filter(|part| !part.is_empty())
-                        .collect();
-                    (!normalized.is_empty()).then(|| normalized.join("+"))
-                };
+                // Same contract as the native Settings page: an empty field is
+                // stored as an empty hot key, meaning "off" (a missing key
+                // would fall back to the default on the next load).
+                let normalize = |raw: String| -> Option<String> { Some(normalized_hotkey(&raw)) };
                 next.hotkeys.selection_translate = normalize(text("hkSelection"));
                 next.hotkeys.hover_translate = normalize(text("hkHover"));
                 next.hotkeys.pause_resume = normalize(text("hkPause"));
@@ -5797,18 +5841,16 @@ mod windows_app {
                     fair_copy_push_all(state);
                     return;
                 }
-                match next.validate() {
-                    Err(error) => set_status(
+                let cannot_save = |state: &ManagerState, detail: &str| {
+                    set_status(
                         state,
-                        &status_text(
-                            state.language(),
-                            StatusEvent::CannotSavePrompt {
-                                detail: &error.to_string(),
-                            },
-                        ),
-                    ),
+                        &status_text(state.language(), StatusEvent::CannotSaveSettings { detail }),
+                    )
+                };
+                match next.validate() {
+                    Err(error) => cannot_save(state, &error.to_string()),
                     Ok(()) => match save_config(state, &next) {
-                        Err(error) => set_status(state, &error),
+                        Err(error) => cannot_save(state, &error),
                         Ok(()) => {
                             state.config = next;
                             refresh_settings_form(state);

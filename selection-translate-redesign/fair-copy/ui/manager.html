@@ -387,8 +387,9 @@ Context:
       const divider = list.querySelector('.odivider');
       const gripSVG = '<svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor"><circle cx="2" cy="2" r="1.3"/><circle cx="6" cy="2" r="1.3"/><circle cx="2" cy="7" r="1.3"/><circle cx="6" cy="7" r="1.3"/><circle cx="2" cy="12" r="1.3"/><circle cx="6" cy="12" r="1.3"/></svg>';
       const rows = () => [...list.querySelectorAll('.orderrow')];
-      const refresh = () => {
-        const rs = rows();
+      // Lay the rows out in the given order (the current DOM order by default).
+        const refresh = (order) => {
+        const rs = order || rows();
         rs.forEach((row, i) => {
           if (!row.querySelector('.ogrip')) {
             const g = document.createElement('span');
@@ -437,7 +438,7 @@ Context:
         if (to > from) to -= 1;
         rs.splice(to, 0, rs.splice(from, 1)[0]);
         dragRow = null;
-        refresh();
+        refresh(rs);
         flashSaved();
       });
       list.addEventListener('dragend', () => {
@@ -452,11 +453,11 @@ Context:
         const i = rs.indexOf(row);
         if (btn.classList.contains('up') && i > 0) {
           rs.splice(i - 1, 0, rs.splice(i, 1)[0]);
-          refresh();
+          refresh(rs);
           flashSaved();
         } else if (btn.classList.contains('down') && i < rs.length - 1) {
           rs.splice(i + 1, 0, rs.splice(i, 1)[0]);
-          refresh();
+          refresh(rs);
           flashSaved();
         }
       });

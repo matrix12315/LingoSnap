@@ -25,6 +25,19 @@ body, .rail, .railwrap, .chrome, .foot { user-select: none !important; -webkit-u
 /* The dark pill means hover/press only; no pill is pre-selected. */
 .rpill:hover, .rpill:active { color: var(--btn-primary-ink) !important; font-weight: 600 !important;
   background: var(--btn-primary-bg) !important; }
+/* The chooser sheet (chooser.html): the rail and its overflow wing are the
+   popup card's paper — paper colour with the faint fibre under it — and an
+   open More… reads pressed, its chevron turned. */
+.rail, .rmenu {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.13 0 0 0 0 0.11 0 0 0 0 0.08 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='280' height='280' filter='url(%23f)'/%3E%3C/svg%3E")
+    var(--paper) !important;
+}
+.rpill { cursor: pointer; }
+.rpill.on, .rmore[aria-expanded="true"] { color: var(--btn-primary-ink) !important; font-weight: 600 !important;
+  background: var(--btn-primary-bg) !important; }
+.rmore svg { transition: transform .15s ease; }
+.rmore[aria-expanded="true"] svg { transform: rotate(180deg); }
 .card {
   /* display must stay overridable: the chooser hides the card inline
      (an !important stylesheet rule would beat style.display='none').
@@ -337,6 +350,7 @@ pub const BRIDGE_JS: &str = r##"<script>
       more.type = 'button';
       more.className = 'rpill rmore';
       more.setAttribute('aria-haspopup', 'menu');
+      more.setAttribute('aria-expanded', 'false');
       more.innerHTML = 'More\u2026 <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg>';
       var menu = document.createElement('div');
       menu.className = 'rmenu';
@@ -348,6 +362,7 @@ pub const BRIDGE_JS: &str = r##"<script>
         e.stopPropagation();
         var opening = menu.style.display === 'none';
         menu.style.display = opening ? '' : 'none';
+        more.setAttribute('aria-expanded', String(opening));
         if (opening) lens(menu);
         // The window is sized to the content; an open menu needs room.
         reportHeightSettled();
