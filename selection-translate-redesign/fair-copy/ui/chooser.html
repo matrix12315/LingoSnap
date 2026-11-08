@@ -5,8 +5,29 @@
 <title>LingoSnap — 01 Chooser</title>
 <link rel="stylesheet" href="fair-copy.css" />
 <style>
-  body { display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 60px 32px 72px; }
+  body { display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 56px 32px 72px; }
   .cap { font: 500 10.5px var(--mono); letter-spacing: .12em; color: rgba(241, 235, 223, .55); }
+
+  /* The rail and its overflow wing are the same sheet of paper as the popup
+     card: paper colour, the faint fibre under it, the card's lift. */
+  .rail, .rmenu {
+    background:
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.13 0 0 0 0 0.11 0 0 0 0 0.08 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='280' height='280' filter='url(%23f)'/%3E%3C/svg%3E")
+      var(--paper);
+    box-shadow: var(--lift);
+  }
+  /* Smoked-ink glass marks the pill under the pointer and the one pressed,
+     the same emphasis the popup and manager give their primary controls;
+     no profile is pre-selected. */
+  .rpill { cursor: pointer; }
+  .rpill:hover, .rpill:active, .rpill.on,
+  .rmore[aria-expanded="true"] {
+    color: var(--btn-primary-ink); font-weight: 600;
+    background: var(--btn-primary-bg);
+  }
+  .rmore svg { transition: transform .15s ease; }
+  .rmore[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .rmenu[hidden] { display: none; }
 </style>
 </head>
 <body>
@@ -14,29 +35,39 @@
 <div class="caprow"><div class="cap">01 · CHOOSER — THE PROFILE RAIL AT THE SELECTION</div><button class="themebtn" type="button">Dark theme</button></div>
 
 <div class="railwrap" id="chooser">
-  <div class="rail" role="tablist" aria-label="Profile">
-    <button class="rpill on" type="button">Translate</button>
+  <div class="rail" role="toolbar" aria-label="Profile">
+    <button class="rpill" type="button">Translate</button>
     <button class="rpill" type="button">Expert</button>
     <button class="rpill" type="button">Program</button>
     <button class="rpill" type="button">Concise</button>
     <span class="rdiv" aria-hidden="true"></span>
-    <button class="rpill rmore" type="button" aria-haspopup="menu">More…
+    <button class="rpill rmore" type="button" aria-haspopup="menu" aria-expanded="true" aria-controls="rmenu">More…
       <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg>
     </button>
   </div>
-  <div class="rmenu">
-      <button class="rpill" type="button" role="menuitem">Contextual</button>
-      <button class="rpill" type="button" role="menuitem">Word</button>
-      <button class="rpill" type="button" role="menuitem">Wiki</button>
-      <button class="rpill" type="button" role="menuitem">Rewrite</button>
-    </div>
+  <div class="rmenu" id="rmenu" role="menu">
+    <button class="rpill" type="button" role="menuitem">Contextual</button>
+    <button class="rpill" type="button" role="menuitem">Word</button>
+    <button class="rpill" type="button" role="menuitem">Wiki</button>
+    <button class="rpill" type="button" role="menuitem">Rewrite</button>
+  </div>
 </div>
 
 <script>
-  document.querySelectorAll("#chooser .rail .rpill").forEach(pill => {
+  // A pick marks its pill pressed for a moment, as the rail hands the
+  // selection to that profile; More… folds the overflow wing in and out.
+  const more = document.querySelector('#chooser .rmore');
+  const menu = document.getElementById('rmenu');
+  more.addEventListener('click', () => {
+    const open = more.getAttribute('aria-expanded') !== 'true';
+    more.setAttribute('aria-expanded', String(open));
+    menu.hidden = !open;
+  });
+  document.querySelectorAll('#chooser .rpill:not(.rmore)').forEach(pill => {
     pill.addEventListener('click', () => {
-      document.querySelectorAll("#chooser .rail .rpill").forEach(p => p.classList.remove('on'));
+      document.querySelectorAll('#chooser .rpill').forEach(p => p.classList.remove('on'));
       pill.classList.add('on');
+      setTimeout(() => pill.classList.remove('on'), 600);
     });
   });
 </script>
