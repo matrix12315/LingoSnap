@@ -41,9 +41,10 @@ pub fn extract_sentence_context(context: &str, target: &str) -> Option<String> {
     sentence_for_target(context, target)
 }
 
-/// Longest selection context kept, in Unicode scalars. A sentence beyond it
-/// is trimmed to a window around the target (the target is never cut).
-pub const MAX_SELECTION_CONTEXT_SCALARS: usize = 300;
+/// Longest context kept, in Unicode scalars (about three lines of the popup's
+/// quotation). A longer sentence is narrowed to clauses, then words, around
+/// the target; the target itself is never cut.
+pub const MAX_SELECTION_CONTEXT_SCALARS: usize = 160;
 
 /// A selection this long already carries its own context; surrounding text
 /// would only add noise (and tokens) to the request.
@@ -78,10 +79,40 @@ pub fn selection_target_wants_context(target: &str) -> bool {
 /// byte offset into `context`), so repeated words resolve correctly.
 pub fn selection_context_at(context: &str, target: &str, target_offset: usize) -> Option<String> {
     let needle = target.trim();
-    if needle.is_empty()
-        || !selection_target_wants_context(needle)
-        || !context.is_char_boundary(target_offset)
-    {
+    if !selection_target_wants_context(needle) {
+        return None;
+    }
+    let (sentence, start, end) = line_sentence_at(context, needle, target_offset)?;
+    let meaningful = |text: &str| text.chars().filter(|c| c.is_alphanumeric()).count();
+    if meaningful(sentence) < meaningful(needle) + 3 {
+        // Nothing but punctuation or a word or two beyond the selection.
+        return None;
+    }
+    Some(fit_context(sentence, start, end))
+}
+
+/// Hover context: the sentence on the pointed word's own line, bounded the
+/// same way as Selection context. Unlike Selection it is kept even when it
+/// adds little (Hover requires a containing sentence).
+pub fn hover_context_at(context: &str, target: &str, target_offset: usize) -> Option<String> {
+    let needle = target.trim();
+    if needle.is_empty() {
+        return None;
+    }
+    let (sentence, start, end) = line_sentence_at(context, needle, target_offset)?;
+    Some(fit_context(sentence, start, end))
+}
+
+/// The sentence containing `needle` at `target_offset`, bounded by the
+/// target's own line (headings, list items, labels, and code lines carry no
+/// terminal punctuation and used to merge into one huge "sentence"). Returns
+/// the trimmed sentence and the target's byte range inside it.
+fn line_sentence_at<'a>(
+    context: &'a str,
+    needle: &str,
+    target_offset: usize,
+) -> Option<(&'a str, usize, usize)> {
+    if needle.is_empty() || !context.is_char_boundary(target_offset) {
         return None;
     }
     let candidate = context.get(target_offset..)?.get(..needle.len())?;
@@ -89,7 +120,6 @@ pub fn selection_context_at(context: &str, target: &str, target_offset: usize) -
         return None;
     }
     let target_end = target_offset + needle.len();
-    // The target's own line.
     let line_start = context[..target_offset]
         .rfind(is_line_break)
         .map_or(0, |index| {
@@ -110,27 +140,22 @@ pub fn selection_context_at(context: &str, target: &str, target_offset: usize) -
     let raw = &line[left..right];
     let lead = raw.len() - raw.trim_start().len();
     let sentence = raw.trim();
-    let target_in_sentence = (local_start - left).checked_sub(lead)?;
-    if sentence.get(target_in_sentence..target_in_sentence + needle.len()) != Some(candidate) {
-        return None;
-    }
-    let meaningful = |text: &str| text.chars().filter(|c| c.is_alphanumeric()).count();
-    if meaningful(sentence) < meaningful(needle) + 3 {
-        // Nothing but punctuation or a word or two beyond the selection.
-        return None;
-    }
-    if sentence.chars().count() <= MAX_SELECTION_CONTEXT_SCALARS {
-        return Some(sentence.to_owned());
-    }
-    Some(trim_around(
-        sentence,
-        target_in_sentence,
-        target_in_sentence + needle.len(),
-    ))
+    let start = (local_start - left).checked_sub(lead)?;
+    let end = start + needle.len();
+    (sentence.get(start..end) == Some(candidate)).then_some((sentence, start, end))
 }
 
 fn is_line_break(ch: char) -> bool {
     matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}')
+}
+
+/// Clause punctuation: a long sentence is narrowed to whole clauses around
+/// the target before any word-level cut.
+fn is_clause_mark(ch: char) -> bool {
+    matches!(
+        ch,
+        ',' | ';' | ':' | '，' | '；' | '：' | '、' | '—' | '–' | '(' | ')' | '（' | '）'
+    )
 }
 
 /// True when a sentence boundary falls inside the target (terminal
@@ -144,7 +169,70 @@ fn spans_sentences(target: &str) -> bool {
         .any(|(index, ch)| is_boundary(trimmed, index, ch) && index + ch.len_utf8() < trimmed.len())
 }
 
-/// Cut an over-long sentence to a window of about
+/// Fit a sentence into [`MAX_SELECTION_CONTEXT_SCALARS`] without touching
+/// the target at `[start, end)`: a short sentence is kept whole; a long one
+/// keeps the clause holding the target plus as many neighbouring clauses as
+/// fit; a single over-long clause falls back to a word window. Every cut is
+/// marked with an ellipsis.
+fn fit_context(sentence: &str, start: usize, end: usize) -> String {
+    let scalars = |text: &str| text.trim().chars().count();
+    if scalars(sentence) <= MAX_SELECTION_CONTEXT_SCALARS {
+        return sentence.to_owned();
+    }
+    // Cut points sit just after each clause mark, outside the target.
+    let cuts: Vec<usize> = sentence
+        .char_indices()
+        .filter(|(_, ch)| is_clause_mark(*ch))
+        .map(|(index, ch)| index + ch.len_utf8())
+        .filter(|cut| *cut <= start || *cut >= end)
+        .collect();
+    let mut lefts: Vec<usize> = cuts.iter().copied().filter(|cut| *cut <= start).collect();
+    lefts.reverse();
+    let rights: Vec<usize> = cuts.iter().copied().filter(|cut| *cut >= end).collect();
+    let (mut li, mut ri) = (0usize, 0usize);
+    let mut left = lefts.first().copied().unwrap_or(0);
+    let mut right = rights.first().copied().unwrap_or(sentence.len());
+    if scalars(&sentence[left..right]) > MAX_SELECTION_CONTEXT_SCALARS {
+        return trim_around(sentence, start, end);
+    }
+    loop {
+        let mut grew = false;
+        // Prefer the clause after the target (it usually completes the
+        // phrase), then the one before.
+        let next_right = rights.get(ri + 1).copied().unwrap_or(sentence.len());
+        if right < sentence.len()
+            && scalars(&sentence[left..next_right]) <= MAX_SELECTION_CONTEXT_SCALARS
+        {
+            right = next_right;
+            ri += 1;
+            grew = true;
+        }
+        let next_left = lefts.get(li + 1).copied().unwrap_or(0);
+        if left > 0 && scalars(&sentence[next_left..right]) <= MAX_SELECTION_CONTEXT_SCALARS {
+            left = next_left;
+            li += 1;
+            grew = true;
+        }
+        if !grew {
+            break;
+        }
+    }
+    let mut body = sentence[left..right].trim();
+    if right < sentence.len() {
+        body = body.trim_end_matches(is_clause_mark).trim_end();
+    }
+    let mut out = String::new();
+    if left > 0 {
+        out.push('…');
+    }
+    out.push_str(body);
+    if right < sentence.len() {
+        out.push('…');
+    }
+    out
+}
+
+/// Cut an over-long clause to a window of about
 /// [`MAX_SELECTION_CONTEXT_SCALARS`] around `[start, end)`, at word
 /// boundaries where the text has spaces, marking each cut with an ellipsis.
 fn trim_around(sentence: &str, start: usize, end: usize) -> String {
@@ -406,6 +494,39 @@ mod tests {
         assert_eq!(
             selection_context("第一句。这里是选中的词语所在的句子！最后。", "选中"),
             Some("这里是选中的词语所在的句子！".into())
+        );
+    }
+
+    #[test]
+    fn long_sentences_keep_whole_clauses_around_the_target() {
+        let sentence = "When the resident starts it reads the configuration file, \
+            then it opens the history database in the local application data folder, \
+            and after the first selection it loads the companion that renders the popup, \
+            which keeps a small pool of windows for later requests.";
+        let context = selection_context(sentence, "history database").expect("context");
+        assert!(context.contains("then it opens the history database"));
+        assert!(context.chars().count() <= MAX_SELECTION_CONTEXT_SCALARS + 2);
+        assert!(context.starts_with('…') || context.starts_with("When"));
+        assert!(!context.trim_end_matches('…').ends_with(','));
+    }
+
+    #[test]
+    fn hover_context_is_bounded_and_line_scoped() {
+        use super::hover_context_at;
+        let page = format!(
+            "Heading\n{}the word here {}\nNext",
+            "alpha ".repeat(60),
+            "beta ".repeat(60)
+        );
+        let offset = page.find("word").unwrap();
+        let context = hover_context_at(&page, "word", offset).expect("context");
+        assert!(context.contains("the word here"));
+        assert!(!context.contains("Heading") && !context.contains("Next"));
+        assert!(context.chars().count() <= MAX_SELECTION_CONTEXT_SCALARS + 2);
+        // A short line is kept whole, even when it adds little.
+        assert_eq!(
+            hover_context_at("one\nword\ntwo", "word", 4),
+            Some("word".into())
         );
     }
 }

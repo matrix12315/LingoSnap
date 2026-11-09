@@ -1,6 +1,6 @@
 //! Unicode normalization used at the request boundary.
 
-use crate::{sentence::sentence_for_target_at, TextContext};
+use crate::TextContext;
 
 /// Formatting characters that are invisible but are not classified as
 /// Unicode whitespace by Rust's `char::is_whitespace`.
@@ -157,7 +157,7 @@ pub fn sanitize_hover_text_context(mut text: TextContext) -> Option<TextContext>
     text.target = sanitize_hover_target(&text.target)?;
     text.context = normalize_optional(text.context.as_deref()).and_then(|context| {
         let target_offset = context.find(&text.target)?;
-        sentence_for_target_at(&context, &text.target, target_offset)
+        crate::sentence::hover_context_at(&context, &text.target, target_offset)
     });
     Some(text)
 }
