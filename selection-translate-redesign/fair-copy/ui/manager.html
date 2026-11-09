@@ -32,6 +32,20 @@
   #page-history .hsplit { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr); }
   #page-history .hlist { height: auto; min-height: 0; overflow-y: auto; }
   #page-history .hdetail { min-height: 0; overflow-y: auto; padding-right: 4px; }
+  /* A scroller clips its children's shadows at its own edges, which drew the
+     glass buttons' and quote's shadows as a hard-edged rectangle. Give them
+     room inside the scroller (the left inset borrows the column gap, so the
+     text stays aligned) and keep the button shadow short here. */
+  #page-history .hdetail { padding-left: 12px; margin-left: -12px; }
+  #page-history .hdetail .actions { margin-bottom: 20px; }
+  #page-history .hdetail .actions .btn {
+    box-shadow:
+      inset 0 0 0 1.5px var(--rim),
+      inset 0 2px 10px rgba(34, 29, 22, .05),
+      0 0 0 1px rgba(34, 29, 22, .16),
+      0 2px 6px rgba(15, 12, 8, .10),
+      0 5px 10px rgba(15, 12, 8, .10);
+  }
 </style>
 </head>
 <body>

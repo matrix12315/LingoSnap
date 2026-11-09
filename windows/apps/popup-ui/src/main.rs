@@ -255,6 +255,28 @@ thread_local! {
     static HOST: Cell<HWND> = const { Cell::new(HWND(std::ptr::null_mut())) };
     static INSTANCE: Cell<isize> = const { Cell::new(0) };
     static FIRST_LOAD: Cell<bool> = const { Cell::new(false) };
+    /// The card size (CSS px) the user last dragged a popup to. Like the
+    /// classic popup's remembered window size, every later result card opens
+    /// at it for the rest of the session.
+    static LAST_CARD_SIZE: Cell<Option<(f64, f64)>> = const { Cell::new(None) };
+}
+
+/// Open a new result card at the size the user last chose, if any.
+fn apply_remembered_size(win: &Win) {
+    if win.user_size.get().is_some() {
+        return;
+    }
+    let Some((css_w, css_h)) = LAST_CARD_SIZE.with(Cell::get) else {
+        return;
+    };
+    let scale = window_scale(win.hwnd);
+    let width = ((css_w + BODY_PAD_W) * scale).round() as i32;
+    let height = ((css_h + BODY_PAD_H) * scale).round() as i32;
+    win.user_size.set(Some((width, height)));
+    execute_script(
+        win,
+        &format!("window.LINGO && window.LINGO.userSize({css_w}, {css_h}); undefined"),
+    );
 }
 
 fn wins() -> Vec<Rc<Win>> {
@@ -921,7 +943,8 @@ fn handle_event_line(line: &str) {
             // A retry keeps a card where it is (the user may have moved it);
             // a chooser turning into its result moves below the selection,
             // or beside the source card it was raised from.
-            if !(win.shown.get() && win.card.get()) {
+            let fresh = !(win.shown.get() && win.card.get());
+            if fresh {
                 let beside = win
                     .cascade_from
                     .get()
@@ -938,6 +961,9 @@ fn handle_event_line(line: &str) {
             win.card.set(true);
             win.show_pending.set(true);
             apply_page_event(&win, &event);
+            if fresh {
+                apply_remembered_size(&win);
+            }
         }
         UiEvent::LocalError {
             id,
@@ -945,12 +971,16 @@ fn handle_event_line(line: &str) {
             ..
         } => {
             let Some(win) = assign(*id) else { return };
-            if !(win.shown.get() && win.card.get()) {
+            let fresh = !(win.shown.get() && win.card.get());
+            if fresh {
                 set_anchor(&win, *anchor, false);
             }
             win.card.set(true);
             win.show_pending.set(true);
             apply_page_event(&win, &event);
+            if fresh {
+                apply_remembered_size(&win);
+            }
         }
         UiEvent::Close { id } => {
             if let Some(win) = win_by_id(*id) {
@@ -1314,6 +1344,7 @@ fn resize_step(win: &Win) {
     }
     let css_w = (width as f64 / scale - BODY_PAD_W).floor();
     let css_h = (height as f64 / scale - BODY_PAD_H).floor();
+    LAST_CARD_SIZE.with(|last| last.set(Some((css_w, css_h))));
     execute_script(
         win,
         &format!("window.LINGO && window.LINGO.userSize({css_w}, {css_h}); undefined"),

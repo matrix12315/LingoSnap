@@ -234,22 +234,25 @@
     color: var(--ink-soft);
     white-space: pre-wrap;
     word-break: break-word;
-    /* The glass quotation never crowds out the result: at most two
-       context lines (as in the classic card); a longer context scrolls
-       inside the panel. In em, so any font-size override keeps whole lines. */
-    max-height: calc(1em * 1.55 * 2 + 5px);
+    /* The glass quotation never crowds out the result: at most three
+       context lines (the bounded sentence fits them at the default card
+       width); anything longer scrolls inside the panel. In em, so any
+       font-size override keeps whole lines. */
+    max-height: calc(1em * 1.55 * 3 + 5px);
     overflow-y: auto;
     overscroll-behavior: contain;
   }
-  /* A long selection likewise stays within two lines (the classic card's
-     target pane); the rest scrolls. In em, so the History detail's larger
-     quote still shows whole lines, never a half-cut one. */
+  /* A long selection scrolls inside the glass too: three lines beside a
+     context, four when it stands alone — enough to read the selection at a
+     glance while the result keeps the card. In em, so the History detail's
+     larger quote still shows whole lines, never a half-cut one. */
   .sourcepanel .target {
-    max-height: calc(1em * 1.6 * 2);
+    max-height: calc(1em * 1.6 * 3);
     overflow-y: auto;
     overscroll-behavior: contain;
   }
   .sourcepanel .context, .sourcepanel .target { scrollbar-width: thin; }
+  .sourcepanel:not(:has(.context:not(:empty))) .target { max-height: calc(1em * 1.6 * 4); }
   .sourcepanel ::-webkit-scrollbar { width: 6px; }
   .sourcepanel ::-webkit-scrollbar-thumb { border-width: 1px; }
 
