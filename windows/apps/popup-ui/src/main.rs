@@ -21,7 +21,9 @@ use std::sync::{Arc, Mutex};
 
 use webview2_com::Microsoft::Web::WebView2::Win32::{
     CreateCoreWebView2EnvironmentWithOptions, ICoreWebView2, ICoreWebView2Controller,
-    ICoreWebView2Controller2, ICoreWebView2Controller3, ICoreWebView2Environment,
+    ICoreWebView2Controller2, ICoreWebView2Controller3, ICoreWebView2Environment, ICoreWebView2_19,
+    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW,
+    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
 };
 use webview2_com::{
     CreateCoreWebView2ControllerCompletedHandler, CreateCoreWebView2EnvironmentCompletedHandler,
@@ -85,8 +87,10 @@ const RESIZE_TIMER_ID: usize = 13;
 /// the fallback if that report never comes.
 const MANAGER_SHOW_TIMER_ID: usize = 14;
 
-/// Idle windows kept for reuse; more are destroyed.
-const MAX_IDLE_WINDOWS: usize = 2;
+/// Idle windows kept for reuse; more are destroyed. One is enough for the
+/// next popup to open without a page load; each extra pooled window kept a
+/// renderer (~20 MiB) alive.
+const MAX_IDLE_WINDOWS: usize = 1;
 /// Body padding of the popup page (APP_CSS): 6px top, 10px bottom, 8px sides.
 const BODY_PAD_W: f64 = 16.0;
 const BODY_PAD_H: f64 = 16.0;
@@ -247,6 +251,10 @@ struct Win {
     resize: Cell<Option<Resize>>,
     /// Window size the user chose by dragging an edge (physical px).
     user_size: Cell<Option<(i32, i32)>>,
+    /// Current WebView controller bounds (physical px). Popups keep them a
+    /// little larger than the window so a growing card never waits for the
+    /// viewport, but no larger: the GPU process allocates by viewport area.
+    bounds: Cell<(i32, i32)>,
 }
 
 thread_local! {
@@ -503,8 +511,17 @@ fn environment() -> Option<ICoreWebView2Environment> {
         },
     ));
     let user_data = user_data_dir();
+    let options = webview2_com::CoreWebView2EnvironmentOptions::default();
+    unsafe { options.set_additional_browser_arguments(browser_arguments()) };
+    let options: webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2EnvironmentOptions =
+        options.into();
     let started = unsafe {
-        CreateCoreWebView2EnvironmentWithOptions(None, PCWSTR(user_data.as_ptr()), None, &handler)
+        CreateCoreWebView2EnvironmentWithOptions(
+            None,
+            PCWSTR(user_data.as_ptr()),
+            &options,
+            &handler,
+        )
     };
     if started.is_err() {
         capture_log("webview: environment creation call failed");
@@ -607,6 +624,7 @@ fn create_surface(surface: Surface) -> Option<Rc<Win>> {
         cascade_from: Cell::new(None),
         resize: Cell::new(None),
         user_size: Cell::new(None),
+        bounds: Cell::new((0, 0)),
     });
     WINS.with(|wins| wins.borrow_mut().push(win.clone()));
     if !attach_webview(&win) {
@@ -619,12 +637,18 @@ fn create_surface(surface: Surface) -> Option<Rc<Win>> {
     Some(win)
 }
 
-/// Controller bounds for a window. Popups get a fixed viewport as large as
-/// the monitor's work area: the page lays out at its own content size either
-/// way, and a viewport that never changes means a resize or a growing card
-/// only reveals pixels that were already painted — no black or white block
-/// while the window catches up. The manager page fills its window.
-fn controller_bounds(win: &Win) -> RECT {
+/// Viewport headroom beyond a popup window (CSS px): a card that grows while
+/// streaming, or a chooser turning into its card, lands inside pixels the
+/// browser has already painted, so no black or white block shows while the
+/// window catches up. The bounds grow before the window does.
+const BOUNDS_HEADROOM_W: f64 = 32.0;
+const BOUNDS_HEADROOM_H: f64 = 240.0;
+
+/// Controller bounds for a window of `size` (physical px). The manager page
+/// fills its window. A popup's viewport is the window plus headroom, capped
+/// to the monitor work area. (r58–r61 used the whole work area, which cost
+/// the GPU process ~200 MiB per window.)
+fn controller_bounds(win: &Win, size: (i32, i32)) -> RECT {
     if win.surface == Surface::Manager {
         let mut rect = RECT::default();
         let _ = unsafe { GetClientRect(win.hwnd, &mut rect) };
@@ -636,11 +660,77 @@ fn controller_bounds(win: &Win) -> RECT {
         y: rect.top,
     })
     .rcWork;
+    let scale = window_scale(win.hwnd);
+    let (w, h) = (size.0.max(1), size.1.max(1));
+    let want_w = w + (BOUNDS_HEADROOM_W * scale).round() as i32;
+    let want_h = h + (BOUNDS_HEADROOM_H * scale).round() as i32;
     RECT {
         left: 0,
         top: 0,
-        right: (work.right - work.left).max(800),
-        bottom: (work.bottom - work.top).max(600),
+        right: want_w.min(work.right - work.left).max(w),
+        bottom: want_h.min(work.bottom - work.top).max(h),
+    }
+}
+
+/// Make sure a popup's viewport covers a window of `size` before the window
+/// takes that size. `force` re-fits even when the bounds already cover it
+/// (a hidden window shrinking back, a DPI change).
+fn fit_bounds(win: &Win, size: (i32, i32), force: bool) {
+    if win.surface == Surface::Manager {
+        return;
+    }
+    let (bw, bh) = win.bounds.get();
+    if !force && size.0 <= bw && size.1 <= bh {
+        return;
+    }
+    let Some(controller) = win.controller.borrow().clone() else {
+        return;
+    };
+    let rect = controller_bounds(win, size);
+    if (rect.right, rect.bottom) == (bw, bh) {
+        return;
+    }
+    win.bounds.set((rect.right, rect.bottom));
+    unsafe {
+        let _ = controller.SetBounds(rect);
+    }
+}
+
+fn window_size_of(hwnd: HWND) -> (i32, i32) {
+    let rect = window_rect(hwnd);
+    (rect.right - rect.left, rect.bottom - rect.top)
+}
+
+/// A pooled (hidden, unassigned) popup window gives its rendering memory
+/// back: the controller stops compositing and the browser is asked to trim
+/// its caches to the low memory target.
+fn park(win: &Win) {
+    if win.surface == Surface::Manager {
+        return;
+    }
+    if let Some(controller) = win.controller.borrow().clone() {
+        let _ = unsafe { controller.SetIsVisible(false) };
+    }
+    set_memory_target(win, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+}
+
+/// A pooled window taken for a new popup renders again at full speed.
+fn unpark(win: &Win) {
+    if win.surface == Surface::Manager {
+        return;
+    }
+    set_memory_target(win, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL);
+    if let Some(controller) = win.controller.borrow().clone() {
+        let _ = unsafe { controller.SetIsVisible(true) };
+    }
+}
+
+fn set_memory_target(win: &Win, level: COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL) {
+    let Some(webview) = win.webview.borrow().clone() else {
+        return;
+    };
+    if let Ok(webview19) = webview.cast::<ICoreWebView2_19>() {
+        let _ = unsafe { webview19.SetMemoryUsageTargetLevel(level) };
     }
 }
 
@@ -666,7 +756,9 @@ fn attach_webview(win: &Rc<Win>) -> bool {
         return false;
     };
     unsafe {
-        let _ = controller.SetBounds(controller_bounds(win));
+        let bounds = controller_bounds(win, window_size_of(hwnd));
+        win.bounds.set((bounds.right, bounds.bottom));
+        let _ = controller.SetBounds(bounds);
         // IsVisible defaults to false: without this the browser never
         // composites a pixel into the window.
         let _ = controller.SetIsVisible(true);
@@ -739,6 +831,10 @@ fn on_page_loaded(hwnd: HWND) {
     let queued = std::mem::take(&mut *win.queue.borrow_mut());
     for script in queued {
         execute_script(&win, &script);
+    }
+    if !demo_mode() && win.surface != Surface::Manager && win.popup_id.get() == 0 {
+        // Preloaded for the pool: nothing to show yet.
+        park(&win);
     }
     if demo_mode() {
         win.show_pending.set(true);
@@ -858,6 +954,9 @@ fn assign(id: u64) -> Option<Rc<Win>> {
     win.cascade_from.set(None);
     win.user_size.set(None);
     win.resize.set(None);
+    unpark(&win);
+    // Hidden: the viewport shrinks back to this window plus headroom.
+    fit_bounds(&win, window_size_of(win.hwnd), true);
     Some(win)
 }
 
@@ -897,6 +996,20 @@ fn release(win: &Win) {
         surplus -= 1;
         unsafe {
             let _ = DestroyWindow(extra.hwnd);
+        }
+    }
+    // Nothing on screen any more: after the plan's 600 s idle period the
+    // companion exits (and its browser processes with it); the resident
+    // starts it again for the next fair-copy popup.
+    let busy = WINS.with(|wins| wins.borrow().iter().any(|other| other.popup_id.get() != 0));
+    if !busy && !demo_mode() && !manager_mode() {
+        unsafe {
+            let _ = SetTimer(
+                Some(HOST.with(Cell::get)),
+                IDLE_QUIT_TIMER_ID,
+                IDLE_QUIT_MS,
+                None,
+            );
         }
     }
 }
@@ -1241,6 +1354,7 @@ fn on_content_size(win: &Win, size: ContentSize) {
         && x == rect.left
         && y == rect.top;
     if !same {
+        fit_bounds(win, (width, height), false);
         unsafe {
             let _ = SetWindowPos(
                 hwnd,
@@ -1331,6 +1445,7 @@ fn resize_step(win: &Win) {
         return;
     }
     win.user_size.set(Some((width, height)));
+    fit_bounds(win, (width, height), false);
     unsafe {
         let _ = SetWindowPos(
             win.hwnd,
@@ -1380,6 +1495,7 @@ unsafe extern "system" fn surface_proc(
                         unsafe {
                             let _ = ShowWindow(hwnd, SW_HIDE);
                         }
+                        park(&win);
                     }
                 }
                 RESIZE_TIMER_ID => resize_step(&win),
@@ -1400,7 +1516,7 @@ unsafe extern "system" fn surface_proc(
                 if win.surface == Surface::Manager {
                     if let Some(controller) = win.controller.borrow().clone() {
                         unsafe {
-                            let _ = controller.SetBounds(controller_bounds(&win));
+                            let _ = controller.SetBounds(controller_bounds(&win, (0, 0)));
                         }
                     }
                 }
@@ -1414,7 +1530,12 @@ unsafe extern "system" fn surface_proc(
                     if let Ok(controller3) = controller.cast::<ICoreWebView2Controller3>() {
                         let _ = unsafe { controller3.SetRasterizationScale(window_scale(hwnd)) };
                     }
-                    let _ = unsafe { controller.SetBounds(controller_bounds(&win)) };
+                    if win.surface == Surface::Manager {
+                        let _ = unsafe { controller.SetBounds(controller_bounds(&win, (0, 0))) };
+                    }
+                }
+                if win.surface != Surface::Manager {
+                    fit_bounds(&win, window_size_of(hwnd), true);
                 }
             }
             LRESULT(0)
@@ -1484,6 +1605,30 @@ unsafe extern "system" fn host_proc(
         }
         _ => unsafe { DefWindowProcW(hwnd, message, wparam, lparam) },
     }
+}
+
+/// Browser switches for the companion's WebView2 environment. The pages are
+/// local strings that never touch the network, so the browser's background
+/// services are switched off. Rendering is in software by default: the GPU
+/// process held ~150 MiB per visible card (measured, see
+/// docs/WEBVIEW_MEMORY.md) for no visible difference; the cost is more
+/// CPU while a card streams. `LINGOSNAP_WEBVIEW_GPU=1` restores GPU
+/// rendering. (WebView2 lets `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`
+/// replace all of these.)
+fn browser_arguments() -> String {
+    let mut args = vec![
+        "--disable-features=msSmartScreenProtection,SpareRendererForSitePerProcess,\
+         Translate,OptimizationHints,AutofillServerCommunication,MediaRouter",
+        "--disable-background-networking",
+        "--disable-component-update",
+        "--disable-sync",
+        "--no-pings",
+    ];
+    let gpu = std::env::var("LINGOSNAP_WEBVIEW_GPU").is_ok_and(|value| value == "1");
+    if !gpu {
+        args.push("--disable-gpu");
+    }
+    args.join(" ")
 }
 
 fn user_data_dir() -> Vec<u16> {

@@ -51,3 +51,7 @@ Only completed, non-empty results are saved. Open the manager's History view to 
 ## The manager does not appear
 
 The resident enforces one instance and forwards an Open Manager request to the existing instance. Check the notification area and close an old resident before retrying. The manager is on-demand and should consume no manager memory while closed.
+
+## Fair-copy popups stutter while a result streams
+
+The fair-copy companion renders in software by default to save memory (see `docs/WEBVIEW_MEMORY.md`). On a slow CPU, set `LINGOSNAP_WEBVIEW_GPU=1` for the resident process to switch back to GPU rendering. GPU rendering uses roughly 100–150 MiB more per visible card. After 10 minutes with no popup on screen, the companion exits; the next fair-copy popup starts it again and appears a little later than usual.
