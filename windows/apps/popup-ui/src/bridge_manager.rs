@@ -142,7 +142,8 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     return spec.split('+').map(function (p) { return p.trim(); })
       .filter(function (p) { return p.length; }).join(' + ');
   }
-  function profileLabel(p) { return p.name && p.name.trim() ? p.name.trim() + ' \u2014 ' + p.id : p.id; }
+  // Users pick profiles by name; the ID is an internal code and is never shown.
+  function profileName(p) { return p.name && p.name.trim() ? p.name.trim() : p.id; }
   function buildThemeChoice() {
     var themes = [{ id: 'light', label: t('themeLight') }, { id: 'dark', label: t('themeDark') }];
     choice(document.getElementById('uitheme'), themes, current.theme === 'dark' ? 1 : 0, function (opt) {
@@ -166,7 +167,7 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     current.hover = cfg.hoverId || '';
     current.language = cfg.language || 'en';
     if (window.setLang) window.setLang(current.language);
-    var opts = current.profiles.map(function (p) { return { id: p.id, label: profileLabel(p) }; });
+    var opts = current.profiles.map(function (p) { return { id: p.id, label: profileName(p) }; });
     var idx = function (id) { return opts.findIndex(function (o) { return o.id === id; }); };
     choice(document.getElementById('selfprof'), opts, idx(current.selection), function (opt) {
       current.selection = opt.id; postSettings();
@@ -196,7 +197,7 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     var list = document.getElementById('orderlist');
     if (!list) return;
     var byId = {};
-    profiles.forEach(function (p) { byId[p.id] = p.name; });
+    profiles.forEach(function (p) { byId[p.id] = profileName(p); });
     var ordered = orderIds.filter(function (id) { return byId[id] !== undefined; })
       .map(function (id) { return { id: id, name: byId[id] }; });
     profiles.forEach(function (p) {
@@ -213,8 +214,7 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
       row.className = 'orderrow';
       row.dataset.id = p.id;
       row.innerHTML = '<span class="ogrip" data-i18n-title="dragReorder" title="' + esc(t('dragReorder')) + '">' + GRIP + '</span>' +
-        '<span class="oname">' + esc(p.name || p.id) + '</span>' +
-        '<span class="oid">' + esc(p.id) + '</span>' +
+        '<span class="oname">' + esc(profileName(p)) + '</span>' +
         '<span class="omove">' +
         '<button class="iconbtn up" type="button" data-i18n-title="moveUp" data-i18n-aria="moveUp" title="' + esc(t('moveUp')) + '" aria-label="' + esc(t('moveUp')) + '">' + UP_SVG + '</button>' +
         '<button class="iconbtn down" type="button" data-i18n-title="moveDown" data-i18n-aria="moveDown" title="' + esc(t('moveDown')) + '" aria-label="' + esc(t('moveDown')) + '">' + DOWN_SVG + '</button>' +
@@ -233,13 +233,17 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     var menu = document.getElementById('pidMenu');
     if (menu) {
       menu.innerHTML = '';
-      var ids = (payload.profiles || []).map(function (p) { return p.id; });
-      if (payload.selectedId && ids.indexOf(payload.selectedId) < 0) ids.push(payload.selectedId);
-      ids.forEach(function (id) {
+      var picks = (payload.profiles || []).map(function (p) { return { id: p.id, name: profileName(p) }; });
+      // An unsaved draft is listed under its own (so far) name.
+      if (payload.selectedId && !picks.some(function (p) { return p.id === payload.selectedId; })) {
+        picks.push({ id: payload.selectedId, name: profileName(payload.selected || { id: payload.selectedId }) });
+      }
+      picks.forEach(function (pick) {
+        var id = pick.id;
         var item = document.createElement('div');
         item.className = 'pitem' + (id === payload.selectedId ? ' on' : '');
         item.dataset.v = id;
-        item.textContent = id;
+        item.textContent = pick.name;
         item.addEventListener('click', function (e) {
           // The mockup's own menu handler would load its sample prompts.
           e.stopPropagation();
@@ -253,9 +257,9 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     }
     promptId = payload.selectedId || '';
     set('pid', promptId);
-    var label = document.getElementById('pidLabel');
-    if (label) label.textContent = promptId;
     var sel = payload.selected || {};
+    var label = document.getElementById('pidLabel');
+    if (label) label.textContent = profileName({ id: promptId, name: sel.name });
     set('pname', sel.name || '');
     set('pmodel', sel.model || '');
     set('ptemp', sel.temp == null ? '' : sel.temp);
@@ -266,6 +270,9 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     var restore = document.getElementById('restoreBtn');
     if (save) save.disabled = !payload.draft;
     if (restore) restore.disabled = !payload.draft;
+    // An unsaved draft is discarded with Restore, not deleted.
+    var del = document.getElementById('deletePromptBtn');
+    if (del) del.disabled = !!payload.draft || !payload.selectedId;
   }
   function postPrompt() {
     post({
@@ -298,7 +305,7 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
   function buildHistoryFilters() {
     var boxes = document.querySelectorAll('#page-history .htoolbar .select');
     if (boxes.length < 3) return;
-    var prompts = [{ label: t('allProfiles') }].concat(current.profiles.map(function (p) { return { label: p.id }; }));
+    var prompts = [{ label: t('allProfiles') }].concat(current.profiles.map(function (p) { return { label: profileName(p) }; }));
     choice(q('input', boxes[0]), prompts, Math.min(history.prompt, prompts.length - 1), function (o, i) { history.prompt = i; postQuery(); });
     var sources = ['allSources', 'srcSelection', 'srcHover', 'srcClipboard', 'srcOcr'].map(function (k) { return { label: t(k) }; });
     choice(q('input', boxes[1]), sources, history.source, function (o, i) { history.source = i; postQuery(); });
@@ -526,6 +533,10 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     var savePrompt = document.getElementById('savePromptBtn');
     if (savePrompt) savePrompt.addEventListener('click', postPrompt);
     // Restore = discard the edits and reload the saved prompt.
+    var delProfile = document.getElementById('deletePromptBtn');
+    if (delProfile) delProfile.addEventListener('click', function () {
+      if (promptId) post({ mcmd: 'delete_prompt', id: promptId });
+    });
     var restore = document.getElementById('restoreBtn');
     if (restore) restore.addEventListener('click', function () {
       post({ mcmd: 'select_prompt', id: promptId });

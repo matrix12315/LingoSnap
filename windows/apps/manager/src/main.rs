@@ -79,6 +79,7 @@ mod windows_app {
     const ID_DELETE_KEY: usize = 112;
     const ID_SAVE_PROMPT: usize = 120;
     const ID_NEW_PROMPT: usize = 121;
+    const ID_DELETE_PROMPT: usize = 122;
     const ID_CLOSE: usize = 130;
     const ID_HISTORY_PROMPT: usize = 141;
     const ID_HISTORY_SOURCE: usize = 142;
@@ -209,7 +210,6 @@ mod windows_app {
     const LBS_OWNERDRAWFIXED: u32 = 0x0010;
     const LBS_NOINTEGRALHEIGHT: u32 = 0x0100;
     const CBS_DROPDOWNLIST: u32 = 0x0003;
-    const CBS_DROPDOWN: u32 = 0x0002;
     const EM_SETREADONLY: u32 = 0x00CF;
 
     #[link(name = "kernel32")]
@@ -264,7 +264,12 @@ mod windows_app {
         Temperature,
         MaxOutputTokens,
         SavePrompt,
+        DeleteProfile,
+        DeletedProfile,
         PromptHint,
+        HintModelOverride,
+        HintTemperature,
+        HintMaxTokens,
         SearchCard,
         EntriesCard,
         SearchTarget,
@@ -332,7 +337,12 @@ mod windows_app {
         TextKey::Temperature,
         TextKey::MaxOutputTokens,
         TextKey::SavePrompt,
+        TextKey::DeleteProfile,
+        TextKey::DeletedProfile,
         TextKey::PromptHint,
+        TextKey::HintModelOverride,
+        TextKey::HintTemperature,
+        TextKey::HintMaxTokens,
         TextKey::SearchCard,
         TextKey::EntriesCard,
         TextKey::SearchTarget,
@@ -411,8 +421,19 @@ mod windows_app {
             (UiLanguage::English, Temperature) => "Temperature",
             (UiLanguage::English, MaxOutputTokens) => "Max tokens",
             (UiLanguage::English, SavePrompt) => "Save profile",
+            (UiLanguage::English, DeleteProfile) => "Delete profile",
+            (UiLanguage::English, DeletedProfile) => "Deleted profile",
             (UiLanguage::English, PromptHint) => {
                 "Use {target}, {context}, and {source}; every user template needs {target}."
+            }
+            (UiLanguage::English, HintModelOverride) => {
+                "Model override: leave empty to use the model set in Settings."
+            }
+            (UiLanguage::English, HintTemperature) => {
+                "Temperature: 0–2. Lower gives steadier answers, higher gives more varied ones. Empty uses the provider default."
+            }
+            (UiLanguage::English, HintMaxTokens) => {
+                "Max tokens: the longest reply allowed, in tokens. Empty uses the provider default."
             }
             (UiLanguage::English, SearchCard) => "Search",
             (UiLanguage::English, EntriesCard) => "Entries",
@@ -484,8 +505,19 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, Temperature) => "温度",
             (UiLanguage::SimplifiedChinese, MaxOutputTokens) => "最大令牌数",
             (UiLanguage::SimplifiedChinese, SavePrompt) => "保存配置档",
+            (UiLanguage::SimplifiedChinese, DeleteProfile) => "删除配置档",
+            (UiLanguage::SimplifiedChinese, DeletedProfile) => "已删除的配置档",
             (UiLanguage::SimplifiedChinese, PromptHint) => {
                 "可使用 {target}、{context} 和 {source}；用户模板必须包含 {target}。"
+            }
+            (UiLanguage::SimplifiedChinese, HintModelOverride) => {
+                "模型覆盖：留空则使用设置中的模型。"
+            }
+            (UiLanguage::SimplifiedChinese, HintTemperature) => {
+                "温度：0–2。越低越稳定，越高越多样。留空使用服务商默认值。"
+            }
+            (UiLanguage::SimplifiedChinese, HintMaxTokens) => {
+                "最大令牌数：回复的最大长度（令牌数）。留空使用服务商默认值。"
             }
             (UiLanguage::SimplifiedChinese, SearchCard) => "搜索",
             (UiLanguage::SimplifiedChinese, EntriesCard) => "记录",
@@ -535,6 +567,21 @@ mod windows_app {
         InterfaceLanguageSaved,
         SaveThemeFailed {
             detail: &'a str,
+        },
+        DeleteProfileConfirm {
+            name: &'a str,
+        },
+        ProfileDeleted {
+            name: &'a str,
+        },
+        DeleteBlockedLast,
+        DeleteBlockedSelectionDefault,
+        DeleteBlockedHoverDefault,
+        DeleteProfileFailed {
+            detail: &'a str,
+        },
+        DuplicateProfileName {
+            name: &'a str,
         },
         HistoryRefreshed,
         HistoryUnavailable {
@@ -635,6 +682,34 @@ mod windows_app {
                 UiLanguage::English => format!("Could not save theme: {detail}"),
                 UiLanguage::SimplifiedChinese => format!("无法保存主题：{detail}"),
             },
+            DeleteProfileConfirm { name } => match language {
+                UiLanguage::English => format!("Delete profile “{name}”? This cannot be undone. Existing history entries keep their results."),
+                UiLanguage::SimplifiedChinese => format!("删除配置档“{name}”？此操作无法撤销，已有历史记录会保留。"),
+            },
+            ProfileDeleted { name } => match language {
+                UiLanguage::English => format!("Profile “{name}” deleted."),
+                UiLanguage::SimplifiedChinese => format!("已删除配置档“{name}”。"),
+            },
+            DeleteBlockedLast => match language {
+                UiLanguage::English => "The last profile cannot be deleted.".to_owned(),
+                UiLanguage::SimplifiedChinese => "无法删除最后一个配置档。".to_owned(),
+            },
+            DeleteBlockedSelectionDefault => match language {
+                UiLanguage::English => "This is the Selection profile. Choose a different Selection profile in Settings first.".to_owned(),
+                UiLanguage::SimplifiedChinese => "这是划词配置档。请先在设置中选择其他划词配置档。".to_owned(),
+            },
+            DeleteBlockedHoverDefault => match language {
+                UiLanguage::English => "This is the Hover profile. Choose a different Hover profile in Settings first.".to_owned(),
+                UiLanguage::SimplifiedChinese => "这是悬停配置档。请先在设置中选择其他悬停配置档。".to_owned(),
+            },
+            DeleteProfileFailed { detail } => match language {
+                UiLanguage::English => format!("Could not delete profile: {detail}"),
+                UiLanguage::SimplifiedChinese => format!("无法删除配置档：{detail}"),
+            },
+            DuplicateProfileName { name } => match language {
+                UiLanguage::English => format!("Another profile is already named “{name}”. Choose a different name."),
+                UiLanguage::SimplifiedChinese => format!("已有名为“{name}”的配置档，请换一个名称。"),
+            },
             HistoryRefreshed => match language {
                 UiLanguage::English => "History refreshed.".to_owned(),
                 UiLanguage::SimplifiedChinese => "历史记录已刷新。".to_owned(),
@@ -733,7 +808,7 @@ mod windows_app {
             UnsavedPromptDiscarded => match language { UiLanguage::English => "Unsaved new profile discarded; the saved settings were unchanged.".to_owned(), UiLanguage::SimplifiedChinese => "已丢弃未保存的新配置档；已保存的设置未更改。".to_owned() },
             PromptInvalid { detail } => match language { UiLanguage::English => format!("Profile is invalid: {detail}"), UiLanguage::SimplifiedChinese => format!("配置档无效：{detail}") },
             InvalidTemperature => match language { UiLanguage::English => "Temperature must be a number from 0 to 2.".to_owned(), UiLanguage::SimplifiedChinese => "温度必须是 0 到 2 之间的数字。".to_owned() },
-            InvalidMaxOutputTokens => match language { UiLanguage::English => "Max output tokens must be a positive integer.".to_owned(), UiLanguage::SimplifiedChinese => "最大输出令牌数必须是正整数。".to_owned() },
+            InvalidMaxOutputTokens => match language { UiLanguage::English => "Max tokens must be a positive integer.".to_owned(), UiLanguage::SimplifiedChinese => "最大令牌数必须是正整数。".to_owned() },
             ConfigPathUnavailable => match language { UiLanguage::English => "LOCALAPPDATA is not available".to_owned(), UiLanguage::SimplifiedChinese => "LOCALAPPDATA 不可用".to_owned() },
             ConfigExistsNotOverwritten => match language { UiLanguage::English => "A configuration file already exists at the expected path; it was not overwritten. Restart the Manager to load it.".to_owned(), UiLanguage::SimplifiedChinese => "预期路径已存在配置文件，未覆盖。请重新打开管理器以加载该文件。".to_owned() },
             CredentialStatusPresent => match language { UiLanguage::English => "A saved key is present (value hidden).".to_owned(), UiLanguage::SimplifiedChinese => "存在已保存的密钥（值已隐藏）。".to_owned() },
@@ -1782,7 +1857,7 @@ mod windows_app {
             ID_PROMPT_ID,
             Some(View::Prompts),
             Slot::PromptId,
-            CBS_DROPDOWN,
+            CBS_DROPDOWNLIST,
         )?;
         add_label(
             hwnd,
@@ -1864,12 +1939,41 @@ mod windows_app {
             Some(View::Prompts),
             Slot::SavePrompt,
         )?;
+        add_button(
+            hwnd,
+            &mut h,
+            ID_DELETE_PROMPT,
+            "Delete profile",
+            Some(View::Prompts),
+            Slot::DeletePrompt,
+        )?;
         add_label(
             hwnd,
             &mut h,
             "Use {target}, {context}, and {source}; every user template needs {target}.",
             Some(View::Prompts),
             Slot::PromptHint,
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Model override: leave empty to use the model set in Settings.",
+            Some(View::Prompts),
+            Slot::PromptModelHint,
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Temperature: 0–2. Lower gives steadier answers, higher gives more varied ones. Empty uses the provider default.",
+            Some(View::Prompts),
+            Slot::PromptTempHint,
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Max tokens: the longest reply allowed, in tokens. Empty uses the provider default.",
+            Some(View::Prompts),
+            Slot::PromptTokensHint,
         )?;
         h.system_prompt = add_rich_edit(
             hwnd,
@@ -2047,8 +2151,12 @@ mod windows_app {
         PromptTokensLabel,
         PromptTokens,
         NewPrompt,
+        DeletePrompt,
         SavePrompt,
         PromptHint,
+        PromptModelHint,
+        PromptTempHint,
+        PromptTokensHint,
         SystemPrompt,
         UserTemplate,
         PromptStatus,
@@ -2295,8 +2403,7 @@ mod windows_app {
         add_combo_with_kind(parent, h, id, view, slot, CBS_DROPDOWNLIST)
     }
 
-    /// `kind` selects closed-list (`CBS_DROPDOWNLIST`) versus the editable
-    /// ID dropdown (`CBS_DROPDOWN`) that also offers profile switching.
+    /// `kind` is the combo box style (`CBS_*`).
     fn add_combo_with_kind(
         parent: HWND,
         h: &mut Handles,
@@ -3062,6 +3169,15 @@ mod windows_app {
                     },
                 ));
                 slots.push((
+                    Slot::DeletePrompt,
+                    RECT {
+                        left: content_width - 420,
+                        top: content_top + 56,
+                        right: content_width - 260,
+                        bottom: content_top + 92,
+                    },
+                ));
+                slots.push((
                     Slot::SavePrompt,
                     RECT {
                         left: content_width - 160,
@@ -3074,17 +3190,36 @@ mod windows_app {
                     Slot::PromptHint,
                     RECT {
                         left: 0,
-                        top: content_top + 100,
+                        top: content_top + 148,
                         right: content_width,
-                        bottom: content_top + 116,
+                        bottom: content_top + 164,
                     },
                 ));
+                for (index, slot) in [
+                    Slot::PromptModelHint,
+                    Slot::PromptTempHint,
+                    Slot::PromptTokensHint,
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let top = content_top + 100 + 16 * index as i32;
+                    slots.push((
+                        slot,
+                        RECT {
+                            left: 0,
+                            top,
+                            right: content_width,
+                            bottom: top + 16,
+                        },
+                    ));
+                }
                 let editor_bottom = content_height - 24;
                 let editor_mid = (content_width - 10) / 2;
                 cards.push((
                     RECT {
                         left: 0,
-                        top: content_top + 128,
+                        top: content_top + 176,
                         right: editor_mid,
                         bottom: content_top + editor_bottom,
                     },
@@ -3093,7 +3228,7 @@ mod windows_app {
                 cards.push((
                     RECT {
                         left: editor_mid + 10,
-                        top: content_top + 128,
+                        top: content_top + 176,
                         right: content_width,
                         bottom: content_top + editor_bottom,
                     },
@@ -3103,7 +3238,7 @@ mod windows_app {
                     Slot::SystemPrompt,
                     RECT {
                         left: 10,
-                        top: content_top + 158,
+                        top: content_top + 206,
                         right: editor_mid - 10,
                         bottom: content_top + editor_bottom - 10,
                     },
@@ -3112,7 +3247,7 @@ mod windows_app {
                     Slot::UserTemplate,
                     RECT {
                         left: editor_mid + 20,
-                        top: content_top + 158,
+                        top: content_top + 206,
                         right: content_width - 10,
                         bottom: content_top + editor_bottom - 10,
                     },
@@ -3636,7 +3771,7 @@ mod windows_app {
         let Some(profile) = state.config.profiles.get(index) else {
             return;
         };
-        set_text(row.label, &profile_option_label(profile));
+        set_text(row.label, profile_display_name(profile));
         unsafe {
             let _ = EnableWindow(row.up, index > 0);
             let _ = EnableWindow(row.down, index + 1 < state.config.profiles.len());
@@ -3752,6 +3887,9 @@ mod windows_app {
                 Slot::HistoryContext => note,
                 Slot::CredentialHint
                 | Slot::PromptHint
+                | Slot::PromptModelHint
+                | Slot::PromptTempHint
+                | Slot::PromptTokensHint
                 | Slot::HistoryHint
                 | Slot::HistoryMeta
                 | Slot::CredentialStatus
@@ -4119,7 +4257,10 @@ mod windows_app {
                 | (ID_PROMPTS_TAB, View::Prompts)
                 | (ID_HISTORY_TAB, View::History)
         );
-        let destructive = matches!(item.CtlID as usize, ID_DELETE_KEY | ID_HISTORY_DELETE);
+        let destructive = matches!(
+            item.CtlID as usize,
+            ID_DELETE_KEY | ID_HISTORY_DELETE | ID_DELETE_PROMPT
+        );
         let primary = matches!(
             item.CtlID as usize,
             ID_SAVE_SETTINGS | ID_SAVE_KEY | ID_SAVE_PROMPT | ID_HISTORY_REFRESH
@@ -4273,7 +4414,13 @@ mod windows_app {
             };
             meta_rect.left += prefix_width;
             SetTextColor(item.hDC, ACCENT);
-            let mut profile_text: Vec<u16> = single_line(&entry.prompt_id).encode_utf16().collect();
+            let mut profile_text: Vec<u16> = single_line(&history_profile_label(
+                &state.config.profiles,
+                &entry.prompt_id,
+                ui_text(state.language(), TextKey::DeletedProfile),
+            ))
+            .encode_utf16()
+            .collect();
             let _ = DrawTextW(
                 item.hDC,
                 &mut profile_text,
@@ -4423,6 +4570,7 @@ mod windows_app {
             ID_DELETE_KEY => delete_key(state),
             ID_SAVE_PROMPT => save_prompt(state),
             ID_NEW_PROMPT => new_prompt(state),
+            ID_DELETE_PROMPT => delete_profile(hwnd, state),
             ID_HISTORY_REFRESH => refresh_history(state),
             ID_HISTORY_COPY => copy_history_output(hwnd, state),
             ID_HISTORY_DELETE => delete_history(hwnd, state),
@@ -4609,10 +4757,7 @@ mod windows_app {
             ui_text(state.language(), TextKey::AllPrompts),
         );
         for profile in &state.config.profiles {
-            add_combo_string(
-                state.handles.history_prompt,
-                &format!("{} — {}", profile.id, profile.name),
-            );
+            add_combo_string(state.handles.history_prompt, profile_display_name(profile));
         }
         set_combo_selection(
             state.handles.history_prompt,
@@ -4659,7 +4804,7 @@ mod windows_app {
         ] {
             reset_combo(hwnd);
             for profile in &state.config.profiles {
-                add_combo_string(hwnd, &profile_option_label(profile));
+                add_combo_string(hwnd, profile_display_name(profile));
             }
             if let Some(index) = selected {
                 set_combo_selection(hwnd, index);
@@ -4669,15 +4814,6 @@ mod windows_app {
 
     fn selected_profile_index(profiles: &[PromptConfig], id: &str) -> Option<usize> {
         profiles.iter().position(|profile| profile.id == id)
-    }
-
-    fn profile_option_label(profile: &PromptConfig) -> String {
-        let name = profile.name.trim();
-        if name.is_empty() {
-            profile.id.clone()
-        } else {
-            format!("{name} — {}", profile.id)
-        }
     }
 
     fn selected_profile_id(hwnd: HWND, profiles: &[PromptConfig]) -> Option<String> {
@@ -4816,7 +4952,11 @@ mod windows_app {
                         "{} · {} · {} · {}{}",
                         entry.created_at_utc,
                         source_label(state.language(), entry.source),
-                        entry.prompt_id,
+                        history_profile_label(
+                            &state.config.profiles,
+                            &entry.prompt_id,
+                            ui_text(state.language(), TextKey::DeletedProfile),
+                        ),
                         entry.model,
                         if entry.served_from_cache {
                             match state.language() {
@@ -4965,6 +5105,89 @@ mod windows_app {
                 ),
             ),
         }
+    }
+
+    /// Delete the profile selected on the Profiles page, after confirmation.
+    /// An unsaved draft is discarded instead (see `discard_draft`).
+    fn delete_profile(owner: HWND, state: &mut ManagerState) {
+        if state.draft_prompt.is_some() {
+            return;
+        }
+        let Some(profile) = state.config.profiles.get(state.profile_index) else {
+            set_text(
+                state.handles.prompt_status,
+                &status_text(state.language(), StatusEvent::NoPromptProfile),
+            );
+            return;
+        };
+        let id = profile.id.clone();
+        let name = profile_display_name(profile).to_owned();
+        let next = match config_without_profile(&state.config, &id) {
+            Ok(next) => next,
+            Err(blocked) => {
+                let event = match blocked {
+                    DeleteBlocked::LastProfile => StatusEvent::DeleteBlockedLast,
+                    DeleteBlocked::SelectionDefault => StatusEvent::DeleteBlockedSelectionDefault,
+                    DeleteBlocked::HoverDefault => StatusEvent::DeleteBlockedHoverDefault,
+                };
+                set_text(
+                    state.handles.prompt_status,
+                    &status_text(state.language(), event),
+                );
+                return;
+            }
+        };
+        let confirmation = status_text(
+            state.language(),
+            StatusEvent::DeleteProfileConfirm { name: &name },
+        );
+        let message = wide(&confirmation);
+        let title = wide(ui_text(state.language(), TextKey::WindowTitle));
+        let result = unsafe {
+            MessageBoxW(
+                Some(owner),
+                PCWSTR(message.as_ptr()),
+                PCWSTR(title.as_ptr()),
+                MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2,
+            )
+        };
+        if result != IDYES {
+            set_text(
+                state.handles.prompt_status,
+                &status_text(state.language(), StatusEvent::DeletionCancelled),
+            );
+            return;
+        }
+        if let Err(error) = next
+            .validate()
+            .map_err(|error| error.to_string())
+            .and_then(|()| save_config(state, &next))
+        {
+            set_text(
+                state.handles.prompt_status,
+                &status_text(
+                    state.language(),
+                    StatusEvent::DeleteProfileFailed { detail: &error },
+                ),
+            );
+            return;
+        }
+        state.config = next;
+        let refresh = notify_config_changed();
+        state.profile_index = state
+            .profile_index
+            .min(state.config.profiles.len().saturating_sub(1));
+        refresh_prompt_form(state);
+        populate_profile_selectors(state);
+        populate_history_filters(state);
+        let _ = refresh;
+        set_text(
+            state.handles.prompt_status,
+            &status_text(
+                state.language(),
+                StatusEvent::ProfileDeleted { name: &name },
+            ),
+        );
     }
 
     fn format_history_row(entry: &HistoryEntry) -> String {
@@ -5320,6 +5543,16 @@ mod windows_app {
                 return;
             }
         };
+        if profile_name_taken(&state.config.profiles, &prompt.name, Some(&prompt.id)) {
+            set_text(
+                state.handles.prompt_status,
+                &status_text(
+                    state.language(),
+                    StatusEvent::DuplicateProfileName { name: &prompt.name },
+                ),
+            );
+            return;
+        }
         let was_draft = state.draft_prompt.is_some();
         let old_id = (!was_draft).then(|| state.config.profiles[state.profile_index].id.clone());
         // Global defaults belong to the Settings page; prompt saves leave
@@ -5368,7 +5601,7 @@ mod windows_app {
         refresh_prompt_form(state);
     }
     fn new_prompt(state: &mut ManagerState) {
-        let mut prompt = PromptConfig::new(format!("custom-{}", state.config.profiles.len() + 1));
+        let mut prompt = PromptConfig::new(next_profile_id(&state.config));
         prompt.name = "New profile".to_owned();
         prompt.system_prompt = "Interpret the target using the supplied context.".to_owned();
         prompt.user_template =
@@ -5386,7 +5619,11 @@ mod windows_app {
         let Some(index) = combo_selection(state.handles.profile_id) else {
             return;
         };
-        if index >= state.config.profiles.len() || state.draft_prompt.is_some() {
+        if state.draft_prompt.is_some() {
+            refresh_profile_dropdown(state);
+            return;
+        }
+        if index >= state.config.profiles.len() {
             return;
         }
         if index != state.profile_index {
@@ -5401,7 +5638,6 @@ mod windows_app {
             .as_ref()
             .or_else(|| state.config.profiles.get(state.profile_index))
         {
-            set_text(state.handles.profile_id, &prompt.id);
             set_text(state.handles.profile_name, &prompt.name);
             set_text(state.handles.system_prompt, &prompt.system_prompt);
             set_text(state.handles.user_template, &prompt.user_template);
@@ -5432,10 +5668,14 @@ mod windows_app {
     fn refresh_profile_dropdown(state: &mut ManagerState) {
         reset_combo(state.handles.profile_id);
         for profile in &state.config.profiles {
-            add_combo_string(state.handles.profile_id, &profile_option_label(profile));
+            add_combo_string(state.handles.profile_id, profile_display_name(profile));
         }
-        if state.draft_prompt.is_none() {
-            set_combo_selection(state.handles.profile_id, state.profile_index);
+        match state.draft_prompt.as_ref() {
+            Some(draft) => {
+                add_combo_string(state.handles.profile_id, profile_display_name(draft));
+                set_combo_selection(state.handles.profile_id, state.config.profiles.len());
+            }
+            None => set_combo_selection(state.handles.profile_id, state.profile_index),
         }
     }
 
@@ -5447,6 +5687,75 @@ mod windows_app {
                 &status_text(state.language(), StatusEvent::UnsavedPromptDiscarded),
             );
         }
+    }
+
+    /// Why a profile cannot be deleted.
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum DeleteBlocked {
+        LastProfile,
+        SelectionDefault,
+        HoverDefault,
+    }
+
+    /// The configuration without profile `id`, or the reason it must stay.
+    /// The user changes a default in Settings before deleting its profile.
+    fn config_without_profile(config: &AppConfig, id: &str) -> Result<AppConfig, DeleteBlocked> {
+        if config.profiles.len() <= 1 {
+            return Err(DeleteBlocked::LastProfile);
+        }
+        if config.defaults.selection == id {
+            return Err(DeleteBlocked::SelectionDefault);
+        }
+        if config.defaults.hover == id {
+            return Err(DeleteBlocked::HoverDefault);
+        }
+        let mut next = config.clone();
+        next.profiles.retain(|profile| profile.id != id);
+        Ok(next)
+    }
+
+    /// An ID no existing profile uses. `len + 1` alone can collide after a delete.
+    fn next_profile_id(config: &AppConfig) -> String {
+        let mut number = config.profiles.len() + 1;
+        loop {
+            let id = format!("custom-{number}");
+            if !config.profiles.iter().any(|profile| profile.id == id) {
+                return id;
+            }
+            number += 1;
+        }
+    }
+
+    /// True when another profile (not `own_id`) already has this name,
+    /// compared trimmed and case-insensitively.
+    fn profile_name_taken(profiles: &[PromptConfig], name: &str, own_id: Option<&str>) -> bool {
+        let wanted = name.trim().to_lowercase();
+        profiles.iter().any(|profile| {
+            Some(profile.id.as_str()) != own_id && profile.name.trim().to_lowercase() == wanted
+        })
+    }
+
+    /// What users see for a profile: its name, never its ID (an old file
+    /// with a blank name falls back to the ID rather than an empty entry).
+    fn profile_display_name(profile: &PromptConfig) -> &str {
+        let name = profile.name.trim();
+        if name.is_empty() {
+            &profile.id
+        } else {
+            name
+        }
+    }
+
+    /// The name of the profile that produced a history entry, or `deleted`
+    /// when that profile no longer exists.
+    fn history_profile_label(profiles: &[PromptConfig], prompt_id: &str, deleted: &str) -> String {
+        profiles
+            .iter()
+            .find(|profile| profile.id == prompt_id)
+            .map_or_else(
+                || deleted.to_owned(),
+                |p| profile_display_name(p).to_owned(),
+            )
     }
 
     fn apply_prompt(
@@ -5480,7 +5789,13 @@ mod windows_app {
         let max_output_tokens =
             parse_optional_u32(&read_text(state.handles.max_tokens), state.language())?;
         let prompt = PromptConfig {
-            id: read_text(state.handles.profile_id).trim().to_owned(),
+            // The ID is assigned by the app and is not editable.
+            id: state
+                .draft_prompt
+                .as_ref()
+                .or_else(|| state.config.profiles.get(state.profile_index))
+                .map(|profile| profile.id.clone())
+                .unwrap_or_default(),
             name: read_text(state.handles.profile_name).trim().to_owned(),
             system_prompt: read_text(state.handles.system_prompt),
             user_template: read_text(state.handles.user_template),
@@ -5695,7 +6010,11 @@ mod windows_app {
                     "utc": entry.created_at_utc,
                     "target": entry.target,
                     "preview": preview,
-                    "prompt": entry.prompt_id,
+                    "prompt": history_profile_label(
+                        &state.config.profiles,
+                        &entry.prompt_id,
+                        ui_text(state.language(), TextKey::DeletedProfile),
+                    ),
                     "source": source_label(state.language(), entry.source),
                     "context": entry.context,
                     "output": entry.output,
@@ -5963,6 +6282,20 @@ mod windows_app {
                 fair_copy_push_all(state);
                 fair_copy_push_status(state, true);
             }
+            Some("delete_prompt") => {
+                let id = text("id");
+                if let Some(index) = state.config.profiles.iter().position(|p| p.id == id) {
+                    state.profile_index = index;
+                    state.draft_prompt = None;
+                    let owner =
+                        unsafe { FindWindowW(w!("SelectionTranslateManagerUi"), PCWSTR::null()) }
+                            .unwrap_or(hwnd);
+                    delete_profile(owner, state);
+                    populate_profile_selectors(state);
+                }
+                fair_copy_push_all(state);
+                fair_copy_push_status(state, true);
+            }
             Some("save_prompt") => {
                 fair_copy_save_prompt(state, &command);
                 populate_profile_selectors(state);
@@ -6054,6 +6387,16 @@ mod windows_app {
                     StatusEvent::PromptInvalid {
                         detail: &error.to_string(),
                     },
+                ),
+            );
+            return;
+        }
+        if profile_name_taken(&state.config.profiles, &prompt.name, Some(&prompt.id)) {
+            set_text(
+                state.handles.prompt_status,
+                &status_text(
+                    language,
+                    StatusEvent::DuplicateProfileName { name: &prompt.name },
                 ),
             );
             return;
@@ -6184,15 +6527,92 @@ mod windows_app {
     mod tests {
         use super::{
             apply_prompt, config_refresh_status, config_with_manager_language,
-            credential_refresh_status, format_history_row, history_count_text,
-            history_source_for_index, parse_optional_f32, parse_optional_u32, profile_id_for_index,
-            profile_option_label, resident_start_status, status_text, ui_text, valid_history_index,
-            visibility_style, ManagerLayout, StatusEvent, StatusOperation, View, ALL_TEXT_KEYS,
+            config_without_profile, credential_refresh_status, format_history_row,
+            history_count_text, history_profile_label, history_source_for_index, next_profile_id,
+            parse_optional_f32, parse_optional_u32, profile_display_name, profile_id_for_index,
+            profile_name_taken, resident_start_status, status_text, ui_text, valid_history_index,
+            visibility_style, DeleteBlocked, ManagerLayout, StatusEvent, StatusOperation, View,
+            ALL_TEXT_KEYS,
         };
         use selection_core::{AppConfig, ExtractionSource, PromptConfig, UiLanguage};
         use selection_platform_windows::app::{RefreshOutcome, ResidentStartOutcome};
         use selection_storage::HistoryEntry;
         use windows::Win32::UI::WindowsAndMessaging::WS_VISIBLE;
+        fn named(id: &str, name: &str) -> PromptConfig {
+            let mut profile = PromptConfig::new(id);
+            profile.name = name.to_owned();
+            profile
+        }
+
+        #[test]
+        fn delete_is_blocked_for_the_last_profile_and_for_defaults() {
+            let mut config = AppConfig::default();
+            let ids: Vec<String> = config.profiles.iter().map(|p| p.id.clone()).collect();
+            assert!(ids.len() > 2);
+            config.defaults.selection = ids[0].clone();
+            config.defaults.hover = ids[1].clone();
+            assert_eq!(
+                config_without_profile(&config, &ids[0]).unwrap_err(),
+                DeleteBlocked::SelectionDefault
+            );
+            assert_eq!(
+                config_without_profile(&config, &ids[1]).unwrap_err(),
+                DeleteBlocked::HoverDefault
+            );
+            let next = config_without_profile(&config, &ids[2]).expect("plain profile deletes");
+            assert_eq!(next.profiles.len(), config.profiles.len() - 1);
+            assert!(next.profiles.iter().all(|p| p.id != ids[2]));
+            // The remaining order is untouched.
+            let kept: Vec<_> = ids.iter().filter(|id| **id != ids[2]).cloned().collect();
+            let after: Vec<_> = next.profiles.iter().map(|p| p.id.clone()).collect();
+            assert_eq!(after, kept);
+            assert!(next.validate().is_ok());
+
+            let mut single = config.clone();
+            single.profiles.truncate(1);
+            single.defaults.selection = single.profiles[0].id.clone();
+            single.defaults.hover = single.profiles[0].id.clone();
+            assert_eq!(
+                config_without_profile(&single, &single.profiles[0].id.clone()).unwrap_err(),
+                DeleteBlocked::LastProfile
+            );
+        }
+
+        #[test]
+        fn new_profile_ids_never_collide_after_a_delete() {
+            let mut config = AppConfig {
+                profiles: vec![named("custom-2", "Two"), named("custom-3", "Three")],
+                ..AppConfig::default()
+            };
+            // len + 1 would be custom-3, which exists.
+            assert_eq!(next_profile_id(&config), "custom-4");
+            config.profiles = vec![named("a", "A")];
+            assert_eq!(next_profile_id(&config), "custom-2");
+        }
+
+        #[test]
+        fn profile_names_must_be_unique_ignoring_case_and_padding() {
+            let profiles = vec![named("a", "Translate"), named("b", "解释")];
+            assert!(profile_name_taken(&profiles, "  translate ", None));
+            assert!(profile_name_taken(&profiles, "TRANSLATE", Some("b")));
+            // A profile may keep its own name.
+            assert!(!profile_name_taken(&profiles, "Translate", Some("a")));
+            assert!(!profile_name_taken(&profiles, "Explain", None));
+        }
+
+        #[test]
+        fn history_shows_profile_names_and_marks_deleted_ones() {
+            let profiles = vec![named("custom-8", "  Notes ")];
+            assert_eq!(
+                history_profile_label(&profiles, "custom-8", "Deleted profile"),
+                "Notes"
+            );
+            assert_eq!(
+                history_profile_label(&profiles, "gone", "Deleted profile"),
+                "Deleted profile"
+            );
+        }
+
         #[test]
         fn optional_numbers_are_strict_and_bounded() {
             assert_eq!(parse_optional_f32("", UiLanguage::English).unwrap(), None);
@@ -6359,6 +6779,15 @@ mod windows_app {
                 StatusEvent::SaveThemeFailed {
                     detail: "opaque-error",
                 },
+                StatusEvent::DeleteProfileConfirm { name: "user text" },
+                StatusEvent::ProfileDeleted { name: "user text" },
+                StatusEvent::DeleteBlockedLast,
+                StatusEvent::DeleteBlockedSelectionDefault,
+                StatusEvent::DeleteBlockedHoverDefault,
+                StatusEvent::DeleteProfileFailed {
+                    detail: "opaque-error",
+                },
+                StatusEvent::DuplicateProfileName { name: "user text" },
                 StatusEvent::HistoryRefreshed,
                 StatusEvent::HistoryUnavailable {
                     detail: "opaque-error",
@@ -6487,8 +6916,8 @@ mod windows_app {
             second.name = "解释".to_owned();
             let profiles = vec![first.clone(), second.clone()];
 
-            assert_eq!(profile_option_label(&first), "Translate — translate");
-            assert_eq!(profile_option_label(&second), "解释 — explain");
+            assert_eq!(profile_display_name(&first), "Translate");
+            assert_eq!(profile_display_name(&second), "解释");
             assert_eq!(
                 profile_id_for_index(Some(0), &profiles),
                 Some("translate".to_owned())
