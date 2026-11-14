@@ -21,6 +21,7 @@ mod windows_impl {
     pub const EXIT_COMMAND: usize = 0x7204;
     pub const SET_SKIN_CLASSIC_COMMAND: usize = 0x7205;
     pub const SET_SKIN_FAIRCOPY_COMMAND: usize = 0x7206;
+    pub const TOGGLE_AUTOSTART_COMMAND: usize = 0x7207;
 
     /// The LingoSnap icon embedded in the resident (resource ID 1), sized for
     /// the tray at the current DPI.
@@ -160,6 +161,11 @@ mod windows_impl {
         } else {
             MF_STRING
         };
+        let autostart_flags = if crate::autostart::is_enabled() {
+            MF_STRING | MF_CHECKED
+        } else {
+            MF_STRING
+        };
         let result = unsafe {
             AppendMenuW(menu, MF_STRING, OPEN_MANAGER_COMMAND, w!("Open Manager"))
                 .and_then(|_| {
@@ -195,6 +201,14 @@ mod windows_impl {
                     )
                 })
                 .and_then(|_| AppendMenuW(menu, MF_SEPARATOR, 0, None))
+                .and_then(|_| {
+                    AppendMenuW(
+                        menu,
+                        autostart_flags,
+                        TOGGLE_AUTOSTART_COMMAND,
+                        w!("Start with Windows"),
+                    )
+                })
                 .and_then(|_| AppendMenuW(menu, MF_STRING, EXIT_COMMAND, w!("Exit")))
         };
         if result.is_ok() {

@@ -4,7 +4,9 @@
 mod windows_impl {
     use super::super::composition::{AppRuntime, Pipeline, PipelineEvent, PIPELINE_EVENT};
     use super::super::mouse::{self, MouseTrigger, ScreenPoint};
-    use super::super::{config_reload, foreground, hotkey, popup, runtime_trace, tray, webview_ui};
+    use super::super::{
+        autostart, config_reload, foreground, hotkey, popup, runtime_trace, tray, webview_ui,
+    };
     use lingosnap_core::{
         cache::{CacheKey, ResultCache},
         config::{save_config_atomic, PopupSkin},
@@ -877,6 +879,15 @@ mod windows_impl {
                             set_popup_skin(hwnd, &mut *state, PopupSkin::FairCopy);
                         }
                     }
+                    tray::TOGGLE_AUTOSTART_COMMAND => match std::env::current_exe() {
+                        Ok(exe) => {
+                            let enable = !autostart::is_enabled();
+                            if let Err(error) = autostart::set_enabled(enable, &exe) {
+                                eprintln!("could not change start with Windows: {error}");
+                            }
+                        }
+                        Err(error) => eprintln!("could not locate the resident: {error}"),
+                    },
                     tray::EXIT_COMMAND => PostQuitMessage(0),
                     _ => {}
                 }

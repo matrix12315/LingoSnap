@@ -215,7 +215,12 @@ fn load_config() -> (AppConfig, Option<String>) {
         return (AppConfig::default(), None);
     };
     if !path.exists() {
-        return (AppConfig::default(), None);
+        // First launch: start from the bundled default and leave a real
+        // config.toml behind for the user to edit.
+        return match AppConfig::load_or_create(&path) {
+            Ok(config) => (config, None),
+            Err(_) => (AppConfig::bundled_default(), None),
+        };
     }
     match AppConfig::load(&path) {
         Ok(config) => (config, None),

@@ -154,6 +154,13 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
       }
     });
   }
+  function buildAutostartChoice() {
+    var opts = [{ id: 'off', label: t('optOff') }, { id: 'on', label: t('optOn') }];
+    choice(document.getElementById('autostart'), opts, current.autostart ? 1 : 0, function (opt) {
+      current.autostart = opt.id === 'on';
+      post({ mcmd: 'save_autostart', enabled: current.autostart });
+    });
+  }
   function applySettings(cfg) {
     set('endpoint', cfg.endpoint);
     set('model', cfg.model);
@@ -179,9 +186,11 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     choice(document.getElementById('uilang'), langs, current.language === 'zh-CN' ? 1 : 0, function (opt) {
       if (opt.id !== current.language) { current.language = opt.id; post({ mcmd: 'save_language', language: opt.id }); }
     });
+    current.autostart = !!cfg.autostart;
     current.theme = cfg.theme === 'dark' ? 'dark' : 'light';
     if (window.setTheme) window.setTheme(current.theme);
     buildThemeChoice();
+    buildAutostartChoice();
     var note = q('#page-settings .group .actions .statnote');
     if (note && cfg.credentialStatus) {
       note.innerHTML = '<i style="' + (cfg.credentialPresent ? '' : 'background:transparent;border:1px solid var(--rule)') + '"></i>' + esc(cfg.credentialStatus);
@@ -421,6 +430,7 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
   // setLang relabels static markup; rebuild the controls this script builds.
   document.addEventListener('langchange', function () {
     buildThemeChoice();
+    buildAutostartChoice();
     buildHistoryFilters();
     if (current.profiles.length) buildOrder(current.profiles, orderIdsNow());
     var stat = q('#page-history .pagehead .statnote');
@@ -526,6 +536,10 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
       });
       list.addEventListener('drop', postSettings);
     }
+    var keyPage = document.getElementById('keyPageBtn');
+    if (keyPage) keyPage.addEventListener('click', function () {
+      post({ mcmd: 'open_provider_page', endpoint: get('endpoint') });
+    });
     var newPrompt = document.getElementById('newPromptBtn');
     if (newPrompt) newPrompt.addEventListener('click', function () { post({ mcmd: 'new_prompt' }); });
     var savePrompt = document.getElementById('savePromptBtn');

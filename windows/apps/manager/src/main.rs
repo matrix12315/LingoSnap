@@ -15,7 +15,7 @@ mod windows_app {
             ensure_resident_running, notify_config_changed, notify_credentials_changed,
             RefreshOutcome, ResidentStartOutcome,
         },
-        credentials, webview_ui,
+        autostart, credentials, shell_open, webview_ui,
     };
     use lingosnap_storage::{
         default_history_path, HistoryDatabase, HistoryEntry, HistoryOrder, HistoryQuery,
@@ -77,6 +77,7 @@ mod windows_app {
     const ID_SAVE_SETTINGS: usize = 110;
     const ID_SAVE_KEY: usize = 111;
     const ID_DELETE_KEY: usize = 112;
+    const ID_OPEN_KEY_PAGE: usize = 113;
     const ID_SAVE_PROMPT: usize = 120;
     const ID_NEW_PROMPT: usize = 121;
     const ID_DELETE_PROMPT: usize = 122;
@@ -89,6 +90,7 @@ mod windows_app {
     const ID_HISTORY_COPY: usize = 146;
     const ID_HISTORY_DELETE: usize = 147;
     const ID_LANGUAGE: usize = 148;
+    const ID_AUTOSTART: usize = 149;
     // Stable child-control IDs are part of the manager's UI automation
     // surface.  Tests and assistive tools must not infer field identity from
     // mutable label/value text or child-window enumeration order.
@@ -266,6 +268,10 @@ mod windows_app {
         SavePrompt,
         DeleteProfile,
         DeletedProfile,
+        OpenKeyPage,
+        Autostart,
+        On,
+        Off,
         PromptHint,
         HintModelOverride,
         HintTemperature,
@@ -339,6 +345,10 @@ mod windows_app {
         TextKey::SavePrompt,
         TextKey::DeleteProfile,
         TextKey::DeletedProfile,
+        TextKey::OpenKeyPage,
+        TextKey::Autostart,
+        TextKey::On,
+        TextKey::Off,
         TextKey::PromptHint,
         TextKey::HintModelOverride,
         TextKey::HintTemperature,
@@ -423,6 +433,10 @@ mod windows_app {
             (UiLanguage::English, SavePrompt) => "Save profile",
             (UiLanguage::English, DeleteProfile) => "Delete profile",
             (UiLanguage::English, DeletedProfile) => "Deleted profile",
+            (UiLanguage::English, OpenKeyPage) => "Open key page",
+            (UiLanguage::English, Autostart) => "Start with Windows",
+            (UiLanguage::English, On) => "On",
+            (UiLanguage::English, Off) => "Off",
             (UiLanguage::English, PromptHint) => {
                 "Use {target}, {context}, and {source}; every user prompt needs {target}."
             }
@@ -507,6 +521,10 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, SavePrompt) => "保存配置档",
             (UiLanguage::SimplifiedChinese, DeleteProfile) => "删除配置档",
             (UiLanguage::SimplifiedChinese, DeletedProfile) => "已删除的配置档",
+            (UiLanguage::SimplifiedChinese, OpenKeyPage) => "打开密钥页面",
+            (UiLanguage::SimplifiedChinese, Autostart) => "开机自动启动",
+            (UiLanguage::SimplifiedChinese, On) => "开",
+            (UiLanguage::SimplifiedChinese, Off) => "关",
             (UiLanguage::SimplifiedChinese, PromptHint) => {
                 "可使用 {target}、{context} 和 {source}；用户提示词必须包含 {target}。"
             }
@@ -578,6 +596,16 @@ mod windows_app {
         DeleteBlockedSelectionDefault,
         DeleteBlockedHoverDefault,
         DeleteProfileFailed {
+            detail: &'a str,
+        },
+        ProviderPageOpened {
+            name: &'a str,
+        },
+        NoProviderPage,
+        OpenProviderPageFailed {
+            detail: &'a str,
+        },
+        AutostartFailed {
             detail: &'a str,
         },
         DuplicateProfileName {
@@ -705,6 +733,22 @@ mod windows_app {
             DeleteProfileFailed { detail } => match language {
                 UiLanguage::English => format!("Could not delete profile: {detail}"),
                 UiLanguage::SimplifiedChinese => format!("无法删除配置档：{detail}"),
+            },
+            ProviderPageOpened { name } => match language {
+                UiLanguage::English => format!("Opened the {name} page."),
+                UiLanguage::SimplifiedChinese => format!("已打开 {name} 页面。"),
+            },
+            NoProviderPage => match language {
+                UiLanguage::English => "No management page is saved for this endpoint. Add one under [[provider_pages]] in config.toml.".to_owned(),
+                UiLanguage::SimplifiedChinese => "没有为此服务端点保存管理页面。请在 config.toml 的 [[provider_pages]] 中添加。".to_owned(),
+            },
+            OpenProviderPageFailed { detail } => match language {
+                UiLanguage::English => format!("Could not open the page: {detail}"),
+                UiLanguage::SimplifiedChinese => format!("无法打开页面：{detail}"),
+            },
+            AutostartFailed { detail } => match language {
+                UiLanguage::English => format!("Could not change start with Windows: {detail}"),
+                UiLanguage::SimplifiedChinese => format!("无法更改开机自动启动：{detail}"),
             },
             DuplicateProfileName { name } => match language {
                 UiLanguage::English => format!("Another profile is already named “{name}”. Choose a different name."),
@@ -955,6 +999,7 @@ mod windows_app {
         prompts_nav: HWND,
         history_nav: HWND,
         language: HWND,
+        autostart: HWND,
         settings_page: HWND,
         prompts_page: HWND,
         history_page: HWND,
@@ -1004,6 +1049,7 @@ mod windows_app {
                 prompts_nav: null,
                 history_nav: null,
                 language: null,
+                autostart: null,
                 settings_page: null,
                 prompts_page: null,
                 history_page: null,
@@ -1303,7 +1349,12 @@ mod windows_app {
             );
         };
         if !path.exists() {
-            return (AppConfig::default(), None, false);
+            // First launch: start from the bundled default and leave a real
+            // config.toml behind for the user to edit.
+            return match AppConfig::load_or_create(&path) {
+                Ok(config) => (config, None, true),
+                Err(_) => (AppConfig::bundled_default(), None, false),
+            };
         }
         match AppConfig::load(&path) {
             Ok(config) => (config, None, true),
@@ -1664,6 +1715,14 @@ mod windows_app {
             false,
             ID_SETTINGS_ENDPOINT,
         )?;
+        add_button(
+            hwnd,
+            &mut h,
+            ID_OPEN_KEY_PAGE,
+            "Open key page",
+            Some(View::Settings),
+            Slot::OpenKeyPage,
+        )?;
         add_label(
             hwnd,
             &mut h,
@@ -1785,6 +1844,20 @@ mod windows_app {
             ID_LANGUAGE,
             Some(View::Settings),
             Slot::Language,
+        )?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Start with Windows",
+            Some(View::Settings),
+            Slot::AutostartLabel,
+        )?;
+        h.autostart = add_combo(
+            hwnd,
+            &mut h,
+            ID_AUTOSTART,
+            Some(View::Settings),
+            Slot::Autostart,
         )?;
 
         add_label(
@@ -2153,6 +2226,9 @@ mod windows_app {
         HoverDefault,
         LangLabel,
         Language,
+        AutostartLabel,
+        Autostart,
+        OpenKeyPage,
         HotkeySelectionLabel,
         HotkeySelection,
         HotkeyHoverLabel,
@@ -2868,7 +2944,7 @@ mod windows_app {
                 };
                 let profiles_h = 28 + rows * row_h + divider_h + 14;
                 let footnote_h = 16;
-                let base = [184, 140, 184, 216];
+                let base = [184, 140, 184 + 52, 216];
                 let weights = [3, 2, 3, 2];
                 let min_stack = base[0] + base[1] + base[2] + base[3] + profiles_h + 4 * 10;
                 let extra = (content_height - 46 - footnote_h - min_stack).max(0);
@@ -2931,15 +3007,32 @@ mod windows_app {
                             bottom: row + 14,
                         },
                     ));
+                    // The endpoint leaves room for the "Open key page" button.
+                    let input_right = if input_slot == Slot::Endpoint {
+                        12 + inner_width - 170
+                    } else {
+                        12 + inner_width
+                    };
                     slots.push((
                         input_slot,
                         RECT {
                             left: 12,
                             top: row + 16,
-                            right: 12 + inner_width,
+                            right: input_right,
                             bottom: row + 44,
                         },
                     ));
+                    if input_slot == Slot::Endpoint {
+                        slots.push((
+                            Slot::OpenKeyPage,
+                            RECT {
+                                left: 12 + inner_width - 160,
+                                top: row + 16,
+                                right: 12 + inner_width,
+                                bottom: row + 44,
+                            },
+                        ));
+                    }
                 }
                 // Credentials: key row, action row, hint. The rows have
                 // different heights (field 44, buttons 28, hint 16), so they
@@ -3012,7 +3105,7 @@ mod windows_app {
                     },
                 ));
                 let rows = distributed_tops(
-                    3,
+                    4,
                     content_top + tops[2] + 28,
                     content_top + tops[2] + heights[2] - 12,
                     field_block,
@@ -3021,6 +3114,7 @@ mod windows_app {
                     (Slot::SelectionLabel, Slot::SelectionDefault, rows[0]),
                     (Slot::HoverLabel, Slot::HoverDefault, rows[1]),
                     (Slot::LangLabel, Slot::Language, rows[2]),
+                    (Slot::AutostartLabel, Slot::Autostart, rows[3]),
                 ] {
                     slots.push((
                         label_slot,
@@ -3887,6 +3981,7 @@ mod windows_app {
                 | Slot::SelectionLabel
                 | Slot::HoverLabel
                 | Slot::LangLabel
+                | Slot::AutostartLabel
                 | Slot::HotkeySelectionLabel
                 | Slot::HotkeyHoverLabel
                 | Slot::HotkeyPauseLabel
@@ -4525,6 +4620,12 @@ mod windows_app {
             refresh_history(state);
             return LRESULT(0);
         }
+        if id == ID_AUTOSTART && notification == CBN_SELCHANGE {
+            let enabled = combo_selection(state.handles.autostart) == Some(1);
+            set_autostart(state, enabled);
+            populate_autostart_selector(state);
+            return LRESULT(0);
+        }
         if id == ID_LANGUAGE && notification == CBN_SELCHANGE {
             save_manager_language(hwnd, state);
             return LRESULT(0);
@@ -4556,6 +4657,10 @@ mod windows_app {
             ID_SAVE_PROMPT => save_prompt(state),
             ID_NEW_PROMPT => new_prompt(state),
             ID_DELETE_PROMPT => delete_profile(hwnd, state),
+            ID_OPEN_KEY_PAGE => {
+                let endpoint = read_text(state.handles.endpoint);
+                open_provider_page(state, &endpoint);
+            }
             ID_HISTORY_REFRESH => refresh_history(state),
             ID_HISTORY_COPY => copy_history_output(hwnd, state),
             ID_HISTORY_DELETE => delete_history(hwnd, state),
@@ -4643,6 +4748,7 @@ mod windows_app {
         }
         apply_search_placeholder(state);
         populate_language_selector(state);
+        populate_autostart_selector(state);
         populate_history_filters(state);
         unsafe {
             let _ = InvalidateRect(Some(hwnd), None, true);
@@ -5092,6 +5198,59 @@ mod windows_app {
         }
     }
 
+    /// Open the management page saved for `endpoint` (see `provider_pages`
+    /// in config.toml) in the default browser.
+    fn open_provider_page(state: &ManagerState, endpoint: &str) {
+        let message = match state.config.provider_page_for(endpoint) {
+            None => status_text(state.language(), StatusEvent::NoProviderPage),
+            Some(page) => match shell_open::open_url(&page.url) {
+                Ok(()) => status_text(
+                    state.language(),
+                    StatusEvent::ProviderPageOpened { name: &page.name },
+                ),
+                Err(error) => status_text(
+                    state.language(),
+                    StatusEvent::OpenProviderPageFailed { detail: &error },
+                ),
+            },
+        };
+        set_status(state, &message);
+    }
+
+    /// Turn "Start with Windows" on or off (a per-user Run registry value).
+    fn set_autostart(state: &ManagerState, enabled: bool) {
+        let result = if enabled {
+            autostart::sibling_resident_path()
+                .ok_or_else(|| {
+                    "lingosnap-resident.exe was not found next to the manager".to_owned()
+                })
+                .and_then(|exe| autostart::set_enabled(true, &exe))
+        } else {
+            autostart::set_enabled(false, std::path::Path::new(""))
+        };
+        if let Err(error) = result {
+            set_status(
+                state,
+                &status_text(
+                    state.language(),
+                    StatusEvent::AutostartFailed { detail: &error },
+                ),
+            );
+        }
+    }
+
+    /// Off / On list, showing what the registry currently says.
+    fn populate_autostart_selector(state: &ManagerState) {
+        reset_combo(state.handles.autostart);
+        for key in [TextKey::Off, TextKey::On] {
+            add_combo_string(state.handles.autostart, ui_text(state.language(), key));
+        }
+        set_combo_selection(
+            state.handles.autostart,
+            usize::from(autostart::is_enabled()),
+        );
+    }
+
     /// Delete the profile selected on the Profiles page, after confirmation.
     /// An unsaved draft is discarded instead (see `discard_draft`).
     fn delete_profile(owner: HWND, state: &mut ManagerState) {
@@ -5326,6 +5485,7 @@ mod windows_app {
             &display_hotkey(state.config.hotkeys.open_popup.as_deref()),
         );
         populate_profile_selectors(state);
+        populate_autostart_selector(state);
     }
 
     /// Hotkeys are shown with spaced separators ("Ctrl + Shift + T") and an
@@ -5922,6 +6082,7 @@ mod windows_app {
                         UiTheme::Dark => "dark",
                         UiTheme::Light => "light",
                     },
+                    "autostart": autostart::is_enabled(),
                     "selectionId": state.config.defaults.selection,
                     "hoverId": state.config.defaults.hover,
                     "credentialPresent": matches!(
@@ -6228,6 +6389,21 @@ mod windows_app {
                         ),
                     }
                 }
+                fair_copy_push_all(state);
+                fair_copy_push_status(state, false);
+            }
+            Some("open_provider_page") => {
+                let endpoint = text("endpoint");
+                open_provider_page(state, &endpoint);
+                fair_copy_push_status(state, false);
+            }
+            Some("save_autostart") => {
+                let enabled = command
+                    .get("enabled")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                set_autostart(state, enabled);
+                populate_autostart_selector(state);
                 fair_copy_push_all(state);
                 fair_copy_push_status(state, false);
             }
@@ -6692,7 +6868,7 @@ mod windows_app {
             // four field cards share the vertical slack by field count;
             // fields distribute evenly inside each card.
             let geometry = super::page_geometry(super::View::Settings, 980, 664, 8);
-            let tops = [64, 258, 408, 602, 828];
+            let tops = [64, 258, 408, 654, 880];
             for (card, top) in geometry.cards.iter().zip(tops) {
                 assert_eq!(card.0.left, 0);
                 assert_eq!(card.0.right, 916);
@@ -6700,13 +6876,13 @@ mod windows_app {
             }
             assert_eq!(geometry.cards[0].0.bottom, 248);
             assert_eq!(geometry.cards[1].0.bottom, 398);
-            assert_eq!(geometry.cards[2].0.bottom, 592);
-            assert_eq!(geometry.cards[3].0.bottom, 818);
+            assert_eq!(geometry.cards[2].0.bottom, 644);
+            assert_eq!(geometry.cards[3].0.bottom, 870);
             // The Profiles order card grows with the row count (8 rows) and
             // pushes the page past the container: the geometry reports the
             // overflow for the page scrollbar.
-            assert_eq!(geometry.cards[4].0.bottom, 1156);
-            assert_eq!(geometry.scroll_max, 552);
+            assert_eq!(geometry.cards[4].0.bottom, 1208);
+            assert_eq!(geometry.scroll_max, 604);
             let slot = |slot: super::Slot| {
                 geometry
                     .slots
@@ -6718,12 +6894,17 @@ mod windows_app {
             let endpoint = slot(super::Slot::Endpoint);
             // Slot rects are card-relative; placement adds CONTENT_PADDING.
             assert_eq!(endpoint.left, 12);
-            assert_eq!(endpoint.right, 916 - 12);
+            // The endpoint leaves room for the "Open key page" button.
+            assert_eq!(endpoint.right, 916 - 12 - 170);
+            let key_page = slot(super::Slot::OpenKeyPage);
+            assert_eq!(key_page.left, endpoint.right + 10);
+            assert_eq!(key_page.right, 916 - 12);
+            assert_eq!(key_page.top, endpoint.top);
             assert_eq!(endpoint.top, 64 + 31 + 16);
             assert_eq!(endpoint.bottom, endpoint.top + 28);
             let save = slot(super::Slot::SaveSettings);
             assert_eq!(save.left, 0);
-            assert_eq!(save.top, 1180);
+            assert_eq!(save.top, 1232);
             // History geometry: the entries split absorbs the remaining height.
             let history = super::page_geometry(super::View::History, 980, 664, 8);
             let list = history
@@ -6775,6 +6956,14 @@ mod windows_app {
                 StatusEvent::DeleteBlockedSelectionDefault,
                 StatusEvent::DeleteBlockedHoverDefault,
                 StatusEvent::DeleteProfileFailed {
+                    detail: "opaque-error",
+                },
+                StatusEvent::ProviderPageOpened { name: "user text" },
+                StatusEvent::NoProviderPage,
+                StatusEvent::OpenProviderPageFailed {
+                    detail: "opaque-error",
+                },
+                StatusEvent::AutostartFailed {
                     detail: "opaque-error",
                 },
                 StatusEvent::DuplicateProfileName { name: "user text" },

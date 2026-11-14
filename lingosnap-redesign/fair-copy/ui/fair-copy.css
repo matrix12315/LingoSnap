@@ -471,14 +471,14 @@
        solid rectangle over the screen; the tint must let it show through. */
     background: var(--rail-bg);
     border-radius: 999px;
-    padding: 5px 6px;
+    padding: 3px 4px;
     box-shadow: var(--lift);
   }
   .rpill {
     border: none;
-    font: 500 12.5px var(--ui); letter-spacing: .01em;
+    font: 500 11.5px var(--ui); letter-spacing: .01em;
     color: var(--ink);
-    padding: 8px 15px;
+    padding: 5px 11px;
     border-radius: 999px;
     background:
       radial-gradient(120% 70% at 18% 0%, var(--glare1), rgba(255, 255, 255, 0) 45%),
@@ -499,8 +499,8 @@
     color: var(--btn-primary-ink); font-weight: 600;
     background: var(--btn-primary-bg);
   }
-  .rdiv { width: 1px; align-self: stretch; margin: 4px 3px; background: var(--rule-soft); }
-  .rmore { display: inline-flex; align-items: center; gap: 6px; color: var(--ink); }
+  .rdiv { width: 1px; align-self: stretch; margin: 3px 2px; background: var(--rule-soft); }
+  .rmore { display: inline-flex; align-items: center; gap: 5px; color: var(--ink); }
   /* The overflow list: a dropdown wing of the rail — same paper, same
      padding, same shadow; the same glass pills inside. */
   /* The overflow list: the rail's capsule stood upright — a taller pill
@@ -508,8 +508,8 @@
   .rmenu {
     display: flex; flex-direction: column; gap: 3px;
     background: var(--rail-bg);
-    padding: 5px 6px;
-    border-radius: 21px;
+    padding: 3px 4px;
+    border-radius: 16px;
     box-shadow: var(--lift);
     align-self: flex-end;
     width: max-content;

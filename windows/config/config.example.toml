@@ -101,3 +101,16 @@ cycle_profiles = "Ctrl+Alt+P"
 [ui]
 # Manager interface language: "en" or "zh-CN". This does not change prompts or translations.
 manager_language = "en"
+
+# Pages the manager's "Open key page" button opens. The first entry whose
+# endpoint_contains text (case-insensitive) occurs in the endpoint above wins;
+# only https:// and http:// pages are opened. Add one per provider you use.
+[[provider_pages]]
+name = "Alibaba Cloud Bailian"
+endpoint_contains = "aliyuncs.com"
+url = "https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key"
+
+[[provider_pages]]
+name = "OpenAI"
+endpoint_contains = "api.openai.com"
+url = "https://platform.openai.com/api-keys"

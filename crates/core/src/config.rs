@@ -32,6 +32,22 @@ pub struct AppConfig {
     /// with configurations written before manager localization was added.
     #[serde(default)]
     pub ui: UiSettings,
+    /// Provider management pages, one per known endpoint. The manager's
+    /// "open key page" button opens the first entry whose `endpoint_contains`
+    /// text occurs in the current endpoint.
+    #[serde(default = "default_provider_pages")]
+    pub provider_pages: Vec<ProviderPage>,
+}
+
+/// Where a provider's key / settings page lives, matched by endpoint text.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderPage {
+    pub name: String,
+    /// Case-insensitive text that must occur in the endpoint URL.
+    pub endpoint_contains: String,
+    /// `https://` (or `http://`) page to open.
+    pub url: String,
 }
 
 /// Short alias for callers that prefer the generic configuration name.
@@ -180,9 +196,14 @@ impl Default for AppConfig {
             provider: ProviderSettings::default(),
             hotkeys: HotkeySettings::default(),
             ui: UiSettings::default(),
+            provider_pages: default_provider_pages(),
         }
     }
 }
+
+/// The configuration a first launch starts from: a complete `config.toml`
+/// shipped inside the binary (profiles, defaults, provider, hot keys, UI).
+pub const BUNDLED_DEFAULT_CONFIG: &str = include_str!("../assets/default-config.toml");
 
 impl AppConfig {
     pub fn from_toml(contents: &str) -> Result<Self, ConfigError> {
@@ -201,6 +222,32 @@ impl AppConfig {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let contents = fs::read_to_string(path).map_err(ConfigError::Io)?;
         Self::from_toml(&contents)
+    }
+
+    /// The configuration shipped with the application.
+    pub fn bundled_default() -> Self {
+        Self::from_toml(BUNDLED_DEFAULT_CONFIG).expect("the bundled default config is valid")
+    }
+
+    /// Load `path`. When the file does not exist (first launch) write the
+    /// bundled default there first, so the user starts from it and edits a
+    /// real file. An existing file is never replaced.
+    pub fn load_or_create(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
+        let path = path.as_ref();
+        if !path.exists() {
+            atomic_write(path, BUNDLED_DEFAULT_CONFIG.as_bytes())?;
+        }
+        Self::load(path)
+    }
+
+    /// The provider page whose `endpoint_contains` text occurs in `endpoint`
+    /// (case-insensitive), skipping entries without a usable web URL.
+    pub fn provider_page_for(&self, endpoint: &str) -> Option<&ProviderPage> {
+        let endpoint = endpoint.trim().to_lowercase();
+        self.provider_pages.iter().find(|page| {
+            let needle = page.endpoint_contains.trim().to_lowercase();
+            !needle.is_empty() && endpoint.contains(&needle) && page.has_web_url()
+        })
     }
 
     /// Validate the whole configuration before an adapter uses it.
@@ -260,6 +307,29 @@ impl AppConfig {
     pub fn profile(&self, id: &str) -> Option<&PromptConfig> {
         self.profiles.iter().find(|profile| profile.id == id)
     }
+}
+
+impl ProviderPage {
+    /// Only `https://` and `http://` pages are ever opened.
+    pub fn has_web_url(&self) -> bool {
+        let url = self.url.trim().to_ascii_lowercase();
+        url.starts_with("https://") || url.starts_with("http://")
+    }
+}
+
+fn default_provider_pages() -> Vec<ProviderPage> {
+    vec![
+        ProviderPage {
+            name: "Alibaba Cloud Bailian".to_owned(),
+            endpoint_contains: "aliyuncs.com".to_owned(),
+            url: "https://bailian.console.aliyun.com/cn-beijing/model/settings/api-key".to_owned(),
+        },
+        ProviderPage {
+            name: "OpenAI".to_owned(),
+            endpoint_contains: "api.openai.com".to_owned(),
+            url: "https://platform.openai.com/api-keys".to_owned(),
+        },
+    ]
 }
 
 /// Return the platform's conventional configuration location.
@@ -789,6 +859,79 @@ mod tests {
             loaded.hotkeys.spec(HotkeyAction::SelectionTranslate),
             Some("Ctrl+Shift+T")
         );
+    }
+
+    #[test]
+    fn bundled_default_is_a_valid_complete_config() {
+        let config = AppConfig::bundled_default();
+        config.validate().expect("bundled default validates");
+        assert!(!config.provider_pages.is_empty());
+        // No secret belongs in a shipped file: only the credential target name.
+        assert!(!BUNDLED_DEFAULT_CONFIG.to_lowercase().contains("api_key"));
+        // It survives a save/load round trip.
+        let again = AppConfig::from_toml(&config.to_toml().unwrap()).unwrap();
+        assert_eq!(again, config);
+    }
+
+    #[test]
+    fn first_launch_writes_the_bundled_default_and_never_overwrites() {
+        let dir =
+            std::env::temp_dir().join(format!("lingosnap-first-launch-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join("config.toml");
+        let created = AppConfig::load_or_create(&path).expect("first launch creates the file");
+        assert_eq!(created, AppConfig::bundled_default());
+        assert_eq!(fs::read_to_string(&path).unwrap(), BUNDLED_DEFAULT_CONFIG);
+
+        let mut edited = created.clone();
+        edited.provider.model = "my-model".to_owned();
+        save_atomic(&path, &edited).unwrap();
+        let reloaded = AppConfig::load_or_create(&path).unwrap();
+        assert_eq!(reloaded.provider.model, "my-model");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn provider_page_matches_the_endpoint_and_only_opens_web_urls() {
+        let mut config = AppConfig::default();
+        let bailian = "https://llm-x.cn-beijing.maas.ALIYUNCS.com/compatible-mode/v1";
+        assert_eq!(
+            config.provider_page_for(bailian).map(|p| p.name.as_str()),
+            Some("Alibaba Cloud Bailian")
+        );
+        assert_eq!(
+            config
+                .provider_page_for("https://api.openai.com/v1")
+                .map(|p| p.url.as_str()),
+            Some("https://platform.openai.com/api-keys")
+        );
+        assert!(config
+            .provider_page_for("https://example.test/v1")
+            .is_none());
+        config.provider_pages = vec![
+            ProviderPage {
+                name: "bad".into(),
+                endpoint_contains: "example".into(),
+                url: "file:///C:/Windows/System32/calc.exe".into(),
+            },
+            ProviderPage {
+                name: "blank".into(),
+                endpoint_contains: " ".into(),
+                url: "https://ok.test".into(),
+            },
+        ];
+        assert!(config
+            .provider_page_for("https://example.test/v1")
+            .is_none());
+    }
+
+    #[test]
+    fn config_without_provider_pages_gets_the_default_list() {
+        let mut document: toml::Value = toml::from_str(BUNDLED_DEFAULT_CONFIG).unwrap();
+        document.as_table_mut().unwrap().remove("provider_pages");
+        let legacy = toml::to_string_pretty(&document).unwrap();
+        let loaded = AppConfig::from_toml(&legacy).unwrap();
+        assert_eq!(loaded.provider_pages, default_provider_pages());
     }
 
     #[test]

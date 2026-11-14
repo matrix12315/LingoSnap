@@ -10,6 +10,11 @@
   /* product shot: show the whole settings page, no inner scroll cap */
   .mpage { max-height: none; }
 
+  /* A field with a button beside it (Endpoint + Open key page). */
+  .inputrow { display: flex; align-items: center; gap: 8px; }
+  .inputrow .input { flex: 1 1 auto; min-width: 0; }
+  .inputrow .btn { flex-shrink: 0; }
+
   /* Prompts: the five profile fields share one compact row (as in the
      classic manager), so the two editors take the rest of the page. */
   #page-prompts:not([hidden]) { display: flex; flex-direction: column; overflow: hidden; }
@@ -88,9 +93,12 @@
       <div class="group">
         <div class="glabel" data-i18n="gProvider">Provider</div>
         <div class="fields2">
-          <div class="field">
+          <div class="field span2">
             <label for="endpoint"><span data-i18n="lEndpoint">Endpoint</span><span class="req">＊</span></label>
-            <input class="input" id="endpoint" value="https://llm-nj3xhngcgye0zp75.cn-beijing.maas.aliyuncs.com/compatible-mode/v1" placeholder="The OpenAI-compatible address of your provider" data-i18n-ph="phEndpoint" spellcheck="false">
+            <div class="inputrow">
+              <input class="input" id="endpoint" value="https://llm-nj3xhngcgye0zp75.cn-beijing.maas.aliyuncs.com/compatible-mode/v1" placeholder="The OpenAI-compatible address of your provider" data-i18n-ph="phEndpoint" spellcheck="false">
+              <button class="btn sm" type="button" id="keyPageBtn" data-i18n="openKeyPage" data-i18n-title="openKeyPageTip" title="Open the provider's key page">Open key page</button>
+            </div>
           </div>
           <div class="field">
             <label for="model"><span data-i18n="lModel">Model</span><span class="req">＊</span></label>
@@ -139,6 +147,11 @@
           <div class="field">
             <label for="uitheme" data-i18n="lTheme">Theme</label>
             <div class="select"><input class="input ui" id="uitheme" value="Light">
+              <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg></div>
+          </div>
+          <div class="field">
+            <label for="autostart" data-i18n="lAutostart">Start with Windows</label>
+            <div class="select"><input class="input ui" id="autostart" value="Off" readonly>
               <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg></div>
           </div>
         </div>
