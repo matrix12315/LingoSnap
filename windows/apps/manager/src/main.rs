@@ -69,8 +69,8 @@ mod windows_app {
         SIF_ALL, SIF_POS, SIF_RANGE,
     };
 
-    const CLASS_NAME: PCWSTR = w!("SelectionTranslateManager");
-    const PAGE_CLASS: PCWSTR = w!("SelectionTranslateManagerPage");
+    const CLASS_NAME: PCWSTR = w!("LingoSnapManager");
+    const PAGE_CLASS: PCWSTR = w!("LingoSnapManagerPage");
     const ID_SETTINGS_TAB: usize = 100;
     const ID_PROMPTS_TAB: usize = 101;
     const ID_HISTORY_TAB: usize = 102;
@@ -1133,7 +1133,7 @@ mod windows_app {
         // Test harnesses may name their own instance so a probe can run next
         // to the user's manager; the default name is the product contract.
         let instance_name: Vec<u16> = std::env::var("LINGOSNAP_MANAGER_INSTANCE")
-            .unwrap_or_else(|_| "SelectionTranslateManagerInstance".to_owned())
+            .unwrap_or_else(|_| "LingoSnapManagerInstance".to_owned())
             .encode_utf16()
             .chain(Some(0))
             .collect();
@@ -1146,22 +1146,13 @@ mod windows_app {
             // fair-copy page when it is up (the native window is hidden
             // behind it and must stay hidden), otherwise the native window.
             let page = unsafe {
-                FindWindowW(
-                    windows::core::w!("SelectionTranslateManagerUi"),
-                    PCWSTR::null(),
-                )
-                .ok()
+                FindWindowW(windows::core::w!("LingoSnapManagerUi"), PCWSTR::null()).ok()
             }
             .filter(|hwnd| {
                 unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(*hwnd) }.as_bool()
             });
-            let native = unsafe {
-                FindWindowW(
-                    windows::core::w!("SelectionTranslateManager"),
-                    PCWSTR::null(),
-                )
-                .ok()
-            };
+            let native =
+                unsafe { FindWindowW(windows::core::w!("LingoSnapManager"), PCWSTR::null()).ok() };
             if let Some(hwnd) = page.or(native) {
                 unsafe {
                     if windows::Win32::UI::WindowsAndMessaging::IsIconic(hwnd).as_bool() {
@@ -6332,9 +6323,8 @@ mod windows_app {
                 if let Some(index) = state.config.profiles.iter().position(|p| p.id == id) {
                     state.profile_index = index;
                     state.draft_prompt = None;
-                    let owner =
-                        unsafe { FindWindowW(w!("SelectionTranslateManagerUi"), PCWSTR::null()) }
-                            .unwrap_or(hwnd);
+                    let owner = unsafe { FindWindowW(w!("LingoSnapManagerUi"), PCWSTR::null()) }
+                        .unwrap_or(hwnd);
                     delete_profile(owner, state);
                     populate_profile_selectors(state);
                 }
@@ -6378,10 +6368,7 @@ mod windows_app {
                     // The confirmation belongs to the page's window, which
                     // the user is looking at (the native one is hidden).
                     let owner = unsafe {
-                        FindWindowW(
-                            windows::core::w!("SelectionTranslateManagerUi"),
-                            PCWSTR::null(),
-                        )
+                        FindWindowW(windows::core::w!("LingoSnapManagerUi"), PCWSTR::null())
                     }
                     .unwrap_or(hwnd);
                     delete_history(owner, state);
@@ -6583,6 +6570,14 @@ mod windows_app {
         use selection_platform_windows::app::{RefreshOutcome, ResidentStartOutcome};
         use selection_storage::HistoryEntry;
         use windows::Win32::UI::WindowsAndMessaging::WS_VISIBLE;
+        #[test]
+        fn manager_page_window_class_matches_the_protocol_constant() {
+            // The resident and the companion find the page window by this
+            // name; w! needs a literal, so the agreement is checked here.
+            let class = unsafe { windows::core::w!("LingoSnapManagerUi").to_string() }.unwrap();
+            assert_eq!(class, selection_ui_protocol::MANAGER_WINDOW_CLASS);
+        }
+
         fn named(id: &str, name: &str) -> PromptConfig {
             let mut profile = PromptConfig::new(id);
             profile.name = name.to_owned();

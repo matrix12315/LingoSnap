@@ -117,9 +117,7 @@ mod tests {
     #[test]
     fn default_history_path_uses_the_canonical_profile_layout() {
         let local_app_data = PathBuf::from(r"D:\profile\local-app-data");
-        let expected = local_app_data
-            .join("SelectionTranslate")
-            .join("history.sqlite3");
+        let expected = local_app_data.join("LingoSnap").join("history.sqlite3");
         // Exercise the path-shaping contract without changing the process-wide
         // environment, which could race with parallel tests.
         assert_eq!(

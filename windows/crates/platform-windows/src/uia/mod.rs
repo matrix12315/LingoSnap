@@ -65,7 +65,7 @@ mod worker {
             let (requests, incoming) = request_mailbox();
             let (ready_tx, ready_rx) = mpsc::sync_channel(1);
             let worker = thread::Builder::new()
-                .name("selection-translate-uia".to_owned())
+                .name("lingosnap-uia".to_owned())
                 .spawn(move || worker_main(incoming, ready_tx))
                 .map_err(|_| ExtractionFailure::Platform)?;
             ready_rx

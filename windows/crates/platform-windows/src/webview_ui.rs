@@ -39,7 +39,7 @@ fn debug_log(message: &str) {
         return;
     };
     let path = std::path::PathBuf::from(base)
-        .join("SelectionTranslate")
+        .join("LingoSnap")
         .join("resident-debug.log");
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)

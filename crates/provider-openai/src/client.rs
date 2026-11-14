@@ -103,10 +103,10 @@ impl Default for OpenAiConfig {
 impl OpenAiConfig {
     pub fn from_env() -> Result<Self, ProviderError> {
         let mut config = Self::default();
-        if let Ok(value) = std::env::var("SELECTION_TRANSLATE_OPENAI_BASE_URL") {
+        if let Ok(value) = std::env::var("LINGOSNAP_OPENAI_BASE_URL") {
             config.base_url = value;
         }
-        if let Ok(value) = std::env::var("SELECTION_TRANSLATE_OPENAI_MODEL") {
+        if let Ok(value) = std::env::var("LINGOSNAP_OPENAI_MODEL") {
             config.default_model = value;
         }
         config.api_key = std::env::var("OPENAI_API_KEY").ok();
@@ -454,7 +454,7 @@ fn stream_winhttp(
     let endpoint = chat_completions_path(&parsed.path);
     let endpoint_w = wide(&endpoint);
     let host_w = wide(&parsed.host);
-    let agent_w = wide("SelectionTranslate/0.1");
+    let agent_w = wide("LingoSnap/0.1");
     let method_w = wide("POST");
     let timeout_ms = config.timeout.as_millis().min(i32::MAX as u128) as i32;
     unsafe {

@@ -181,7 +181,7 @@ impl OcrExtractor {
                 }
             }
             let next = thread::Builder::new()
-                .name("selection-translate-ocr".to_owned())
+                .name("lingosnap-ocr".to_owned())
                 .spawn(move || {
                     let _ = response_tx.send(extract_once(trigger, pointer, selection_rect));
                 })

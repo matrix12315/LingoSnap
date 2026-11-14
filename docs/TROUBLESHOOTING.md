@@ -10,7 +10,7 @@ Confirm that the target control exposes text, that the selection is a drag/doubl
 
 ## “API key is not configured”
 
-Set `OPENAI_API_KEY` or `SELECTION_TRANSLATE_OPENAI_API_KEY` for the resident process, or create a Windows Credential Manager Generic Credential using the exact target `SelectionTranslate/OpenAI`. Keep the key out of `config.toml` and command-line arguments.
+Set `OPENAI_API_KEY` or `LINGOSNAP_OPENAI_API_KEY` for the resident process, or create a Windows Credential Manager Generic Credential using the exact target `LingoSnap/OpenAI`. Keep the key out of `config.toml` and command-line arguments.
 
 ## “Provider configuration is invalid” or an offline error
 

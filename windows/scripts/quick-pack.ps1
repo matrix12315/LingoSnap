@@ -82,7 +82,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $releaseDirectory $residentExe) -Pat
 
 # Same fixed folder every time: the quick test build is scratch, not history.
 New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
-foreach ($process in @(Get-Process -Name "selection-translate-*" -ErrorAction SilentlyContinue)) {
+foreach ($process in @(Get-Process -Name "lingosnap-*" -ErrorAction SilentlyContinue)) {
     Write-Host "Stopping $($process.ProcessName) pid=$($process.Id)"
     Stop-Process -Id $process.Id -Force
 }

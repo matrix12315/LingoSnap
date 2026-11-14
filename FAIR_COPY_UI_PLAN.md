@@ -25,7 +25,7 @@ Status: approved 2026-10-07. Implements the fair-copy mockup in
   `webview2-com`): one WebView2 window per visible surface, showing the
   embedded mockup page for that surface.
 - **Protocol v1 is the only coupling.** JSON lines over the named pipe
-  `\\.\pipe\SelectionTranslatePopupUi`. Handshake: the UI sends
+  `\\.\pipe\LingoSnapPopupUi`. Handshake: the UI sends
   `{"protocol":1,"ready":true}`; each line carries `seq` and `id`.
   - Events (resident → UI): `show_chooser`, `show_loading`, `delta`,
     `completed`, `local_error`, `set_pinned`, `close`, `shutdown`.
@@ -78,7 +78,7 @@ Status: approved 2026-10-07. Implements the fair-copy mockup in
 
 - Done: M0, M1, M2, M3, M4.
   - M3: the manager spawns `popup-ui --surface manager` on open (its own pipe
-    `\\.\pipe\SelectionTranslateManagerUi`), hides the native window while the
+    `\\.\pipe\LingoSnapManagerUi`), hides the native window while the
     page is alive, pushes settings/prompts/history snapshots, and applies page
     commands (`save_settings`, `select_prompt`, `new_prompt`, `save_prompt`,
     `history_query`, `refresh_history`, `select_history`) through the same

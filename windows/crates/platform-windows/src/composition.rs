@@ -220,7 +220,7 @@ impl Pipeline {
         };
         let failure_events = events.clone();
         let spawn = thread::Builder::new()
-            .name("selection-translate-provider".to_owned())
+            .name("lingosnap-provider".to_owned())
             .spawn(move || {
                 #[cfg(windows)]
                 let hwnd = HWND(hwnd_value as *mut _);
@@ -381,7 +381,7 @@ impl ExtractionWorker {
         // the handle on the worker just before posting each event.
         let hwnd_value = hwnd.0 as isize;
         let join = thread::Builder::new()
-            .name("selection-translate-extract".to_owned())
+            .name("lingosnap-extract".to_owned())
             .spawn(move || {
                 let hwnd = HWND(hwnd_value as *mut _);
                 while let Some(request) = worker_mailbox.next() {

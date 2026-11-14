@@ -347,7 +347,7 @@ mod windows_impl {
             let (ready_tx, ready_rx) = mpsc::sync_channel(1);
             let target = hwnd.0 as isize;
             let thread = match thread::Builder::new()
-                .name("selection-translate-mouse-hook".to_owned())
+                .name("lingosnap-mouse-hook".to_owned())
                 .spawn(move || hook_thread(target, ready_tx))
             {
                 Ok(thread) => thread,

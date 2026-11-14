@@ -107,9 +107,9 @@ static PENDING_CAPTURE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new
 
 // Keep in sync with selection_ui_protocol::COMPANION_WINDOW_CLASS (the
 // resident matches clicks against this class) and MANAGER_WINDOW_CLASS.
-const CLASS_NAME: PCWSTR = w!("SelectionTranslatePopupUi");
-const MANAGER_CLASS_NAME: PCWSTR = w!("SelectionTranslateManagerUi");
-const HOST_CLASS_NAME: PCWSTR = w!("SelectionTranslatePopupUiHost");
+const CLASS_NAME: PCWSTR = w!("LingoSnapPopupUi");
+const MANAGER_CLASS_NAME: PCWSTR = w!("LingoSnapManagerUi");
+const HOST_CLASS_NAME: PCWSTR = w!("LingoSnapPopupUiHost");
 
 mod bridge;
 mod bridge_manager;
@@ -1731,10 +1731,10 @@ fn user_data_dir() -> Vec<u16> {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(|value| {
             std::path::PathBuf::from(value)
-                .join("SelectionTranslate")
+                .join("LingoSnap")
                 .join("webview")
         })
-        .unwrap_or_else(|| std::env::temp_dir().join("SelectionTranslateWebview"));
+        .unwrap_or_else(|| std::env::temp_dir().join("LingoSnapWebview"));
     let _ = std::fs::create_dir_all(&base);
     format!("{}\0", base.display()).encode_utf16().collect()
 }
@@ -1762,7 +1762,7 @@ fn capture_log(message: &str) {
     // (resident, manager, or a dev probe), which silently scattered logs.
     let Some(path) = std::env::var_os("LOCALAPPDATA").map(|base| {
         std::path::PathBuf::from(base)
-            .join("SelectionTranslate")
+            .join("LingoSnap")
             .join("popup-ui-debug.log")
     }) else {
         return;
@@ -2035,5 +2035,28 @@ mod pipe_thread {
                 );
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use windows::core::PCWSTR;
+
+    fn text(class: PCWSTR) -> String {
+        unsafe { class.to_string() }.unwrap()
+    }
+
+    #[test]
+    fn window_classes_match_the_protocol_constants() {
+        // The resident finds these windows by class name; w! needs a
+        // literal, so the agreement with ui-protocol is checked here.
+        assert_eq!(
+            text(super::CLASS_NAME),
+            selection_ui_protocol::COMPANION_WINDOW_CLASS
+        );
+        assert_eq!(
+            text(super::MANAGER_CLASS_NAME),
+            selection_ui_protocol::MANAGER_WINDOW_CLASS
+        );
     }
 }

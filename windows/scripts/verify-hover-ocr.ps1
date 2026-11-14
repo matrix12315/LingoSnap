@@ -222,7 +222,7 @@ function Assert-Request([string] $Body, [string] $ExpectedSentence) {
 }
 
 function Get-Popup([int] $ResidentPid) {
-    $window = [HoverOcrNative]::FindWindowW('SelectionTranslatePopup', [IntPtr]::Zero)
+    $window = [HoverOcrNative]::FindWindowW('LingoSnapPopup', [IntPtr]::Zero)
     [uint32] $ownerProcessId = 0
     if ($window -ne [IntPtr]::Zero) { [HoverOcrNative]::GetWindowThreadProcessId($window, [ref] $ownerProcessId) | Out-Null }
     $text = ''
@@ -314,9 +314,9 @@ $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
 $oldEnvironment = @{
     LOCALAPPDATA = $env:LOCALAPPDATA
     OPENAI_API_KEY = $env:OPENAI_API_KEY
-    BASE = $env:SELECTION_TRANSLATE_OPENAI_BASE_URL
-    MODEL = $env:SELECTION_TRANSLATE_OPENAI_MODEL
-    TRACE = $env:SELECTION_TRANSLATE_RUNTIME_TRACE
+    BASE = $env:LINGOSNAP_OPENAI_BASE_URL
+    MODEL = $env:LINGOSNAP_OPENAI_MODEL
+    TRACE = $env:LINGOSNAP_RUNTIME_TRACE
 }
 
 try {
@@ -327,7 +327,7 @@ try {
     $port = ([Net.IPEndPoint] $listener.LocalEndpoint).Port
     $expectedSentence = 'The hovered word needs context for a precise explanation.'
 
-    $configDirectory = Join-Path $runRoot 'SelectionTranslate'
+    $configDirectory = Join-Path $runRoot 'LingoSnap'
     New-Item -ItemType Directory -Path $configDirectory -Force | Out-Null
     $config = @"
 [[profiles]]
@@ -343,7 +343,7 @@ hover = "hover-ocr-test"
 [provider]
 endpoint = "http://127.0.0.1:$port"
 model = "hover-ocr-test-model"
-credential_target = "SelectionTranslate/HoverOcrE2E"
+credential_target = "LingoSnap/HoverOcrE2E"
 
 [hotkeys]
 cycle_profiles = "Ctrl+Alt+P"
@@ -377,15 +377,15 @@ cycle_profiles = "Ctrl+Alt+P"
     $tracePath = Join-Path $runRoot 'runtime-trace.log'
     $env:LOCALAPPDATA = $runRoot
     $env:OPENAI_API_KEY = [Guid]::NewGuid().ToString('N')
-    $env:SELECTION_TRANSLATE_OPENAI_BASE_URL = "http://127.0.0.1:$port"
-    $env:SELECTION_TRANSLATE_OPENAI_MODEL = 'hover-ocr-test-model'
-    $env:SELECTION_TRANSLATE_RUNTIME_TRACE = $tracePath
+    $env:LINGOSNAP_OPENAI_BASE_URL = "http://127.0.0.1:$port"
+    $env:LINGOSNAP_OPENAI_MODEL = 'hover-ocr-test-model'
+    $env:LINGOSNAP_RUNTIME_TRACE = $tracePath
     $resident = Start-Process -FilePath $resolvedResident -WorkingDirectory ([IO.Path]::GetDirectoryName($resolvedResident)) -PassThru -WindowStyle Hidden
     Start-Sleep -Milliseconds 2000
     if ($resident.HasExited) { throw 'resident exited during forced-OCR startup' }
     $finder = Join-Path $windowsRoot 'tmp\message-window-finder.exe'
     if (-not (Test-Path -LiteralPath $finder -PathType Leaf)) { throw "message-window-finder.exe missing: $finder" }
-    & $finder ([string] $resident.Id) 'SelectionTranslateResident' *> (Join-Path $runRoot 'readiness.txt')
+    & $finder ([string] $resident.Id) 'LingoSnapResident' *> (Join-Path $runRoot 'readiness.txt')
     if ($LASTEXITCODE -ne 0) { throw 'resident readiness message window missing' }
     if ([HoverOcrNative]::GetForegroundWindow().ToInt64() -ne $foregroundBefore) { throw 'resident startup changed foreground window' }
 
@@ -458,9 +458,9 @@ finally {
     }
     $env:LOCALAPPDATA = $oldEnvironment.LOCALAPPDATA
     $env:OPENAI_API_KEY = $oldEnvironment.OPENAI_API_KEY
-    $env:SELECTION_TRANSLATE_OPENAI_BASE_URL = $oldEnvironment.BASE
-    $env:SELECTION_TRANSLATE_OPENAI_MODEL = $oldEnvironment.MODEL
-    $env:SELECTION_TRANSLATE_RUNTIME_TRACE = $oldEnvironment.TRACE
+    $env:LINGOSNAP_OPENAI_BASE_URL = $oldEnvironment.BASE
+    $env:LINGOSNAP_OPENAI_MODEL = $oldEnvironment.MODEL
+    $env:LINGOSNAP_RUNTIME_TRACE = $oldEnvironment.TRACE
     $summary.no_image_files = @(
         Get-ChildItem -LiteralPath $runRoot -File -Recurse -ErrorAction SilentlyContinue |
             Where-Object { $_.Extension -match '^\.(png|bmp|jpe?g|gif|tiff?)$' }

@@ -1,6 +1,6 @@
 //! Opt-in, privacy-safe runtime lifecycle trace.
 //!
-//! The trace is intentionally disabled unless `SELECTION_TRANSLATE_RUNTIME_TRACE`
+//! The trace is intentionally disabled unless `LINGOSNAP_RUNTIME_TRACE`
 //! names a file.  Entries contain only fixed stage names, timestamps, and
 //! numeric identifiers; no request, target, output, prompt, endpoint, or OS
 //! error text is ever written.
@@ -10,7 +10,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const ENV_NAME: &str = "SELECTION_TRANSLATE_RUNTIME_TRACE";
+const ENV_NAME: &str = "LINGOSNAP_RUNTIME_TRACE";
 
 /// Append a fixed lifecycle stage when tracing is explicitly enabled.
 pub fn record(stage: &'static str) {

@@ -69,7 +69,7 @@ For the memory gate, launch a resident with manager closed, Hover off, and no po
 ## Security and publication
 
 - Never put an API key in TOML, prompts, logs, history, the handoff folder, or Git.
-- The supported credential sources are `OPENAI_API_KEY`, `SELECTION_TRANSLATE_OPENAI_API_KEY`, then Windows Credential Manager.
+- The supported credential sources are `OPENAI_API_KEY`, `LINGOSNAP_OPENAI_API_KEY`, then Windows Credential Manager.
 - The repository source is published on GitHub. The prior release is `v0.1.0-preview.1`; do not overwrite it.
 - A Git push or public release needs the user's explicit approval under `AGENTS.md`.
 

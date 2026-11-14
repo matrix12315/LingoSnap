@@ -24,7 +24,7 @@ The resident target with the manager closed is **below 20 MiB private working se
 2. Run `selection-translate-manager.exe` and configure the API address and key as described below.
 3. Run `selection-translate-resident.exe`. Its icon appears in the notification area.
 
-Windows SmartScreen may warn because the binaries are not code-signed. User configuration and history are stored under `%LOCALAPPDATA%\SelectionTranslate`.
+Windows SmartScreen may warn because the binaries are not code-signed. User configuration and history are stored under `%LOCALAPPDATA%\LingoSnap`.
 
 ## Fill in the API address and key
 
@@ -48,8 +48,8 @@ LingoSnap expects an OpenAI-compatible Chat Completions API. Before first use, s
 2. Choose **Save key**, then **Save settings**.
 3. Start (or restart) `selection-translate-resident.exe` for the change to take effect.
 
-The key is stored as a Windows Credential Manager Generic Credential (default target name `SelectionTranslate/OpenAI`). It is never written to `config.toml`, history, or logs.
+The key is stored as a Windows Credential Manager Generic Credential (default target name `LingoSnap/OpenAI`). It is never written to `config.toml`, history, or logs.
 
-Environment variables are an alternative to saving a key: the resident reads credentials in the order `OPENAI_API_KEY`, `SELECTION_TRANSLATE_OPENAI_API_KEY`, then the Windows Credential Manager target.
+Environment variables are an alternative to saving a key: the resident reads credentials in the order `OPENAI_API_KEY`, `LINGOSNAP_OPENAI_API_KEY`, then the Windows Credential Manager target.
 
 To verify the configuration, select some text and choose a profile: a streamed result means the address and key are valid. `Provider authentication failed` means the key is invalid; `Provider connection failed` means the address could not be reached — check the URL spelling, network, and proxy.

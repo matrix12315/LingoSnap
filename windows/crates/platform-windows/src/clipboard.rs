@@ -87,7 +87,7 @@ mod windows_impl {
             let (requests, incoming) = request_mailbox();
             let (ready_tx, ready_rx) = mpsc::sync_channel(1);
             let worker = thread::Builder::new()
-                .name("selection-translate-clipboard".to_owned())
+                .name("lingosnap-clipboard".to_owned())
                 .spawn(move || worker_main(incoming, ready_tx))
                 .map_err(|_| ExtractionFailure::Platform)?;
             ready_rx

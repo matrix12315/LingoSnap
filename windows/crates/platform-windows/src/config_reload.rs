@@ -64,7 +64,7 @@ impl ConfigWatcher {
         // value to the watcher and reconstruct it inside the worker thread.
         let hwnd_value = hwnd.0 as isize;
         let thread = thread::Builder::new()
-            .name("selection-translate-config-watch".to_owned())
+            .name("lingosnap-config-watch".to_owned())
             .spawn(move || {
                 let hwnd = windows::Win32::Foundation::HWND(hwnd_value as *mut _);
                 watch_directory(parent, file_name, path, hwnd, thread_stop, sender)
@@ -304,7 +304,7 @@ mod tests {
     #[test]
     fn watcher_publishes_only_a_valid_atomic_replacement() {
         let directory =
-            std::env::temp_dir().join(format!("selection-translate-watch-{}", std::process::id()));
+            std::env::temp_dir().join(format!("lingosnap-watch-{}", std::process::id()));
         let path = directory.join("config.toml");
         let watcher = ConfigWatcher::start(
             path.clone(),

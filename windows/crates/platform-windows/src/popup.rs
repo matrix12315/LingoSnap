@@ -116,7 +116,7 @@ mod windows_impl {
         WS_VSCROLL,
     };
 
-    const CLASS_NAME: PCWSTR = w!("SelectionTranslatePopup");
+    const CLASS_NAME: PCWSTR = w!("LingoSnapPopup");
     // Geometry from the redesign mockup (selection-translate-redesign).
     // Popup: 440 logical px wide, compact header, integrated Selection card,
     // Result card, and a left-aligned action footer.
@@ -200,7 +200,7 @@ mod windows_impl {
 
     /// Dropdown panel behind the rail's More… item — a plain rectangle card
     /// in the same design language, listing only the additional profiles.
-    const MENU_PANEL_CLASS: PCWSTR = w!("SelectionTranslateMenuPanel");
+    const MENU_PANEL_CLASS: PCWSTR = w!("LingoSnapMenuPanel");
 
     pub(super) struct MenuPanelData {
         /// (compact label, absolute profile index) for the overflow profiles.
@@ -1075,8 +1075,7 @@ mod windows_impl {
             let mut class_name = [0u16; 128];
             let length = GetClassNameW(hwnd, &mut class_name);
             let exact = length > 0
-                && String::from_utf16_lossy(&class_name[..length as usize])
-                    == "SelectionTranslatePopup";
+                && String::from_utf16_lossy(&class_name[..length as usize]) == "LingoSnapPopup";
             if exact {
                 runtime_trace::record("popup_topology_class_exact");
             } else {
@@ -4240,7 +4239,7 @@ plain - text
         // before the dropdown receives it. A point on the detached More…
         // panel must still count as inside, or the outside-click dismissal
         // destroys the source popup before the item selection is processed.
-        let popup_class: Vec<u16> = "SelectionTranslatePopup\0".encode_utf16().collect();
+        let popup_class: Vec<u16> = "LingoSnapPopup\0".encode_utf16().collect();
         let popup_hwnd = unsafe { FindWindowW(windows::core::PCWSTR(popup_class.as_ptr()), None) }
             .expect("popup window");
         unsafe {
@@ -4270,7 +4269,7 @@ plain - text
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        let panel_class: Vec<u16> = "SelectionTranslateMenuPanel\0".encode_utf16().collect();
+        let panel_class: Vec<u16> = "LingoSnapMenuPanel\0".encode_utf16().collect();
         let panel_hwnd = unsafe { FindWindowW(windows::core::PCWSTR(panel_class.as_ptr()), None) }
             .expect("open menu panel");
         let mut rect = RECT::default();
@@ -4382,7 +4381,7 @@ plain - text
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
 
-        let class: Vec<u16> = "SelectionTranslatePopup\0".encode_utf16().collect();
+        let class: Vec<u16> = "LingoSnapPopup\0".encode_utf16().collect();
         let popup_hwnd = unsafe { FindWindowW(windows::core::PCWSTR(class.as_ptr()), None) }
             .expect("popup class window");
         assert!(!popup_hwnd.0.is_null(), "popup class window must exist");
@@ -4532,7 +4531,7 @@ plain - text
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
 
-        let class: Vec<u16> = "SelectionTranslatePopup\0".encode_utf16().collect();
+        let class: Vec<u16> = "LingoSnapPopup\0".encode_utf16().collect();
         let popup_hwnd = unsafe { FindWindowW(windows::core::PCWSTR(class.as_ptr()), None) }
             .expect("popup class window");
         let mut rect = RECT::default();
@@ -4631,7 +4630,7 @@ plain - text
             }
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
-        let panel_class: Vec<u16> = "SelectionTranslateMenuPanel\0".encode_utf16().collect();
+        let panel_class: Vec<u16> = "LingoSnapMenuPanel\0".encode_utf16().collect();
         let panel_hwnd = unsafe { FindWindowW(windows::core::PCWSTR(panel_class.as_ptr()), None) }
             .expect("menu panel window");
         unsafe {

@@ -28,7 +28,7 @@ pub fn default_history_path() -> Option<PathBuf> {
 pub(crate) fn history_path_from_local_app_data(local_app_data: impl AsRef<Path>) -> PathBuf {
     local_app_data
         .as_ref()
-        .join("SelectionTranslate")
+        .join("LingoSnap")
         .join("history.sqlite3")
 }
 

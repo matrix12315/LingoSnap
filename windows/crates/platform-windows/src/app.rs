@@ -37,10 +37,9 @@ mod windows_impl {
         WNDCLASSW,
     };
 
-    const CLASS_NAME: PCWSTR = w!("SelectionTranslateResident");
-    const RESIDENT_MUTEX_NAME: PCWSTR = w!("Local\\SelectionTranslate.Resident");
-    const RESIDENT_LAUNCH_MUTEX_NAME: PCWSTR =
-        w!("Local\\SelectionTranslate.ResidentManagerLaunch");
+    const CLASS_NAME: PCWSTR = w!("LingoSnapResident");
+    const RESIDENT_MUTEX_NAME: PCWSTR = w!("Local\\LingoSnap.Resident");
+    const RESIDENT_LAUNCH_MUTEX_NAME: PCWSTR = w!("Local\\LingoSnap.ResidentManagerLaunch");
     const RESIDENT_READY_TIMEOUT: Duration = Duration::from_secs(5);
     const RESIDENT_MESSAGE_TIMEOUT_MS: u32 = 1_500;
     const ACK_READY: usize = 0x5354_5201;
@@ -4048,7 +4047,7 @@ mod windows_impl {
             ));
             assert!(!is_companion_class("Notepad"));
             assert!(!is_companion_class(""));
-            assert!(!is_companion_class("SelectionTranslatePopup"));
+            assert!(!is_companion_class("LingoSnapPopup"));
         }
 
         #[test]

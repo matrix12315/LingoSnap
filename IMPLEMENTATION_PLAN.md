@@ -375,7 +375,7 @@ and must never cause an empty provider request.
 
 **Files:** `crates/core/src/config.rs`, `prompt.rs`; `windows/crates/platform-windows/src/credentials.rs`; manager Settings/Prompts views.
 
-Configuration path: `%LOCALAPPDATA%\SelectionTranslate\config.toml`.
+Configuration path: `%LOCALAPPDATA%\LingoSnap\config.toml`.
 
 Profile fields:
 

@@ -9,19 +9,19 @@ use serde::{Deserialize, Serialize};
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// Named pipe the UI process connects to.
-pub const PIPE_NAME: &str = r"\\.\pipe\SelectionTranslatePopupUi";
+pub const PIPE_NAME: &str = r"\\.\pipe\LingoSnapPopupUi";
 
 /// Named pipe for the manager's fair-copy view. The manager keeps its own
 /// data bridge, separate from the resident's popup state.
-pub const MANAGER_PIPE_NAME: &str = r"\\.\pipe\SelectionTranslateManagerUi";
+pub const MANAGER_PIPE_NAME: &str = r"\\.\pipe\LingoSnapManagerUi";
 /// Window class of the companion's top-level window; the resident checks
 /// clicks against it so choosing a profile is not dismissed as an outside
 /// click by the resident's own mouse hook.
-pub const COMPANION_WINDOW_CLASS: &str = "SelectionTranslatePopupUi";
+pub const COMPANION_WINDOW_CLASS: &str = "LingoSnapPopupUi";
 /// Window class of the manager's fair-copy page. It differs from the popup
 /// companion's class so the resident's outside-click check never mistakes the
 /// manager page for the popup, and a second manager launch can find it.
-pub const MANAGER_WINDOW_CLASS: &str = "SelectionTranslateManagerUi";
+pub const MANAGER_WINDOW_CLASS: &str = "LingoSnapManagerUi";
 
 /// First line the UI process sends after connecting.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

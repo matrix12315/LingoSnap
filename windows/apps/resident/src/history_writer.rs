@@ -35,7 +35,7 @@ impl HistoryWriter {
         // consumer. The worker remains the sole owner of queued entries.
         let (sender, receiver) = mpsc::channel();
         let join = thread::Builder::new()
-            .name("selection-translate-history".to_owned())
+            .name("lingosnap-history".to_owned())
             .spawn(move || {
                 while let Ok(message) = receiver.recv() {
                     let mut entries = Vec::with_capacity(WRITE_BATCH_CAPACITY);

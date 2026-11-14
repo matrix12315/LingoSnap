@@ -1,4 +1,4 @@
-# Copy this file to %LOCALAPPDATA%\SelectionTranslate\config.toml.
+# Copy this file to %LOCALAPPDATA%\LingoSnap\config.toml.
 # Never put an API key, token, or password in this file.
 
 [[profiles]]
@@ -92,7 +92,7 @@ hover = "word-explanation"
 # ending in /v1 is accepted; do not add /chat/completions yourself.
 endpoint = "https://api.openai.com/v1"
 model = "gpt-4o-mini"
-credential_target = "SelectionTranslate/OpenAI"
+credential_target = "LingoSnap/OpenAI"
 
 [hotkeys]
 # Profile cycling is registered by the resident and can be changed before startup.

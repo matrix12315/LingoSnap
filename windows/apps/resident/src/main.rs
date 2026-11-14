@@ -73,7 +73,7 @@ impl TranslationProvider for OpenAiAdapter {
         let (delta_tx, delta_rx) = mpsc::channel();
         let provider = Arc::clone(&self.provider);
         let worker = thread::Builder::new()
-            .name("selection-translate-openai-adapter".to_owned())
+            .name("lingosnap-openai-adapter".to_owned())
             .spawn(move || provider.stream(&request, worker_token, DeltaChannel(delta_tx)))
             .map_err(|_| InterfaceProviderError::Local("could not start provider worker".into()))?;
 
@@ -148,12 +148,12 @@ fn build_history_store() -> Option<Arc<dyn HistoryStore>> {
 }
 
 fn build_provider(config: &AppConfig) -> ProviderRuntime {
-    let endpoint = std::env::var("SELECTION_TRANSLATE_OPENAI_BASE_URL")
+    let endpoint = std::env::var("LINGOSNAP_OPENAI_BASE_URL")
         .unwrap_or_else(|_| config.provider.endpoint.clone());
-    let model = std::env::var("SELECTION_TRANSLATE_OPENAI_MODEL")
-        .unwrap_or_else(|_| config.provider.model.clone());
+    let model =
+        std::env::var("LINGOSNAP_OPENAI_MODEL").unwrap_or_else(|_| config.provider.model.clone());
     let environment_key = std::env::var("OPENAI_API_KEY")
-        .or_else(|_| std::env::var("SELECTION_TRANSLATE_OPENAI_API_KEY"))
+        .or_else(|_| std::env::var("LINGOSNAP_OPENAI_API_KEY"))
         .ok()
         .filter(|value| !value.trim().is_empty());
 

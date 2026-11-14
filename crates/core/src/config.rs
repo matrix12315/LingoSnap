@@ -14,9 +14,9 @@ use crate::prompt::PromptConfig;
 use crate::text::TriggerKind;
 
 pub const DEFAULT_CYCLE_PROFILES_HOTKEY: &str = "Ctrl+Alt+P";
-pub const DEFAULT_CREDENTIAL_TARGET: &str = "SelectionTranslate/OpenAI";
+pub const DEFAULT_CREDENTIAL_TARGET: &str = "LingoSnap/OpenAI";
 
-/// Configuration stored at `%LOCALAPPDATA%\\SelectionTranslate\\config.toml`.
+/// Configuration stored at `%LOCALAPPDATA%\\LingoSnap\\config.toml`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct AppConfig {
@@ -268,7 +268,7 @@ pub fn default_config_path() -> Option<PathBuf> {
         .filter(|value| !value.is_empty())
         .map(|local_app_data| {
             PathBuf::from(local_app_data)
-                .join("SelectionTranslate")
+                .join("LingoSnap")
                 .join("config.toml")
         })
 }
@@ -853,7 +853,7 @@ mod tests {
     #[test]
     fn atomic_save_replaces_existing_file() {
         let directory =
-            std::env::temp_dir().join(format!("selection-translate-config-{}", std::process::id()));
+            std::env::temp_dir().join(format!("lingosnap-config-{}", std::process::id()));
         let path = directory.join("config.toml");
         let config = AppConfig::default();
         save_atomic(&path, &config).expect("first atomic save");

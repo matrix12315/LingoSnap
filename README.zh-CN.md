@@ -24,7 +24,7 @@ LingoSnap 是一款轻量级 Windows x64 划词与悬停文本助手。目标程
 2. 运行 `selection-translate-manager.exe`，按下文配置 API 地址和密钥。
 3. 运行 `selection-translate-resident.exe`，通知区域中会出现程序图标。
 
-由于程序尚未进行代码签名，Windows SmartScreen 可能显示警告。用户配置和历史记录位于 `%LOCALAPPDATA%\SelectionTranslate`。
+由于程序尚未进行代码签名，Windows SmartScreen 可能显示警告。用户配置和历史记录位于 `%LOCALAPPDATA%\LingoSnap`。
 
 ## 填写 API 地址与密钥
 
@@ -48,8 +48,8 @@ LingoSnap 是一款轻量级 Windows x64 划词与悬停文本助手。目标程
 2. 点击**保存密钥**，再点击**保存设置**。
 3. 启动（或重启）`selection-translate-resident.exe` 使配置生效。
 
-密钥会保存为 Windows 凭据管理器中的通用凭据（默认目标名 `SelectionTranslate/OpenAI`），不会写入 `config.toml`、历史记录或日志。
+密钥会保存为 Windows 凭据管理器中的通用凭据（默认目标名 `LingoSnap/OpenAI`），不会写入 `config.toml`、历史记录或日志。
 
-也可以不改密钥而改用环境变量：常驻程序按 `OPENAI_API_KEY`、`SELECTION_TRANSLATE_OPENAI_API_KEY`、Windows 凭据管理器的顺序读取密钥。
+也可以不改密钥而改用环境变量：常驻程序按 `OPENAI_API_KEY`、`LINGOSNAP_OPENAI_API_KEY`、Windows 凭据管理器的顺序读取密钥。
 
 配置完成后，选中一段文本并选择配置档即可验证：能正常返回结果说明地址和密钥均有效。如果提示 `Provider authentication failed`，说明密钥无效；如果提示 `Provider connection failed`，说明网络无法连接到所填地址，请检查地址拼写、网络和代理。
