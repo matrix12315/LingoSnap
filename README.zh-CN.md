@@ -53,3 +53,13 @@ LingoSnap 是一款轻量级 Windows x64 划词与悬停文本助手。目标程
 也可以不改密钥而改用环境变量：常驻程序按 `OPENAI_API_KEY`、`LINGOSNAP_OPENAI_API_KEY`、Windows 凭据管理器的顺序读取密钥。
 
 配置完成后，选中一段文本并选择配置档即可验证：能正常返回结果说明地址和密钥均有效。如果提示 `Provider authentication failed`，说明密钥无效；如果提示 `Provider connection failed`，说明网络无法连接到所填地址，请检查地址拼写、网络和代理。
+
+## 从 Selection Translate 迁移
+
+早期版本名为 Selection Translate，数据保存在旧名称下。LingoSnap 不会自动迁移任何内容，因此首次启动时是默认设置且没有已保存的密钥。要保留原有配置：
+
+1. 在托盘中退出旧的常驻程序，并关闭旧的管理器。
+2. 将 `%LOCALAPPDATA%\SelectionTranslate\config.toml` 和历史数据库文件（`history.sqlite3` 以及同目录下的 `-wal` / `-shm` 文件）移动到 `%LOCALAPPDATA%\LingoSnap\`。`webview` 文件夹无需移动，可直接删除。
+3. API 密钥：移动后的 `config.toml` 仍写着 `credential_target = "SelectionTranslate/OpenAI"`，密钥也仍保存在该名称下，因此可继续使用。若要改用新名称，请打开管理器，把“凭据目标”改为 `LingoSnap/OpenAI`，粘贴密钥并选择“保存密钥”，然后在 Windows 凭据管理器中删除旧的 `SelectionTranslate/OpenAI` 条目。
+4. 环境变量：如果设置过 `SELECTION_TRANSLATE_OPENAI_API_KEY`、`SELECTION_TRANSLATE_OPENAI_BASE_URL` 或 `SELECTION_TRANSLATE_OPENAI_MODEL`，请改用 `LINGOSNAP_` 开头的同名变量，并移除旧变量。
+5. 把指向 `selection-translate-resident.exe` 的快捷方式或启动项换成 `lingosnap-resident.exe`，然后删除旧的发布文件夹。

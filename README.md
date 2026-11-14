@@ -53,3 +53,13 @@ The key is stored as a Windows Credential Manager Generic Credential (default ta
 Environment variables are an alternative to saving a key: the resident reads credentials in the order `OPENAI_API_KEY`, `LINGOSNAP_OPENAI_API_KEY`, then the Windows Credential Manager target.
 
 To verify the configuration, select some text and choose a profile: a streamed result means the address and key are valid. `Provider authentication failed` means the key is invalid; `Provider connection failed` means the address could not be reached — check the URL spelling, network, and proxy.
+
+## Moving from Selection Translate
+
+Earlier builds were called Selection Translate and kept their data under other names. LingoSnap does not migrate anything, so a first start has default settings and no saved key. To keep your setup:
+
+1. Quit the old resident from the tray and close the old manager.
+2. Move `%LOCALAPPDATA%\SelectionTranslate\config.toml` and the history database files (`history.sqlite3` and any `-wal` / `-shm` next to it) to `%LOCALAPPDATA%\LingoSnap\`. The `webview` folder does not need moving; delete it.
+3. API key: a moved `config.toml` still says `credential_target = "SelectionTranslate/OpenAI"`, and the key is still stored under that name, so it keeps working. To switch to the new name, open the manager, set Credential target to `LingoSnap/OpenAI`, paste the key, and choose Save key. Then delete the old `SelectionTranslate/OpenAI` entry in Windows Credential Manager.
+4. Environment variables: if `SELECTION_TRANSLATE_OPENAI_API_KEY`, `SELECTION_TRANSLATE_OPENAI_BASE_URL` or `SELECTION_TRANSLATE_OPENAI_MODEL` are set, set the `LINGOSNAP_` names instead and remove the old ones.
+5. Replace any shortcut or startup entry that points at `selection-translate-resident.exe` with one for `lingosnap-resident.exe`, then delete the old release folders.
