@@ -1067,6 +1067,35 @@ mod windows_impl {
         }
     }
 
+    /// True when `class` is the window class of the fair-copy companion.
+    fn is_companion_class(class: &str) -> bool {
+        class == selection_ui_protocol::COMPANION_WINDOW_CLASS
+    }
+
+    /// True when `hwnd`'s top-level window is a fair-copy companion window.
+    fn is_companion_window(state: &ShellState, hwnd: HWND) -> bool {
+        if state.fair_copy.is_none() || hwnd.0.is_null() {
+            return false;
+        }
+        let root = root_window(hwnd);
+        let mut buffer = [0u16; 128];
+        let length =
+            unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassNameW(root, &mut buffer) }
+                as usize;
+        length > 0
+            && length < buffer.len()
+            && is_companion_class(&String::from_utf16_lossy(&buffer[..length]))
+    }
+
+    /// True when `hwnd` belongs to one of our popups, classic or fair-copy.
+    fn foreground_is_own_popup(state: &ShellState, hwnd: HWND) -> bool {
+        state
+            .popups
+            .iter()
+            .any(|entry| entry.popup.owns_window(hwnd))
+            || is_companion_window(state, hwnd)
+    }
+
     fn root_window_at(point: ScreenPoint) -> isize {
         let hwnd = unsafe {
             WindowFromPoint(windows::Win32::Foundation::POINT {
@@ -1285,10 +1314,7 @@ mod windows_impl {
     }
 
     fn handle_foreground_changed(hwnd: HWND, state: &mut ShellState, foreground: HWND) {
-        let foreground_is_popup = state
-            .popups
-            .iter()
-            .any(|entry| entry.popup.owns_window(foreground));
+        let foreground_is_popup = foreground_is_own_popup(state, foreground);
         let new_root_window = root_window(foreground).0 as isize;
         if !foreground_is_popup {
             state.mouse.cancel_hover_candidate();
@@ -2481,10 +2507,7 @@ mod windows_impl {
         let process_id = pending.spec.process_id;
         let foreground_guard_root_window = pending.spec.foreground_guard_root_window;
         let foreground = unsafe { GetForegroundWindow() };
-        let foreground_is_popup = state
-            .popups
-            .iter()
-            .any(|entry| entry.popup.owns_window(foreground));
+        let foreground_is_popup = foreground_is_own_popup(state, foreground);
         if !hover_foreground_guard_is_current(
             trigger,
             foreground_guard_root_window,
@@ -3990,6 +4013,16 @@ mod windows_impl {
             assert!(!should_dismiss_for_outside_click(Some(2), 2, false));
             assert!(!should_dismiss_for_outside_click(Some(2), 1, false));
             assert!(!should_dismiss_for_outside_click(Some(2), 1, true));
+        }
+
+        #[test]
+        fn companion_class_matches_only_the_protocol_class() {
+            assert!(is_companion_class(
+                selection_ui_protocol::COMPANION_WINDOW_CLASS
+            ));
+            assert!(!is_companion_class("Notepad"));
+            assert!(!is_companion_class(""));
+            assert!(!is_companion_class("SelectionTranslatePopup"));
         }
 
         #[test]
