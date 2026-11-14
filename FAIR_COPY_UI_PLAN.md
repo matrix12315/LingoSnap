@@ -1,7 +1,7 @@
 # Fair Copy UI Plan (WebView2 companion)
 
 Status: approved 2026-10-07. Implements the fair-copy mockup in
-`selection-translate-redesign/fair-copy/ui/` as a second, tray-switchable UI.
+`lingosnap-redesign/fair-copy/ui/` as a second, tray-switchable UI.
 
 ## Decisions
 

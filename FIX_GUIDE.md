@@ -19,7 +19,7 @@ task. Do the tasks in the order below, and make one commit per task.
   `.\windows\scripts\package-release.ps1 -OutputDirectory windows/dist/selection-translate-x64-rNN | Out-File windows\tmp\package-rNN.log`.
   The script always stops at a missing `Get-FileHash` after the build. Write
   `BUILD-INFO.txt` by hand in the same format as `windows/dist/selection-translate-x64-r62/BUILD-INFO.txt`.
-- **Mockups are the app.** Files in `selection-translate-redesign/fair-copy/ui/` are compiled
+- **Mockups are the app.** Files in `lingosnap-redesign/fair-copy/ui/` are compiled
   into `popup-ui.exe` with `include_str!`. A CSS or HTML change there changes the app. Keep
   the mockup pages working when opened directly in a browser.
 - **Both UIs.** Every user-visible change applies to the classic UI (Win32) and the fair-copy
@@ -238,7 +238,7 @@ muted. Both views look the same.
 **Scope.** Fair-copy only. Do not change anything in the classic popup or the classic
 manager: they are always dark and get no theme setting. The target look is the dark
 design the HTML mockups already have: open each page in
-`selection-translate-redesign/fair-copy/ui/` with `#theme=dark` in a browser, and make the
+`lingosnap-redesign/fair-copy/ui/` with `#theme=dark` in a browser, and make the
 app look the same. If a mockup itself shows a light leftover in dark mode (the list in
 step 6), fix it in the mockup's CSS, which also fixes the app.
 
@@ -290,7 +290,7 @@ manager page already has a **Theme** field (`#uitheme`). Nothing in the app ever
      `rgba(15,12,8,…)`).
    - `liquid-lens.js`: check that it uses no fixed colours.
 7. **Look.** Compare against the dark review screenshots in
-   `selection-translate-redesign/.impeccable/review/` (`dark-popup.png`,
+   `lingosnap-redesign/.impeccable/review/` (`dark-popup.png`,
    `dark-manager.png`, `v48-chooser-dark.png`). Open each mockup with `#theme=dark` in a
    browser to check it.
 
@@ -310,7 +310,7 @@ no language at all. Native status messages pushed into the fair-copy manager are
 localised.
 
 **Change.**
-1. **String table.** Create `selection-translate-redesign/fair-copy/ui/strings.js`. It
+1. **String table.** Create `lingosnap-redesign/fair-copy/ui/strings.js`. It
    defines `window.LINGO_STRINGS = { en: {...}, 'zh-CN': {...} }`, a function
    `window.t(key)`, and `window.setLang(lang)`. `setLang` sets
    `document.documentElement.lang`, then fills the text of every element with
@@ -615,7 +615,7 @@ paths accordingly (`selection_core::` → `lingosnap_core::`, about 200 uses in 
 Cargo rewrites `Cargo.lock` on the next build; no new dependency is added. Directory names
 (`crates/core`, `windows/apps/manager`, …) stay.
 
-**Step 4: the design folder.** `git mv selection-translate-redesign lingosnap-redesign`,
+**Step 4: the design folder.** `git mv lingosnap-redesign lingosnap-redesign`,
 then fix every path that names it: the `include_str!` macro in `popup-ui/src/main.rs`,
 `popup.rs`, `.gitignore`, `FAIR_COPY_UI_PLAN.md`, `IMPLEMENTATION_PLAN.md`, `AGENTS.md`,
 and this guide.

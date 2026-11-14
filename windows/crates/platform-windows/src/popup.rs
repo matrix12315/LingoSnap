@@ -117,7 +117,7 @@ mod windows_impl {
     };
 
     const CLASS_NAME: PCWSTR = w!("LingoSnapPopup");
-    // Geometry from the redesign mockup (selection-translate-redesign).
+    // Geometry from the redesign mockup (lingosnap-redesign).
     // Popup: 440 logical px wide, compact header, integrated Selection card,
     // Result card, and a left-aligned action footer.
     const WIDTH: i32 = 440;

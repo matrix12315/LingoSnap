@@ -121,7 +121,7 @@ mod assets {
     macro_rules! asset {
         ($name:literal) => {
             include_str!(concat!(
-                "../../../../selection-translate-redesign/fair-copy/ui/",
+                "../../../../lingosnap-redesign/fair-copy/ui/",
                 $name
             ))
         };
