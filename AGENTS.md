@@ -1,4 +1,4 @@
-# Selection Translate Project Rules
+# LingoSnap Project Rules
 
 ## Scope
 
@@ -50,7 +50,7 @@ This repository contains an ultralight selection and hover translation applicati
 - The x64 MSVC environment is initialized with `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat -arch=x64`.
 - Installed MSVC tools are version `14.51.36231` with compiler `19.51.36256`; the Windows SDK is `10.0.26100.0` at `D:\Windows Kits\10`.
 - Normal PowerShell PATH does not include Cargo or `cl.exe`. Build and verification commands must invoke `D:\DevTools\cargo\bin\rustc.exe`, `D:\DevTools\cargo\bin\cargo.exe`, and `D:\DevTools\cargo\bin\rustup.exe` explicitly, and run `cl.exe` inside a `VsDevCmd.bat`-initialized x64 shell.
-- Keep Windows build downloads and temporary files under `D:\pythonProject\2026\selectionTranslate\windows\tmp`. Installed Rust/MSVC tooling remains outside the repository in the documented D: locations.
+- Keep Windows build downloads and temporary files under `D:\pythonProject\2026\LingoSnap\windows\tmp`. Installed Rust/MSVC tooling remains outside the repository in the documented D: locations.
 - Small unavoidable Microsoft installer/registry components may remain on C:, but Rust and the main Visual Studio workload must remain on D:.
 - Task 1 verification must confirm the explicit D: Rust tools, the active MSVC target, `VsDevCmd.bat`/`cl.exe`, MSVC tool/compiler versions, and Windows SDK presence.
 

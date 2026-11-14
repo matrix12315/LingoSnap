@@ -152,7 +152,7 @@ if ($null -ne $gitCommand) {
 }
 
 $buildInfo = @(
-    "Selection Translate local portable package",
+    "LingoSnap local portable package",
     "Architecture: x86_64-pc-windows-msvc",
     "Built UTC: $([DateTimeOffset]::UtcNow.ToString('o'))",
     "Rust/Cargo: $cargo",

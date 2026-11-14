@@ -8,12 +8,12 @@ Task 21 is implemented and has passed the main source, package, manager, UIA Hov
 forced-OCR gates. The active Codex goal is **paused**, not complete, because the turn was
 interrupted before the four-popup memory measurement and the final plan/evidence update.
 
-No Selection Translate resident or manager process was running at hand-off time. No internet
+No LingoSnap resident or manager process was running at hand-off time. No internet
 access was used. Rust/Cargo/build output and temporary files stayed on `D:`.
 
 The current portable package is:
 
-`D:\pythonProject\2026\selectionTranslate\windows\dist\lingosnap-x64-20260830-r57`
+`D:\pythonProject\2026\LingoSnap\windows\dist\lingosnap-x64-20260830-r57`
 
 Hashes:
 
@@ -171,14 +171,14 @@ Evidence:
 
 ## D:-only command environment
 
-Run Cargo from `D:\pythonProject\2026\selectionTranslate\windows` with:
+Run Cargo from `D:\pythonProject\2026\LingoSnap\windows` with:
 
 ```powershell
 $env:RUSTUP_HOME = 'D:\DevTools\rustup'
 $env:CARGO_HOME = 'D:\DevTools\cargo'
-$env:CARGO_TARGET_DIR = 'D:\pythonProject\2026\selectionTranslate\windows\target'
-$env:TEMP = 'D:\pythonProject\2026\selectionTranslate\windows\tmp'
-$env:TMP = 'D:\pythonProject\2026\selectionTranslate\windows\tmp'
+$env:CARGO_TARGET_DIR = 'D:\pythonProject\2026\LingoSnap\windows\target'
+$env:TEMP = 'D:\pythonProject\2026\LingoSnap\windows\tmp'
+$env:TMP = 'D:\pythonProject\2026\LingoSnap\windows\tmp'
 $env:CARGO_NET_OFFLINE = 'true'
 ```
 

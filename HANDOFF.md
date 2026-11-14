@@ -1,4 +1,4 @@
-# Selection Translate development handoff
+# LingoSnap development handoff
 
 ## Snapshot scope
 

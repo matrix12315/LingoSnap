@@ -1,4 +1,4 @@
-# PRODUCT.md — Selection Translate (LingoSnap)
+# PRODUCT.md — LingoSnap
 
 ## What it is
 

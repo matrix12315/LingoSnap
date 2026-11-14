@@ -1,4 +1,4 @@
-# Selection Translate — PC UI Develop Guide
+# LingoSnap — PC UI Develop Guide
 
 **Audience:** Implementation agents building the **native Windows desktop** UI (Win32 / WinUI / WPF / egui / etc.).  
 **Source of truth for pixels:** `index.html` (same folder) — open it in a browser and match it.  
@@ -139,7 +139,7 @@ Never mix light system scrollbars with dark chrome. Never different scrollbar lo
 
 1. **Title bar** (`surface`, border-bottom `line`, pad 12×14)  
    - 28×28 mark (radius 8, `accent` fill, dark glyph e.g. “文”)  
-   - Bold 13px title “Selection Translate”  
+   - Bold 13px title “LingoSnap”  
    - 11px `muted` subtitle (e.g. “Resident” or active profile name)  
    - Icon buttons right: Pin, Close (28×28, ghost, `muted`)
 
@@ -204,7 +204,7 @@ SELECTION                    ← caption
 **Window chrome:**
 
 1. **Title bar** — `surface`, border-bottom `line`, pad 8×12  
-   - 14×14 accent square (or app icon) + 12px “Selection Translate — Manager”  
+   - 14×14 accent square (or app icon) + 12px “LingoSnap — Manager”  
    - Standard native close (and min/max if the OS frame provides them).
 
 2. **Horizontal tab bar** (see 3.3) — Settings | Prompts | History.
@@ -333,10 +333,10 @@ Keyboard: all controls focusable; visible accent focus ring; dialog Esc closes p
 
 Use these strings unless product localizes later:
 
-- Window: `Selection Translate — Manager`
+- Window: `LingoSnap — Manager`
 - Tabs: `Settings` · `Prompts` · `History`
 - Status: `Resident is running.` · `History refreshed.`
-- Popup title: `Selection Translate`
+- Popup title: `LingoSnap`
 - Captions: `SELECTION` · `RESULT`
 - Popup actions: `Copy` · `Retry` · `Prompt` · `Pin` · `Close`
 - Settings: `Endpoint` · `Model` · `Credential target` · `API key` · `Save key` · `Delete saved key` · `Key present` · `value hidden` · `Selection profile` · `Hover profile` · `Save settings` · credential-manager footnote

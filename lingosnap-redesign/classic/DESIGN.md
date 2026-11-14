@@ -1,4 +1,4 @@
-# Selection Translate — Design System
+# LingoSnap — Design System
 
 ## Identity
 
@@ -6,7 +6,7 @@ Product UI Designer — the 90% surface is the **result popup after a selection*
 
 ## Grounding
 
-**Assumption:** Selection Translate is a Windows resident linguistic utility (select text → floating analysis). Treat the redesign as a **Raycast / Linear-class dark utility** with **DeepL-grade content hierarchy** for the result card — not a generic HTML form in corporate navy.
+**Assumption:** LingoSnap is a Windows resident linguistic utility (select text → floating analysis). Treat the redesign as a **Raycast / Linear-class dark utility** with **DeepL-grade content hierarchy** for the result card — not a generic HTML form in corporate navy.
 
 **Defer:** Live prompt bodies, real API field labels, and History sample rows are placeholders shaped like real data; product copy can be swapped without breaking the system.
 

@@ -1,4 +1,4 @@
-# Selection Translate — UI design tracks
+# LingoSnap — UI design tracks
 
 Two UI design tracks live side by side in this folder and must continue to
 exist at the same time — mirroring the tray-switchable dual-skin decision in

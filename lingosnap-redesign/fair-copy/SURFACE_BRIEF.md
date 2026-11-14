@@ -81,7 +81,7 @@ horizontal profile-rail shape — the vertical card list was rejected; the popup
 status line carries no "Resident" prefix; Settings gains Interface language and
 Theme (Dark/Light) selects in Defaults. The Fair Copy dark variant is a derived
 theme from the same tokens — the paper world is the reference theme. The manager
-titlebar reads "Selection Translate — Manager" to match the real window title.
+titlebar reads "LingoSnap — Manager" to match the real window title.
 
 Liquid glass (user request 2026-10-05, referring to
 `D:\pythonProject\2026\liquid-glass-studio`): the action buttons are liquid

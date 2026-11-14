@@ -1,4 +1,4 @@
-# Selection Translate — Task-by-Task Coding Plan
+# LingoSnap — Task-by-Task Coding Plan
 
 ## 0. Plan contract
 
@@ -71,7 +71,7 @@ Current repository state (2026-08-30):
 Task 2 creates this structure:
 
 ```text
-selectionTranslate/
+LingoSnap/
 ├─ AGENTS.md
 ├─ IMPLEMENTATION_PLAN.md
 ├─ Cargo.toml
@@ -125,7 +125,7 @@ No shared crate may depend on `platform-windows`.
 
 **Goal:** make the Windows Rust build possible without violating approval or internet rules.
 
-Verified installation layout: target `x86_64-pc-windows-msvc`; `RUSTUP_HOME=D:\DevTools\rustup`; `CARGO_HOME=D:\DevTools\cargo`; Visual Studio Community 2026 `18.9.1` at `D:\Program Files\Microsoft Visual Studio\18\Community`; MSVC tools `14.51.36231` and compiler `19.51.36256`; Windows SDK `10.0.26100.0` at `D:\Windows Kits\10`. Windows task downloads and temporary files belong under `D:\pythonProject\2026\selectionTranslate\windows\tmp`. Small unavoidable Microsoft installer/registry components may remain on C:, but Rust and the main Visual Studio workload remain on D:.
+Verified installation layout: target `x86_64-pc-windows-msvc`; `RUSTUP_HOME=D:\DevTools\rustup`; `CARGO_HOME=D:\DevTools\cargo`; Visual Studio Community 2026 `18.9.1` at `D:\Program Files\Microsoft Visual Studio\18\Community`; MSVC tools `14.51.36231` and compiler `19.51.36256`; Windows SDK `10.0.26100.0` at `D:\Windows Kits\10`. Windows task downloads and temporary files belong under `D:\pythonProject\2026\LingoSnap\windows\tmp`. Small unavoidable Microsoft installer/registry components may remain on C:, but Rust and the main Visual Studio workload remain on D:.
 
 Normal PowerShell PATH does not contain Cargo or `cl.exe`. Initialize the x64 MSVC environment and call the D: Rust tools explicitly:
 
