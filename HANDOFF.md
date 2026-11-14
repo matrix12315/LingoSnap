@@ -45,7 +45,7 @@ The test command that would validate that new assertion was interrupted before i
 
 ```powershell
 .\windows\scripts\verify-hover-ocr.ps1 -StaticCheck
-.\windows\scripts\verify-hover-ocr.ps1 -ResidentPath .\windows\dist\selection-translate-x64-20260831-r66\selection-translate-resident.exe
+.\windows\scripts\verify-hover-ocr.ps1 -ResidentPath .\windows\dist\lingosnap-x64-20260831-r66\lingosnap-resident.exe
 ```
 
 If it passes, rerun the complete package gate to produce a fresh package. Do not claim final completion or publish a new release until that check has passed and the source is reviewed.
@@ -55,7 +55,7 @@ If it passes, rerun the complete package gate to produce a fresh package. Do not
 Run from the repository root. The project uses the explicit D: toolchain defined in `AGENTS.md`:
 
 ```powershell
-.\windows\scripts\package-release.ps1 -OutputDirectory windows/dist/selection-translate-x64-local
+.\windows\scripts\package-release.ps1 -OutputDirectory windows/dist/lingosnap-x64-local
 ```
 
 The script runs format checks, all workspace tests, Clippy with warnings denied, and the locked MSVC release build. Generated output remains under `windows/target`, `windows/tmp`, and `windows/dist`.

@@ -7,7 +7,7 @@ This package targets 64-bit Windows 10 22H2/Windows 11 with the MSVC runtime. It
 1. Copy `config.example.toml` to `%LOCALAPPDATA%\LingoSnap\config.toml`.
 2. Edit the endpoint, model, defaults, or the system prompt and user template of a profile. Templates may use only `{target}`, `{context}`, and `{source}` and must include `{target}`.
 3. Keep the API key outside the file. The resident checks `OPENAI_API_KEY`, then `LINGOSNAP_OPENAI_API_KEY`, then the Windows Credential Manager target named `LingoSnap/OpenAI`. A manager Settings action can save/delete the key through Credential Manager; do not paste it into TOML.
-4. Start `selection-translate-resident.exe`. It places an icon in the notification area.
+4. Start `lingosnap-resident.exe`. It places an icon in the notification area.
 
 The default endpoint is `https://api.openai.com/v1`; loopback HTTP endpoints are supported for local mock testing. Other plain-HTTP endpoints are rejected.
 
@@ -16,8 +16,8 @@ The default endpoint is `https://api.openai.com/v1`; loopback HTTP endpoints are
 Choose a fresh package directory. The script refuses a non-empty destination and never deletes an old package:
 
 ```powershell
-.\windows\scripts\package-release.ps1 -OutputDirectory windows/dist/selection-translate-x64-20260819
-& .\windows\dist\selection-translate-x64-20260819\selection-translate-resident.exe
+.\windows\scripts\package-release.ps1 -OutputDirectory windows/dist/lingosnap-x64-20260819
+& .\windows\dist\lingosnap-x64-20260819\lingosnap-resident.exe
 ```
 
 The script verifies formatting, workspace tests, workspace Clippy (`-D warnings`), and a locked release build before staging the two executables and documentation. Cargo output, compiler temporary files, and script scratch data stay under `windows\target` and `windows\tmp`; the script does not install dependencies, sign binaries, publish, deploy, or remove files.

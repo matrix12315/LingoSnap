@@ -82,11 +82,11 @@ hover = "word-explanation"
 
 [provider]
 # API key setup (choose one):
-# 1. Preferred: open selection-translate-manager.exe, enter the key under
+# 1. Preferred: open lingosnap-manager.exe, enter the key under
 #    "API key", and choose "Save key". Windows Credential Manager stores it
 #    under the credential_target below.
 # 2. Alternatively, set OPENAI_API_KEY in the resident process environment
-#    before launching selection-translate-resident.exe.
+#    before launching lingosnap-resident.exe.
 # An api_key TOML field is intentionally unsupported. Never paste a key here.
 # Use the provider's OpenAI-compatible base URL. A host-only URL or a base URL
 # ending in /v1 is accepted; do not add /chat/completions yourself.

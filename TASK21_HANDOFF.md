@@ -13,7 +13,7 @@ access was used. Rust/Cargo/build output and temporary files stayed on `D:`.
 
 The current portable package is:
 
-`D:\pythonProject\2026\selectionTranslate\windows\dist\selection-translate-x64-20260830-r57`
+`D:\pythonProject\2026\selectionTranslate\windows\dist\lingosnap-x64-20260830-r57`
 
 Hashes:
 

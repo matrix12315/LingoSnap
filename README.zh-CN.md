@@ -21,8 +21,8 @@ LingoSnap 是一款轻量级 Windows x64 划词与悬停文本助手。目标程
 ## 安装预览版
 
 1. 从 GitHub Release 下载 Windows x64 ZIP，并解压到可写目录。
-2. 运行 `selection-translate-manager.exe`，按下文配置 API 地址和密钥。
-3. 运行 `selection-translate-resident.exe`，通知区域中会出现程序图标。
+2. 运行 `lingosnap-manager.exe`，按下文配置 API 地址和密钥。
+3. 运行 `lingosnap-resident.exe`，通知区域中会出现程序图标。
 
 由于程序尚未进行代码签名，Windows SmartScreen 可能显示警告。用户配置和历史记录位于 `%LOCALAPPDATA%\LingoSnap`。
 
@@ -32,7 +32,7 @@ LingoSnap 是一款轻量级 Windows x64 划词与悬停文本助手。目标程
 
 ### API 地址（Base URL）
 
-1. 打开 `selection-translate-manager.exe`，进入**设置**页。
+1. 打开 `lingosnap-manager.exe`，进入**设置**页。
 2. 在 **API 地址**中填入服务商提供的基础地址，例如：
 
    ```text
@@ -46,7 +46,7 @@ LingoSnap 是一款轻量级 Windows x64 划词与悬停文本助手。目标程
 
 1. 在设置页的 **API key** 输入框中粘贴服务商生成的密钥。
 2. 点击**保存密钥**，再点击**保存设置**。
-3. 启动（或重启）`selection-translate-resident.exe` 使配置生效。
+3. 启动（或重启）`lingosnap-resident.exe` 使配置生效。
 
 密钥会保存为 Windows 凭据管理器中的通用凭据（默认目标名 `LingoSnap/OpenAI`），不会写入 `config.toml`、历史记录或日志。
 

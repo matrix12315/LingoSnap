@@ -678,7 +678,7 @@ mod windows_impl {
                 let resident = executable
                     .parent()
                     .unwrap_or_else(|| std::path::Path::new("."))
-                    .join("selection-translate-resident.exe");
+                    .join("lingosnap-resident.exe");
                 let Ok(mut child) = Command::new(resident).spawn() else {
                     return ResidentStartOutcome::Unavailable;
                 };
@@ -1897,7 +1897,7 @@ mod windows_impl {
         state.fair_copy_last_result = None;
         match state.runtime.config.ui.popup_skin {
             PopupSkin::Classic => {
-                // Dropping the companion terminates popup-ui.exe.
+                // Dropping the companion terminates lingosnap-ui.exe.
                 state.fair_copy = None;
             }
             PopupSkin::FairCopy => {
@@ -3676,7 +3676,7 @@ mod windows_impl {
         let manager = executable
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."))
-            .join("selection-translate-manager.exe");
+            .join("lingosnap-manager.exe");
         Command::new(manager).spawn().map(|_| ())
     }
 

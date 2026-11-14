@@ -31,8 +31,8 @@ $cargoHome = "D:\DevTools\cargo"
 $buildTemp = Join-Path $repoRoot "windows\tmp"
 $targetDirectory = Join-Path $repoRoot "windows\target"
 $releaseDirectory = Join-Path $targetDirectory "release"
-$residentExe = Join-Path $releaseDirectory "selection-translate-resident.exe"
-$managerExe = Join-Path $releaseDirectory "selection-translate-manager.exe"
+$residentExe = Join-Path $releaseDirectory "lingosnap-resident.exe"
+$managerExe = Join-Path $releaseDirectory "lingosnap-manager.exe"
 
 foreach ($requiredPath in @($cargo, $vsDevCmd)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -78,9 +78,9 @@ function Stop-TranslateProcess {
 }
 
 if (-not $RestartOnly) {
-    $packages = @("-p", "selection-translate-resident")
+    $packages = @("-p", "lingosnap-resident")
     if ($WithManager) {
-        $packages += @("-p", "selection-translate-manager")
+        $packages += @("-p", "lingosnap-manager")
     }
     Write-Host "Building $($packages -join ' ') --release --locked"
     Invoke-VsCargo -CargoArguments (@("build", "--locked", "--release") + $packages)
@@ -91,17 +91,17 @@ if (-not (Test-Path -LiteralPath $residentExe -PathType Leaf)) {
 }
 
 if (-not $KeepRunning) {
-    Stop-TranslateProcess -Name "selection-translate-resident"
+    Stop-TranslateProcess -Name "lingosnap-resident"
 }
 
 # Always stage runnable binaries in the temp output folder.
-Copy-Item -LiteralPath $residentExe -Destination (Join-Path $BuildOutput "selection-translate-resident.exe") -Force
+Copy-Item -LiteralPath $residentExe -Destination (Join-Path $BuildOutput "lingosnap-resident.exe") -Force
 if ($WithManager -and (Test-Path -LiteralPath $managerExe -PathType Leaf)) {
-    Copy-Item -LiteralPath $managerExe -Destination (Join-Path $BuildOutput "selection-translate-manager.exe") -Force
+    Copy-Item -LiteralPath $managerExe -Destination (Join-Path $BuildOutput "lingosnap-manager.exe") -Force
 }
 Write-Host "Build saved to: $BuildOutput"
 
-$launchPath = Join-Path $BuildOutput "selection-translate-resident.exe"
+$launchPath = Join-Path $BuildOutput "lingosnap-resident.exe"
 if (-not $KeepRunning) {
     Start-Process -FilePath $launchPath
     Write-Host "Started resident: $launchPath"

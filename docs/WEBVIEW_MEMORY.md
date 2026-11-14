@@ -1,7 +1,7 @@
 # Fair-copy WebView2 memory report
 
-This report covers the memory of the fair-copy UI companion (`popup-ui.exe`) and the
-WebView2 processes it starts. The resident (`selection-translate-resident.exe`) is
+This report covers the memory of the fair-copy UI companion (`lingosnap-ui.exe`) and the
+WebView2 processes it starts. The resident (`lingosnap-resident.exe`) is
 not changed by this work. Its 20 MiB idle requirement applies with the classic skin
 and with the fair-copy companion stopped.
 
@@ -9,11 +9,11 @@ and with the fair-copy companion stopped.
 
 - Machine: NVIDIA GeForce MX450, one 2560×1600 display at 200 % scale, WebView2
   Runtime 157.0.4341.42.
-- Build: release `popup-ui.exe`, driven over its named pipe by
+- Build: release `lingosnap-ui.exe`, driven over its named pipe by
   `windows/tmp/mem-probe.ps1`, with a separate WebView2 user-data folder
   (`LOCALAPPDATA=windows/tmp/lad`).
 - Metric: private working set (the Task Manager "Memory" column), summed over
-  `popup-ui.exe` and every descendant (`msedgewebview2.exe` browser, GPU,
+  `lingosnap-ui.exe` and every descendant (`msedgewebview2.exe` browser, GPU,
   renderer, network, storage and crashpad processes). Commit (private bytes) is
   also recorded.
 - Scenario, in order: warm idle (pool window preloaded, nothing shown), one
@@ -115,11 +115,11 @@ memory:
 
 ```powershell
 # release build of the companion
-.\windows\tmp\vscargo.ps1 build --release --package selection-translate-popup-ui
+.\windows\tmp\vscargo.ps1 build --release --package lingosnap-ui
 # popup scenario (pass -BrowserArgs "..." to try other switches)
 powershell -NoProfile -ExecutionPolicy Bypass -File windows\tmp\mem-probe.ps1
 # manager window
-powershell -NoProfile -ExecutionPolicy Bypass -File windows\tmp\mgr-mem.ps1 -Exe <path to selection-translate-manager.exe>
+powershell -NoProfile -ExecutionPolicy Bypass -File windows\tmp\mgr-mem.ps1 -Exe <path to lingosnap-manager.exe>
 ```
 
 The probe scripts live in `windows/tmp/`, which is scratch space and is not

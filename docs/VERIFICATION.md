@@ -10,8 +10,8 @@ Run from the repository root in an x64 MSVC environment, or run the package scri
 cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" fmt --all -- --check'
 cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" test --workspace --locked'
 cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" clippy --workspace --all-targets --locked -- -D warnings'
-cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" build --locked --release -p selection-translate-resident -p selection-translate-manager'
-.\windows\scripts\package-release.ps1 -OutputDirectory windows/dist/selection-translate-x64-YYYYMMDD
+cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" build --locked --release -p lingosnap-resident -p lingosnap-manager'
+.\windows\scripts\package-release.ps1 -OutputDirectory windows/dist/lingosnap-x64-YYYYMMDD
 ```
 
 The package script performs the same checks before staging, copies both executables and user documentation, and writes `BUILD-INFO.txt` containing the UTC time, Cargo.lock SHA-256, and Git commit when one exists. Keep generated `windows\target`, `windows\tmp`, and `windows\dist` files out of source control.

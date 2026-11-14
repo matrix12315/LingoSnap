@@ -21,8 +21,8 @@ The resident target with the manager closed is **below 20 MiB private working se
 ## Install the preview
 
 1. Download the Windows x64 ZIP from the GitHub release and extract it to a writable directory.
-2. Run `selection-translate-manager.exe` and configure the API address and key as described below.
-3. Run `selection-translate-resident.exe`. Its icon appears in the notification area.
+2. Run `lingosnap-manager.exe` and configure the API address and key as described below.
+3. Run `lingosnap-resident.exe`. Its icon appears in the notification area.
 
 Windows SmartScreen may warn because the binaries are not code-signed. User configuration and history are stored under `%LOCALAPPDATA%\LingoSnap`.
 
@@ -32,7 +32,7 @@ LingoSnap expects an OpenAI-compatible Chat Completions API. Before first use, s
 
 ### API address (base URL)
 
-1. Open `selection-translate-manager.exe` and go to the **Settings** tab.
+1. Open `lingosnap-manager.exe` and go to the **Settings** tab.
 2. Enter the base URL from your provider in the **API address** field, for example:
 
    ```text
@@ -46,7 +46,7 @@ LingoSnap expects an OpenAI-compatible Chat Completions API. Before first use, s
 
 1. Paste the key issued by your provider into the **API key** field on the Settings page.
 2. Choose **Save key**, then **Save settings**.
-3. Start (or restart) `selection-translate-resident.exe` for the change to take effect.
+3. Start (or restart) `lingosnap-resident.exe` for the change to take effect.
 
 The key is stored as a Windows Credential Manager Generic Credential (default target name `LingoSnap/OpenAI`). It is never written to `config.toml`, history, or logs.
 

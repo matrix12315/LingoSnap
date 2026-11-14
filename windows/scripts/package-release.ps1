@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string] $OutputDirectory = "windows/dist/selection-translate-x64"
+    [string] $OutputDirectory = "windows/dist/lingosnap-x64"
 )
 
 $ErrorActionPreference = "Stop"
@@ -82,23 +82,23 @@ Invoke-VsCargo -CargoArguments @("test", "--workspace", "--locked")
 Invoke-VsCargo -CargoArguments @("clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings")
 Invoke-VsCargo -CargoArguments @(
     "build", "--locked", "--release",
-    "-p", "selection-translate-resident",
-    "-p", "selection-translate-manager",
-    "-p", "selection-translate-popup-ui"
+    "-p", "lingosnap-resident",
+    "-p", "lingosnap-manager",
+    "-p", "lingosnap-ui"
 )
 
 $artifacts = @(
     @{
-        Source = Join-Path $releaseDirectory "selection-translate-resident.exe"
-        Name = "selection-translate-resident.exe"
+        Source = Join-Path $releaseDirectory "lingosnap-resident.exe"
+        Name = "lingosnap-resident.exe"
     },
     @{
-        Source = Join-Path $releaseDirectory "selection-translate-manager.exe"
-        Name = "selection-translate-manager.exe"
+        Source = Join-Path $releaseDirectory "lingosnap-manager.exe"
+        Name = "lingosnap-manager.exe"
     },
     @{
-        Source = Join-Path $releaseDirectory "popup-ui.exe"
-        Name = "popup-ui.exe"
+        Source = Join-Path $releaseDirectory "lingosnap-ui.exe"
+        Name = "lingosnap-ui.exe"
     }
 )
 foreach ($artifact in $artifacts) {
@@ -159,7 +159,7 @@ $buildInfo = @(
     "Visual Studio environment: $vsDevCmd -arch=x64",
     "Cargo.lock SHA-256: $((Get-FileHash -LiteralPath $lockFile -Algorithm SHA256).Hash)",
     "Git commit: $gitCommit",
-    "Artifacts: selection-translate-resident.exe, selection-translate-manager.exe, popup-ui.exe",
+    "Artifacts: lingosnap-resident.exe, lingosnap-manager.exe, lingosnap-ui.exe",
     "This folder is unsigned and is for local testing only."
 )
 $buildInfo | Set-Content -LiteralPath (Join-Path $outputDirectory "BUILD-INFO.txt") -Encoding UTF8

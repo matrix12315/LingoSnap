@@ -21,7 +21,7 @@ Status: approved 2026-10-07. Implements the fair-copy mockup in
 
 ## Architecture
 
-- **Companion process `popup-ui.exe`** (new `windows/apps/popup-ui/`, using
+- **Companion process `lingosnap-ui.exe`** (new `windows/apps/popup-ui/`, using
   `webview2-com`): one WebView2 window per visible surface, showing the
   embedded mockup page for that surface.
 - **Protocol v1 is the only coupling.** JSON lines over the named pipe
@@ -43,7 +43,7 @@ Status: approved 2026-10-07. Implements the fair-copy mockup in
 ## Milestones
 
 - M0 — this plan document.
-- M1 — skeleton: `popup-ui.exe` shows `popup.html`/`chooser.html` with sample
+- M1 — skeleton: `lingosnap-ui.exe` shows `popup.html`/`chooser.html` with sample
   data over the pipe; `ui.popup_skin` config + tray radio; classic fallback.
 - M2 — popup-family parity: streaming deltas + caret + seal, local error,
   copy/retry/pin/user-close, self-translate reporting, non-activating popup
@@ -77,18 +77,18 @@ Status: approved 2026-10-07. Implements the fair-copy mockup in
 ## Implementation status (2026-10-07)
 
 - Done: M0, M1, M2, M3, M4.
-  - M3: the manager spawns `popup-ui --surface manager` on open (its own pipe
+  - M3: the manager spawns `lingosnap-ui --surface manager` on open (its own pipe
     `\\.\pipe\LingoSnapManagerUi`), hides the native window while the
     page is alive, pushes settings/prompts/history snapshots, and applies page
     commands (`save_settings`, `select_prompt`, `new_prompt`, `save_prompt`,
     `history_query`, `refresh_history`, `select_history`) through the same
     validation/save paths as the native controls. Closing the page restores
     the native manager via a child-exit poll timer.
-  - M4 verified live (dev flags `--capture=path` / `--hold=ms` in popup-ui):
+  - M4 verified live (dev flags `--capture=path` / `--hold=ms` in lingosnap-ui):
     PNG previews of the popup, chooser, and manager surfaces match the
     mockup design; memory while the popup is open measured at ~2.8 MB host +
     ~152 MB WebView2 processes (6 procs, first-run cache warm-up included),
-    and zero `popup-ui`/new `msedgewebview2` processes remain after close;
+    and zero `lingosnap-ui`/new `msedgewebview2` processes remain after close;
     the resident's <20 MiB idle budget is untouched (lazy start, separate
     process).
 - Known limitation: the very first popup after the companion process is

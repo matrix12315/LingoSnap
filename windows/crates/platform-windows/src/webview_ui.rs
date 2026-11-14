@@ -1,5 +1,5 @@
 //! Resident-side bridge to the fair-copy WebView2 companion process
-//! (`popup-ui.exe`): named-pipe server plus child lifecycle. Protocol v1;
+//! (`lingosnap-ui.exe`): named-pipe server plus child lifecycle. Protocol v1;
 //! see FAIR_COPY_UI_PLAN.md.
 
 use selection_core::config::PopupSkin;
@@ -317,12 +317,12 @@ fn spawn_companion(surface: &str) -> std::io::Result<std::process::Child> {
     let exe = std::env::current_exe()?
         .parent()
         .ok_or_else(|| std::io::Error::other("no executable directory"))?
-        .join("popup-ui.exe");
+        .join("lingosnap-ui.exe");
     // Dev diagnostics: keep the child's stderr in a file next to the exe —
     // a loader failure or early abort is otherwise completely invisible.
     let stderr_path = exe
         .parent()
-        .map(|dir| dir.join("popup-ui-stderr.log"))
+        .map(|dir| dir.join("lingosnap-ui-stderr.log"))
         .ok_or_else(|| std::io::Error::other("no executable directory"))?;
     let stderr = std::fs::OpenOptions::new()
         .create(true)

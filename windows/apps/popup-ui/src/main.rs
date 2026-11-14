@@ -1763,7 +1763,7 @@ fn capture_log(message: &str) {
     let Some(path) = std::env::var_os("LOCALAPPDATA").map(|base| {
         std::path::PathBuf::from(base)
             .join("LingoSnap")
-            .join("popup-ui-debug.log")
+            .join("lingosnap-ui-debug.log")
     }) else {
         return;
     };

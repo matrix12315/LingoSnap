@@ -38,7 +38,7 @@ Current repository state (2026-08-30):
 - The r44 candidate completes the source-level Hover/OCR correctness pass. Significant movement, clicks, and disabling Hover invalidate pending/active Hover-only work; UIA now preserves the exact pointed target and target rectangle even when sentence derivation fails; one bounded OCR enrichment may attach only context for the same unchanged target. OCR uses exact pointer containment, actual target geometry, transitive wrapped-line grouping with far-column exclusion, the runtime `OcrEngine::MaxImageDimension`, bounded capture allocations, and a contract-correct deselected GDI bitmap before `GetDIBits`. Screenshots remain memory-only. The packaging gate passes formatting, 196 workspace tests, strict Clippy, and optimized MSVC builds; packaged resident SHA-256 is `D746B069B6691B2D74DA22ABBF4D701306492090E36F3B3FADDFF63C7410DF59`. Packaged Hover/UIA and forced-OCR interactive gates remain pending.
 - The r45 candidate makes the linguist response schema deterministic instead of relying only on model compliance. At terminal completion, only `linguist-analysis` is normalized to exactly four ordered headings—`Translation`, `Idioms and Grammar`, `Other Forms`, and `Reasoning`. Duplicate canonical headings are removed, preamble is retained under `Translation`, and empty or missing sections receive `None`; other profiles remain byte-for-byte unchanged. The normalized value is used consistently by the popup, cache, and history, including legacy cache hits. The packaging gate passes formatting, 200 workspace tests, strict Clippy, and optimized MSVC builds; packaged resident SHA-256 is `22F3013F4DEF63FC3AC73F37EFCC2FFEC861694A92E1BCD81B36C3C493BCB34A`.
 - The r46 candidate closes a remaining model-deviation case in r45: heading-only variants such as `# Translation`, `### Translation:`, and `**Translation**` are canonicalized, while forbidden value-bearing labels such as `Translation: 翻译` and `- Translation: 翻译` lose only the redundant label and retain their value. Ordinary prose containing those words is preserved. The packaging gate passes formatting, 202 workspace tests, strict Clippy, and optimized MSVC builds; packaged resident SHA-256 is `48243E342EA8E9CE5D94CE83431B8E3DC743C2BD3D665D3F23E67A3D512C81CF`.
-- The r51 candidate closes the packaged Hover/OCR gate. Hover now starts at the exact pointed UIA element, verifies the captured native `GA_ROOT`, proves raw-view membership in the captured UIA root through a bounded walk, and searches at most 16 raw ancestors for the nearest `TextPattern` provider. Exact word-box containment and a second native-root check prevent snapped/out-of-window text admission. The full package gate passes formatting, 202 workspace tests, strict Clippy, and optimized MSVC builds; packaged resident SHA-256 is `FF95CD83985A06A445BDB5293C84669ED1FFDC6CB0A00253734CA7BA61A0DE25`. Packaged UIA Hover evidence is `windows/tmp/hover-sta-run-20260830054221269`: one `UiaPoint` request contained exact target `hovered` plus its full sentence, the popup loaded/completed, OCR was not used, jitter/blank/disabled probes sent no request, and foreground/clipboard/history checks passed. Packaged forced-OCR evidence is `windows/tmp/hover-ocr-run-20260830054255338/summary.json`: UIA failure then OCR success, exact target and joined sentence, far-column exclusion, no retained image, one request/history row, popup completion, blank/disabled silence, and foreground/clipboard preservation all passed. A fresh r51 Hover-off idle run produced 59 samples at 0% average CPU, 1.579 MiB average and 1.625 MiB peak private working set (`windows/tmp/memory-selection-translate-resident.csv`); the stricter same-process post-success five-minute gate remains open.
+- The r51 candidate closes the packaged Hover/OCR gate. Hover now starts at the exact pointed UIA element, verifies the captured native `GA_ROOT`, proves raw-view membership in the captured UIA root through a bounded walk, and searches at most 16 raw ancestors for the nearest `TextPattern` provider. Exact word-box containment and a second native-root check prevent snapped/out-of-window text admission. The full package gate passes formatting, 202 workspace tests, strict Clippy, and optimized MSVC builds; packaged resident SHA-256 is `FF95CD83985A06A445BDB5293C84669ED1FFDC6CB0A00253734CA7BA61A0DE25`. Packaged UIA Hover evidence is `windows/tmp/hover-sta-run-20260830054221269`: one `UiaPoint` request contained exact target `hovered` plus its full sentence, the popup loaded/completed, OCR was not used, jitter/blank/disabled probes sent no request, and foreground/clipboard/history checks passed. Packaged forced-OCR evidence is `windows/tmp/hover-ocr-run-20260830054255338/summary.json`: UIA failure then OCR success, exact target and joined sentence, far-column exclusion, no retained image, one request/history row, popup completion, blank/disabled silence, and foreground/clipboard preservation all passed. A fresh r51 Hover-off idle run produced 59 samples at 0% average CPU, 1.579 MiB average and 1.625 MiB peak private working set (`windows/tmp/memory-lingosnap-resident.csv`); the stricter same-process post-success five-minute gate remains open.
 - The r54 candidate completes the refined native popup task. The result window now uses a rounded dark native surface, cool-blue state accent, DPI-scaled Segoe UI hierarchy, unclipped INPUT/RESULT labels, a dedicated sentence-context area, rounded owner-drawn action pills, and explicit RichEdit font/Markdown formatting while retaining its no-activate, drag, streaming, selection, and dismissal behavior. The deterministic packaged Selection/loopback test passed and its inspected screenshot is `windows/tmp/markdown-popup-run-20260830104915795/popup-visual.png`. The package gate passed formatting, 202 workspace tests, strict Clippy, and optimized MSVC builds. The packaged resident is 1,778,688 bytes with SHA-256 `F9C5814CE63C16810786DCDA9E36BC977224217275712617081291891C6BAF86`. A fresh Hover-off idle run produced 59 samples at 0% average CPU, 2.353 MiB average and 2.375 MiB peak private working set (`windows/tmp/memory-popup-r54.csv`).
 - The redesign candidate realizes the approved `selection-translate-redesign` HTML mockup (Raycast/Linear-class dark utility) across both surfaces. The popup adopts the mockup tokens verbatim — surface `#12171F` chrome, raised `#1A2230` Selection/Result cards with hairline `#2C3646` borders, ink `#F0F4FA`, muted `#8B97A8` eyebrows, accent `#8BACFF` mark/primary action, and gold `#D4B56A` mono inline code at 12px — with a 440-logical-pixel frame, integrated Selection card (mono target over muted context), header pin/close chrome icons duplicating the footer actions, a full-header drag band, and left-aligned per-label footer widths. The profile chooser becomes the mockup's standalone pill rail (fully rounded strip, default profile highlighted in accent, More… opening a dark owner-drawn command menu instead of a native light dropdown), and `show_profile_choices` now receives the default-profile index to highlight. The manager replaces its left rail with the mockup's horizontal tab bar (accent-tinted active tab, ok-green live status dot at the right), groups Settings into Provider/Credentials/Defaults cards, moves the Prompts page to the mockup's meta-row-plus-side-by-side-editors layout (ID becomes an editable dropdown that loads the selected profile, replacing Previous/Next; the duplicated global-defaults fields move to Settings only), and rebuilds History as a Search card over an Entries split whose list uses owner-drawn three-line rows (target, muted preview, `HH:MM · profile` with the profile in accent) beside void Selection/Output wells. Workspace gate: formatting, 249 tests, strict Clippy, optimized MSVC builds; inspected captures are `windows/tmp/popup_preview.png` and `windows/tmp/manager_{settings,prompts,history}.png`.
 - The IELTS candidate adds a seventh built-in prompt profile, `ielts-writing-instructor` (`IELTS writing instructor`), to product defaults, the packaged example configuration, and the active local configuration. The profile treats the admitted target as one sentence from a candidate's IELTS Writing response, refines it into a natural, accurate, band-7+ academic sentence while fully preserving its original meaning, and returns exactly two ordered level-2 headings—`Refined Sentence` and `Refining Reasons`—with one item per change (original wording, refined wording, reason). Selection/Hover defaults, the chooser rail layout, and the response normalizer are unchanged, so the profile is reached through `More…`, Ctrl+Alt+P cycling, or the manager defaults. The packaging gate passes formatting, 254 workspace tests, strict Clippy, and optimized MSVC builds.
@@ -104,8 +104,8 @@ Package names:
 - `selection-platform-windows`
 - `selection-provider-openai`
 - `selection-storage`
-- `selection-translate-resident`
-- `selection-translate-manager`
+- `lingosnap-resident`
+- `lingosnap-manager`
 
 Dependency direction:
 
@@ -182,8 +182,8 @@ Verification:
 
 ```powershell
 cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" test -p selection-platform-windows'
-cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" build --release -p selection-translate-resident'
-powershell -ExecutionPolicy Bypass -File .\windows\scripts\measure-memory.ps1 -ProcessName selection-translate-resident -DurationSeconds 300
+cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" build --release -p lingosnap-resident'
+powershell -ExecutionPolicy Bypass -File .\windows\scripts\measure-memory.ps1 -ProcessName lingosnap-resident -DurationSeconds 300
 ```
 
 Exit gate:
@@ -493,7 +493,7 @@ Exit gate: the resident process closes the database after every write and manage
 
 Current r13 evidence (2026-08-26):
 
-- Package: `windows/dist/selection-translate-x64-20260826-r13`.
+- Package: `windows/dist/lingosnap-x64-20260826-r13`.
 - Resident SHA-256: `CAEE064535C20075097136BA59392C5D2D1782E3CEC109E76921745AA77D6394`.
 - Manager SHA-256: `D2E95AE55EA155B67ACC520D18CA2989D20F18F44D91491700D8084DC92E8FCC`.
 - The complete offline workspace verification passed: `cargo fmt --all -- --check`, workspace tests, strict workspace/all-target Clippy, and the optimized release build for resident and manager.
@@ -519,7 +519,7 @@ Actions:
 cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" fmt --all -- --check'
 cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" clippy --workspace --all-targets --locked -- -D warnings'
 cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" test --workspace --locked'
-cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" build --locked --release -p selection-translate-resident -p selection-translate-manager'
+cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" build --locked --release -p lingosnap-resident -p lingosnap-manager'
 ```
 
 2. Verify ordered fallbacks, clipboard restoration, OCR DPI behavior, screenshot non-retention, no-text/no-request, profile reload, cancellation, offline errors, and 1,000-entry pruning.
@@ -540,8 +540,8 @@ Exact next-unlocked test order (stop at the first failure; retain evidence and c
 
 Final deliverables:
 
-- `selection-translate-resident.exe`
-- `selection-translate-manager.exe`
+- `lingosnap-resident.exe`
+- `lingosnap-manager.exe`
 - Default prompt/config template without credentials
 - Local setup, privacy, hotkey, fallback, and troubleshooting documentation
 - Test results and memory report
@@ -748,7 +748,7 @@ Exit gate: the result popup reads as a deliberate lightweight desktop product ra
 default Win32 controls, while retaining every functional and resource invariant above.
 
 Completion evidence (2026-08-30): packaged candidate
-`windows/dist/selection-translate-x64-20260830-r54` passed the complete 202-test workspace gate,
+`windows/dist/lingosnap-x64-20260830-r54` passed the complete 202-test workspace gate,
 strict Clippy, formatting, and optimized MSVC packaging. The packaged deterministic Selection test
 confirmed one loopback request containing the whole selected sentence, a visible RichEdit result,
 Markdown projection with markers removed, and readable Unicode. The final active-DPI screenshot at

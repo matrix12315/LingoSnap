@@ -27,8 +27,8 @@ $cargo = "D:\DevTools\cargo\bin\cargo.exe"
 $vsDevCmd = "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat"
 $rustupHome = "D:\DevTools\rustup"
 $cargoHome = "D:\DevTools\cargo"
-$residentExe = "selection-translate-resident.exe"
-$managerExe = "selection-translate-manager.exe"
+$residentExe = "lingosnap-resident.exe"
+$managerExe = "lingosnap-manager.exe"
 
 foreach ($requiredPath in @($cargo, $vsDevCmd)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -68,9 +68,9 @@ function Stop-TranslateProcess {
 }
 
 if (-not $SkipBuild) {
-    $packages = @("-p", "selection-translate-resident")
+    $packages = @("-p", "lingosnap-resident")
     if (-not $ResidentOnly) {
-        $packages += @("-p", "selection-translate-manager")
+        $packages += @("-p", "lingosnap-manager")
     }
     Write-Host "Quick build: cargo build --locked --release $($packages -join ' ') (no gates)"
     Invoke-VsCargo -CargoArguments (@("build", "--locked", "--release") + $packages)
