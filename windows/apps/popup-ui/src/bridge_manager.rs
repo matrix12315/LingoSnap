@@ -329,17 +329,6 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     }
     return out;
   }
-  // Field labels and empty answers (one ink, two muted roles). Keep
-  // identical to `field` in bridge.rs.
-  function field(text) {
-    var s = String(text);
-    if (/^\s*none\s*\.?\s*$/i.test(s)) return '<span class="none">None</span>';
-    var m = s.match(/^\s*\**([^\s:\uFF1A*`]+(?:\s+[^\s:\uFF1A*`]+){0,2})\**\s*(?::(?=\**(?:\s|$))|\uFF1A)\s*\**\s*([\s\S]*)$/);
-    if (!m) return inline(s);
-    var value = m[2];
-    var rest = /^\s*none\s*\.?\s*$/i.test(value) ? '<span class="none">None</span>' : inline(value);
-    return '<span class="flabel">' + esc(m[1]) + '</span> ' + rest;
-  }
   function renderOutput(markdown) {
     var out = q('#page-history .houtput');
     if (!out) return;
@@ -359,17 +348,15 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
       var li = t.match(/^(?:[-*+•]|\d+[.)])\s+(.*)$/);
       if (li) current.items.push(li[1]); else current.prose.push(t);
     });
-    sections.forEach(function (sec, index) {
+    sections.forEach(function (sec) {
       var div = document.createElement('div');
       div.className = 'sec';
       var html = '';
       if (sec.title) html += '<h3>' + inline(sec.title) + '</h3>';
       if (sec.items.length) {
-        html += '<ul>' + sec.items.map(function (i) { return '<li>' + field(i) + '</li>'; }).join('') + '</ul>';
+        html += '<ul>' + sec.items.map(function (i) { return '<li>' + inline(i) + '</li>'; }).join('') + '</ul>';
       }
-      // The first section's prose is the hero line, as in the popup.
-      var proseClass = index === 0 ? 'trans' : 'fineprint';
-      sec.prose.forEach(function (p) { html += '<p class="' + proseClass + '">' + field(p) + '</p>'; });
+      sec.prose.forEach(function (p) { html += '<p class="fineprint">' + inline(p) + '</p>'; });
       div.innerHTML = html;
       out.appendChild(div);
     });

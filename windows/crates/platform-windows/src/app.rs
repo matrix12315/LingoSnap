@@ -1171,22 +1171,12 @@ mod windows_impl {
         }
     }
 
-    fn dismiss_unpinned_outside(
-        state: &mut ShellState,
-        clicked: Option<popup::PopupId>,
-        click_root_window: isize,
-    ) {
+    fn dismiss_unpinned_outside(state: &mut ShellState, clicked: Option<popup::PopupId>) {
         let ids: Vec<_> = state
             .popups
             .iter()
             .filter(|entry| {
-                should_dismiss_for_outside_click(
-                    clicked,
-                    entry.popup.is_pinned(),
-                    entry.presented_trigger,
-                    entry.guard_root_window,
-                    click_root_window,
-                )
+                should_dismiss_for_outside_click(clicked, entry.id, entry.popup.is_pinned())
             })
             .map(|entry| entry.id)
             .collect();
@@ -1199,22 +1189,12 @@ mod windows_impl {
     /// screen, so the user can read, copy, or self-translate across several
     /// results. Only a press outside the whole popup family dismisses the
     /// unpinned ones; pinned popups always stay until Retry/Prompt/Pin.
-    /// An unpinned Hover popup also survives a press inside the top-level
-    /// window it was hovered from; it closes when the foreground window
-    /// changes (see `should_dismiss_hover_for_foreground`).
     fn should_dismiss_for_outside_click(
         clicked: Option<popup::PopupId>,
+        _candidate: popup::PopupId,
         pinned: bool,
-        trigger: Option<TriggerKind>,
-        guard_root_window: isize,
-        click_root_window: isize,
     ) -> bool {
-        if clicked.is_some() || pinned {
-            return false;
-        }
-        !(trigger == Some(TriggerKind::Hover)
-            && guard_root_window != 0
-            && guard_root_window == click_root_window)
+        clicked.is_none() && !pinned
     }
 
     fn popup_can_be_reused(pinned: bool) -> bool {
@@ -1305,7 +1285,10 @@ mod windows_impl {
     }
 
     fn handle_foreground_changed(hwnd: HWND, state: &mut ShellState, foreground: HWND) {
-        let foreground_is_popup = foreground_is_own_popup(state, foreground);
+        let foreground_is_popup = state
+            .popups
+            .iter()
+            .any(|entry| entry.popup.owns_window(foreground));
         let new_root_window = root_window(foreground).0 as isize;
         if !foreground_is_popup {
             state.mouse.cancel_hover_candidate();
@@ -1381,7 +1364,7 @@ mod windows_impl {
             // press outside stays resident-owned.
             state.companion_button_down = inside_companion;
             if !inside_companion {
-                dismiss_unpinned_outside(state, clicked_popup, source_root_window);
+                dismiss_unpinned_outside(state, clicked_popup);
                 runtime_trace::record("popup_outside_click_dismiss");
             }
         }
@@ -1931,67 +1914,9 @@ mod windows_impl {
         match webview_ui::FairCopyUi::start("popup", hwnd) {
             Ok(ui) => {
                 state.fair_copy = Some(ui);
-                send_appearance(state);
             }
             Err(_) => state.fair_copy_failed_at = Some(Instant::now()),
         }
-    }
-
-    /// The `SetAppearance` event for the current interface settings.
-    fn appearance_event(ui: &selection_core::UiSettings) -> UiEvent {
-        UiEvent::SetAppearance {
-            language: match ui.manager_language {
-                selection_core::UiLanguage::English => "en",
-                selection_core::UiLanguage::SimplifiedChinese => "zh-CN",
-            }
-            .to_owned(),
-            theme: match ui.theme {
-                selection_core::UiTheme::Light => "light",
-                selection_core::UiTheme::Dark => "dark",
-            }
-            .to_owned(),
-        }
-    }
-
-    /// Tell the companion the current language and theme. Not part of any
-    /// presentation, so it bypasses the replay log; best-effort like every
-    /// other companion event.
-    fn send_appearance(state: &mut ShellState) {
-        let event = appearance_event(&state.runtime.config.ui);
-        if let Some(ui) = state.fair_copy.as_mut() {
-            let _ = ui.send(event);
-        }
-    }
-
-    /// True when `class` is the window class of a fair-copy companion window.
-    fn is_companion_class(class: &str) -> bool {
-        class == selection_ui_protocol::COMPANION_WINDOW_CLASS
-    }
-
-    /// True when `hwnd`'s top-level window is a fair-copy companion window.
-    /// Always false while the fair-copy skin is not active.
-    fn is_companion_window(state: &ShellState, hwnd: HWND) -> bool {
-        if state.fair_copy.is_none() || hwnd.0.is_null() {
-            return false;
-        }
-        let root = root_window(hwnd);
-        let mut buffer = [0u16; 128];
-        let length =
-            unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassNameW(root, &mut buffer) }
-                as usize;
-        length > 0
-            && length < buffer.len()
-            && is_companion_class(&String::from_utf16_lossy(&buffer[..length]))
-    }
-
-    /// True when `foreground` belongs to one of our own popups, classic
-    /// (native registry) or fair-copy (companion process window).
-    fn foreground_is_own_popup(state: &ShellState, foreground: HWND) -> bool {
-        state
-            .popups
-            .iter()
-            .any(|entry| entry.popup.owns_window(foreground))
-            || is_companion_window(state, foreground)
     }
 
     /// True when the physical screen point lies inside any visible
@@ -2255,7 +2180,6 @@ mod windows_impl {
             if state.runtime.config.ui.popup_skin != previous_skin {
                 apply_popup_skin(hwnd, state);
             }
-            send_appearance(state);
             runtime_trace::record("config_ui_only_applied");
             return;
         }
@@ -2270,7 +2194,6 @@ mod windows_impl {
         if state.runtime.config.ui.popup_skin != previous_skin {
             apply_popup_skin(hwnd, state);
         }
-        send_appearance(state);
         if state
             .active_prompt_id
             .as_deref()
@@ -2558,7 +2481,10 @@ mod windows_impl {
         let process_id = pending.spec.process_id;
         let foreground_guard_root_window = pending.spec.foreground_guard_root_window;
         let foreground = unsafe { GetForegroundWindow() };
-        let foreground_is_popup = foreground_is_own_popup(state, foreground);
+        let foreground_is_popup = state
+            .popups
+            .iter()
+            .any(|entry| entry.popup.owns_window(foreground));
         if !hover_foreground_guard_is_current(
             trigger,
             foreground_guard_root_window,
@@ -4056,100 +3982,14 @@ mod windows_impl {
                 windows::Win32::UI::WindowsAndMessaging::WM_MOUSEMOVE
             ));
             // A press outside the popup family dismisses unpinned popups…
-            assert!(should_dismiss_for_outside_click(
-                None,
-                false,
-                Some(TriggerKind::Selection),
-                0,
-                0
-            ));
+            assert!(should_dismiss_for_outside_click(None, 1, false));
             // …but never pinned ones.
-            assert!(!should_dismiss_for_outside_click(
-                None,
-                true,
-                Some(TriggerKind::Selection),
-                0,
-                0
-            ));
+            assert!(!should_dismiss_for_outside_click(None, 1, true));
             // A press on any popup keeps the whole family: the clicked
             // popup, other unpinned popups, and pinned popups.
-            assert!(!should_dismiss_for_outside_click(
-                Some(2),
-                false,
-                Some(TriggerKind::Selection),
-                0,
-                0
-            ));
-            assert!(!should_dismiss_for_outside_click(
-                Some(2),
-                true,
-                Some(TriggerKind::Selection),
-                0,
-                0
-            ));
-            // An unpinned Hover popup survives a click in the window it was
-            // hovered from…
-            assert!(!should_dismiss_for_outside_click(
-                None,
-                false,
-                Some(TriggerKind::Hover),
-                41,
-                41
-            ));
-            // …but not a click in another top-level window, or when the
-            // origin window is unknown.
-            assert!(should_dismiss_for_outside_click(
-                None,
-                false,
-                Some(TriggerKind::Hover),
-                41,
-                99
-            ));
-            assert!(should_dismiss_for_outside_click(
-                None,
-                false,
-                Some(TriggerKind::Hover),
-                0,
-                0
-            ));
-            // A Selection popup closes on any outside click, even in the
-            // same window.
-            assert!(should_dismiss_for_outside_click(
-                None,
-                false,
-                Some(TriggerKind::Selection),
-                41,
-                41
-            ));
-        }
-
-        #[test]
-        fn appearance_event_maps_language_and_theme_codes() {
-            let mut ui = selection_core::UiSettings::default();
-            assert_eq!(
-                appearance_event(&ui),
-                UiEvent::SetAppearance {
-                    language: "en".into(),
-                    theme: "light".into(),
-                }
-            );
-            ui.manager_language = selection_core::UiLanguage::SimplifiedChinese;
-            ui.theme = selection_core::UiTheme::Dark;
-            assert_eq!(
-                appearance_event(&ui),
-                UiEvent::SetAppearance {
-                    language: "zh-CN".into(),
-                    theme: "dark".into(),
-                }
-            );
-        }
-
-        #[test]
-        fn companion_class_matches_only_the_popup_window_class() {
-            assert!(is_companion_class("SelectionTranslatePopupUi"));
-            assert!(!is_companion_class("SelectionTranslateManagerUi"));
-            assert!(!is_companion_class("Notepad"));
-            assert!(!is_companion_class(""));
+            assert!(!should_dismiss_for_outside_click(Some(2), 2, false));
+            assert!(!should_dismiss_for_outside_click(Some(2), 1, false));
+            assert!(!should_dismiss_for_outside_click(Some(2), 1, true));
         }
 
         #[test]

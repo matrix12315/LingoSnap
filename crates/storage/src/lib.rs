@@ -180,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn search_filters_target_prompt_source_and_orders_dates() {
+    fn search_filters_target_output_prompt_source_and_orders_dates() {
         let test = TestDatabase::new();
         let mut first = entry("2026-08-18T00:00:00Z", "alpha", "unrelated");
         first.prompt_id = "explain".to_owned();
@@ -198,19 +198,8 @@ mod tests {
                 ..HistoryQuery::default()
             })
             .unwrap();
-        assert!(output_match.is_empty());
-
-        for term in ["bet", "BET"] {
-            let target_match = test
-                .database
-                .search(&HistoryQuery {
-                    search: Some(term.to_owned()),
-                    ..HistoryQuery::default()
-                })
-                .unwrap();
-            assert_eq!(target_match.len(), 1, "term {term:?}");
-            assert_eq!(target_match[0].target, "beta");
-        }
+        assert_eq!(output_match.len(), 1);
+        assert_eq!(output_match[0].target, "beta");
 
         let prompt_match = test
             .database

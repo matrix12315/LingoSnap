@@ -18,7 +18,7 @@ pub mod text;
 pub use config::{
     atomic_write, default_config_path, load_config, parse_toml, save_atomic, save_config_atomic,
     AppConfig, Config, ConfigError, DefaultProfiles, HotkeySettings, ProviderSettings, UiLanguage,
-    UiSettings, UiTheme, ValidationError, DEFAULT_CREDENTIAL_TARGET, DEFAULT_CYCLE_PROFILES_HOTKEY,
+    UiSettings, ValidationError, DEFAULT_CREDENTIAL_TARGET, DEFAULT_CYCLE_PROFILES_HOTKEY,
 };
 pub use coordinator::{
     Completion, Coordinator, JobCancellation, JobHandle, JobPriority, JobStartRejection,

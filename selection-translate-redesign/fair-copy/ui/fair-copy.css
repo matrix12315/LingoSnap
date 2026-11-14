@@ -309,7 +309,7 @@
   .idiom .en { font: inherit; font-weight: 400; white-space: nowrap; }
   .idiom .dash { color: var(--rule); }
 
-  .fineprint { font: 13.5px/1.7 var(--serif); color: var(--ink); }
+  .fineprint { font: 13.5px/1.7 var(--serif); color: var(--ink-soft); }
 
   .checkline { display: flex; align-items: baseline; gap: 7px; font: 13.5px/1.7 var(--serif); color: var(--ink-soft); }
   .checkline .tick { color: var(--ledger); font: 600 11px var(--ui); letter-spacing: .05em; }
@@ -339,18 +339,7 @@
     margin: 4px 0;
     padding: 3px 0 3px 12px;
     border-left: 1px solid var(--rule);
-    color: var(--ink);
-    font-style: italic;
-  }
-  /* One ink for content; two deliberate muted roles: field labels
-     ("Chinese:") and empty answers ("None"). */
-  .manuscript .flabel, .houtput .flabel {
-    font: 12px var(--ui);
-    color: var(--ink-faint);
-    margin-right: 4px;
-  }
-  .manuscript .none, .houtput .none {
-    color: var(--ink-faint);
+    color: var(--ink-soft);
     font-style: italic;
   }
   .manuscript table, .houtput table {

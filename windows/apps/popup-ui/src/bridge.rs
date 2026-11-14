@@ -137,18 +137,7 @@ pub const BRIDGE_JS: &str = r##"<script>
   // Markdown → the manuscript's section grammar: every heading opens a
   // .sec with an h3; lists become the bulleted ul; prose of a heading-less
   // first section is the hero translation line (.trans), other prose is the
-  // fine print; all of it is set in ink. Two roles are muted on purpose:
-  // short "Label:" prefixes (.flabel) and empty "None" answers (.none).
-  // Keep `field` identical to the one in bridge_manager.rs.
-  function field(text) {
-    var s = String(text);
-    if (/^\s*none\s*\.?\s*$/i.test(s)) return '<span class="none">None</span>';
-    var m = s.match(/^\s*\**([^\s:\uFF1A*`]+(?:\s+[^\s:\uFF1A*`]+){0,2})\**\s*(?::(?=\**(?:\s|$))|\uFF1A)\s*\**\s*([\s\S]*)$/);
-    if (!m) return inline(s);
-    var value = m[2];
-    var rest = /^\s*none\s*\.?\s*$/i.test(value) ? '<span class="none">None</span>' : inline(value);
-    return '<span class="flabel">' + esc(m[1]) + '</span> ' + rest;
-  }
+  // soft fine print, exactly as the mockup sheets set them.
   function renderMarkdown(markdown) {
     var lines = String(markdown || '').split(/\r?\n/);
     var sections = [], cur = null, list = null, para = [], fence = null;
@@ -207,10 +196,10 @@ pub const BRIDGE_JS: &str = r##"<script>
       if (sec.title) html += '<h3>' + inline(sec.title) + '</h3>';
       sec.blocks.forEach(function (b) {
         if (b.kind === 'ul') {
-          html += '<ul>' + b.items.map(function (i) { return '<li>' + field(i) + '</li>'; }).join('') + '</ul>';
+          html += '<ul>' + b.items.map(function (i) { return '<li>' + inline(i) + '</li>'; }).join('') + '</ul>';
         } else if (b.kind === 'p') {
           var hero = index === 0;
-          html += '<p class="' + (hero ? 'trans' : 'fineprint') + '">' + field(b.text) + '</p>';
+          html += '<p class="' + (hero ? 'trans' : 'fineprint') + '">' + inline(b.text) + '</p>';
         } else if (b.kind === 'quote') {
           html += '<blockquote>' + inline(b.text) + '</blockquote>';
         } else if (b.kind === 'code') {

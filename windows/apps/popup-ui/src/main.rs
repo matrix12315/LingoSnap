@@ -48,11 +48,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetMessageW, GetWindowRect, IsWindowVisible, KillTimer, LoadCursorW, MessageBoxW, PostMessageW,
     PostQuitMessage, RegisterClassW, SetCursor, SetForegroundWindow, SetTimer, SetWindowPos,
     ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, HTCAPTION, HWND_MESSAGE, HWND_TOPMOST,
-    IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, MA_NOACTIVATE, MB_ICONERROR, MSG,
-    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW,
-    SW_SHOWNOACTIVATE, WM_APP, WM_DESTROY, WM_DPICHANGED, WM_MOUSEACTIVATE, WM_NCLBUTTONDOWN,
-    WM_SIZE, WM_TIMER, WNDCLASSW, WS_EX_APPWINDOW, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
-    WS_EX_TOPMOST, WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU,
+    IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, MB_ICONERROR, MSG, SWP_NOACTIVATE,
+    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE,
+    WM_APP, WM_DESTROY, WM_DPICHANGED, WM_NCLBUTTONDOWN, WM_SIZE, WM_TIMER, WNDCLASSW,
+    WS_EX_APPWINDOW, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_MINIMIZEBOX,
+    WS_POPUP, WS_SYSMENU,
 };
 
 /// Host message window: one boxed protocol line in lparam.
@@ -267,31 +267,6 @@ thread_local! {
     /// classic popup's remembered window size, every later result card opens
     /// at it for the rest of the session.
     static LAST_CARD_SIZE: Cell<Option<(f64, f64)>> = const { Cell::new(None) };
-    /// Interface language and theme from the last `SetAppearance` event,
-    /// applied to every popup page (pooled and new ones included).
-    static APPEARANCE: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
-}
-
-/// Script that applies a language and theme to a page. Only known codes are
-/// accepted, so the strings can be embedded without escaping.
-fn appearance_script(language: &str, theme: &str) -> String {
-    let language = if language == "zh-CN" { "zh-CN" } else { "en" };
-    let theme = if theme == "dark" { "dark" } else { "light" };
-    format!(
-        "(function(){{ try {{ window.setTheme && window.setTheme('{theme}'); \
-         window.setLang && window.setLang('{language}'); return 'ok'; }} \
-         catch (e) {{ return 'err:' + e.message; }} }})()"
-    )
-}
-
-/// Apply the remembered appearance to one popup page.
-fn apply_appearance(win: &Win) {
-    if win.surface == Surface::Manager {
-        return;
-    }
-    if let Some((language, theme)) = APPEARANCE.with(|cell| cell.borrow().clone()) {
-        run_on_page(win, appearance_script(&language, &theme));
-    }
 }
 
 /// Open a new result card at the size the user last chose, if any.
@@ -839,8 +814,6 @@ fn attach_webview(win: &Rc<Win>) -> bool {
 fn on_page_loaded(hwnd: HWND) {
     let Some(win) = win_for(hwnd) else { return };
     win.ready.set(true);
-    // Before the queued events, so a card never paints in the wrong theme.
-    apply_appearance(&win);
     let host = HOST.with(Cell::get);
     if !FIRST_LOAD.with(|cell| cell.replace(true)) {
         unsafe {
@@ -1134,12 +1107,6 @@ fn handle_event_line(line: &str) {
         | UiEvent::SetPinned { id, .. } => {
             if let Some(win) = win_by_id(*id) {
                 apply_page_event(&win, &event);
-            }
-        }
-        UiEvent::SetAppearance { language, theme } => {
-            APPEARANCE.with(|cell| *cell.borrow_mut() = Some((language.clone(), theme.clone())));
-            for win in wins() {
-                apply_appearance(&win);
             }
         }
         UiEvent::Shutdown => {}
@@ -1541,15 +1508,6 @@ unsafe extern "system" fn surface_proc(
                 _ => {}
             }
             LRESULT(0)
-        }
-        WM_MOUSEACTIVATE => {
-            // Popups never take focus from the app the user is reading, the
-            // same as the classic popup. The manager page is a normal window.
-            let is_popup = win_for(hwnd).is_some_and(|win| win.surface != Surface::Manager);
-            if is_popup {
-                return LRESULT(MA_NOACTIVATE as isize);
-            }
-            unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
         }
         WM_SIZE => {
             // The manager page fills its window; popups keep their fixed,
