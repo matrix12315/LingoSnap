@@ -322,7 +322,7 @@ $oldEnvironment = @{
 try {
     $resolvedResident = (Resolve-Path -LiteralPath $ResidentPath).Path
     $summary.package_path = $resolvedResident
-    $summary.package_sha256 = (Get-FileHash -LiteralPath $resolvedResident -Algorithm SHA256).Hash
+    $summary.package_sha256 = ([System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash([System.IO.File]::ReadAllBytes($resolvedResident))) -replace "-", "")
     $listener.Start()
     $port = ([Net.IPEndPoint] $listener.LocalEndpoint).Port
     $expectedSentence = 'The hovered word needs context for a precise explanation.'

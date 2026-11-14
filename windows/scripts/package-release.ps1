@@ -143,12 +143,25 @@ if ($null -ne $gitCommand) {
     } finally {
         $ErrorActionPreference = $gitErrorAction
     }
-    $gitExitCode = $LASTEXITCODE
-    if ($gitExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($gitCommit)) {
+    # Select-Object -First 1 closes the pipe early, which can leave a non-zero
+    # exit code even though git printed the commit; trust the output instead.
+    if ([string]::IsNullOrWhiteSpace($gitCommit) -or $gitCommit -notmatch '^[0-9a-f]{7,40}$') {
         $gitCommit = "uncommitted (no commit available)"
     }
 } else {
     $gitCommit = "unavailable"
+}
+
+# Get-FileHash lives in Microsoft.PowerShell.Utility. When Windows PowerShell 5.1
+# is started from PowerShell 7, PSModulePath lists the PowerShell 7 modules
+# first and the cmdlet cannot be loaded, so hash with .NET directly.
+function Get-Sha256Hex([string]$Path) {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = $sha.ComputeHash([System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $Path).Path))
+        return ([System.BitConverter]::ToString($bytes) -replace "-", "")
+    }
+    finally { $sha.Dispose() }
 }
 
 $buildInfo = @(
@@ -157,7 +170,7 @@ $buildInfo = @(
     "Built UTC: $([DateTimeOffset]::UtcNow.ToString('o'))",
     "Rust/Cargo: $cargo",
     "Visual Studio environment: $vsDevCmd -arch=x64",
-    "Cargo.lock SHA-256: $((Get-FileHash -LiteralPath $lockFile -Algorithm SHA256).Hash)",
+    "Cargo.lock SHA-256: $(Get-Sha256Hex $lockFile)",
     "Git commit: $gitCommit",
     "Artifacts: lingosnap-resident.exe, lingosnap-manager.exe, lingosnap-ui.exe",
     "This folder is unsigned and is for local testing only."
