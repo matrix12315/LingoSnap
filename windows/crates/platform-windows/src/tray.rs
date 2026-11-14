@@ -22,6 +22,31 @@ mod windows_impl {
     pub const SET_SKIN_CLASSIC_COMMAND: usize = 0x7205;
     pub const SET_SKIN_FAIRCOPY_COMMAND: usize = 0x7206;
 
+    /// The LingoSnap icon embedded in the resident (resource ID 1), sized for
+    /// the tray at the current DPI.
+    fn app_icon() -> Option<windows::Win32::UI::WindowsAndMessaging::HICON> {
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::HINSTANCE;
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetSystemMetrics, LoadImageW, HICON, IMAGE_ICON, LR_DEFAULTCOLOR, SM_CXSMICON,
+            SM_CYSMICON,
+        };
+        unsafe {
+            let module = GetModuleHandleW(None).ok()?;
+            let handle = LoadImageW(
+                Some(HINSTANCE(module.0)),
+                PCWSTR(std::ptr::without_provenance::<u16>(1)),
+                IMAGE_ICON,
+                GetSystemMetrics(SM_CXSMICON),
+                GetSystemMetrics(SM_CYSMICON),
+                LR_DEFAULTCOLOR,
+            )
+            .ok()?;
+            Some(HICON(handle.0))
+        }
+    }
+
     #[derive(Debug)]
     pub struct TrayIcon {
         hwnd: HWND,
@@ -32,7 +57,10 @@ mod windows_impl {
         pub fn add(hwnd: HWND) -> windows::core::Result<Self> {
             let icon = Self { hwnd, id: 1 };
             let mut data = icon.data(NIF_MESSAGE | NIF_TIP | NIF_ICON);
-            data.hIcon = unsafe { LoadIconW(None, IDI_APPLICATION)? };
+            data.hIcon = match app_icon() {
+                Some(icon) => icon,
+                None => unsafe { LoadIconW(None, IDI_APPLICATION)? },
+            };
             if !unsafe { Shell_NotifyIconW(NIM_ADD, &data).as_bool() } {
                 return Err(windows::core::Error::from_win32());
             }

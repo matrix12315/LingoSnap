@@ -562,6 +562,47 @@ fn environment() -> Option<ICoreWebView2Environment> {
     Some(environment)
 }
 
+/// The LingoSnap icon (resource ID 1 of this executable) at `size` px.
+fn load_app_icon(size: i32) -> Option<windows::Win32::UI::WindowsAndMessaging::HICON> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HINSTANCE;
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use windows::Win32::UI::WindowsAndMessaging::{LoadImageW, HICON, IMAGE_ICON, LR_DEFAULTCOLOR};
+    unsafe {
+        let module = GetModuleHandleW(None).ok()?;
+        let handle = LoadImageW(
+            Some(HINSTANCE(module.0)),
+            PCWSTR(std::ptr::without_provenance::<u16>(1)),
+            IMAGE_ICON,
+            size,
+            size,
+            LR_DEFAULTCOLOR,
+        )
+        .ok()?;
+        Some(HICON(handle.0))
+    }
+}
+
+/// Give a window the big (taskbar, Alt+Tab) and small (title bar) icons.
+fn set_window_icons(hwnd: HWND) {
+    use windows::Win32::Foundation::{LPARAM, WPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetSystemMetrics, SendMessageW, ICON_BIG, ICON_SMALL, SM_CXICON, SM_CXSMICON, WM_SETICON,
+    };
+    for (kind, metric) in [(ICON_BIG, SM_CXICON), (ICON_SMALL, SM_CXSMICON)] {
+        if let Some(icon) = load_app_icon(unsafe { GetSystemMetrics(metric) }) {
+            unsafe {
+                SendMessageW(
+                    hwnd,
+                    WM_SETICON,
+                    Some(WPARAM(kind as usize)),
+                    Some(LPARAM(icon.0 as isize)),
+                );
+            }
+        }
+    }
+}
+
 /// Create one surface window with its page. Returns None (and leaves no
 /// window behind) when the WebView2 runtime cannot host it.
 fn create_surface(surface: Surface) -> Option<Rc<Win>> {
@@ -607,6 +648,11 @@ fn create_surface(surface: Surface) -> Option<Rc<Win>> {
         )
     }
     .ok()?;
+    if manager {
+        // The manager is a normal window: its taskbar button and Alt+Tab
+        // entry use these. Popups are tool windows and need no icon.
+        set_window_icons(hwnd);
+    }
     let scale = window_scale(hwnd);
     let scaled_w = (base_w as f64 * scale).round() as i32;
     let scaled_h = (base_h as f64 * scale).round() as i32;

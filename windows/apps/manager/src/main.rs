@@ -1249,6 +1249,7 @@ mod windows_app {
                 }
             }
         };
+        set_window_icons(hwnd);
         unsafe {
             let window_dpi = GetDpiForWindow(hwnd).max(DEFAULT_DPI);
             let _ = SetWindowPos(
@@ -1572,6 +1573,50 @@ mod windows_app {
             return LRESULT(1);
         }
         unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
+    }
+
+    /// The LingoSnap icon (resource ID 1 of this executable) at `size` px.
+    fn load_app_icon(size: i32) -> Option<windows::Win32::UI::WindowsAndMessaging::HICON> {
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::HINSTANCE;
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            LoadImageW, HICON, IMAGE_ICON, LR_DEFAULTCOLOR,
+        };
+        unsafe {
+            let module = GetModuleHandleW(None).ok()?;
+            let handle = LoadImageW(
+                Some(HINSTANCE(module.0)),
+                PCWSTR(std::ptr::without_provenance::<u16>(1)),
+                IMAGE_ICON,
+                size,
+                size,
+                LR_DEFAULTCOLOR,
+            )
+            .ok()?;
+            Some(HICON(handle.0))
+        }
+    }
+
+    /// Give a window the big (taskbar, Alt+Tab) and small (title bar) icons.
+    fn set_window_icons(hwnd: HWND) {
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetSystemMetrics, SendMessageW, ICON_BIG, ICON_SMALL, SM_CXICON, SM_CXSMICON,
+            WM_SETICON,
+        };
+        for (kind, metric) in [(ICON_BIG, SM_CXICON), (ICON_SMALL, SM_CXSMICON)] {
+            if let Some(icon) = load_app_icon(unsafe { GetSystemMetrics(metric) }) {
+                unsafe {
+                    SendMessageW(
+                        hwnd,
+                        WM_SETICON,
+                        Some(WPARAM(kind as usize)),
+                        Some(LPARAM(icon.0 as isize)),
+                    );
+                }
+            }
+        }
     }
 
     fn initialize_controls(hwnd: HWND, state: &mut ManagerState) -> windows::core::Result<()> {
