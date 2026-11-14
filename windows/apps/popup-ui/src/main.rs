@@ -48,11 +48,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetMessageW, GetWindowRect, IsWindowVisible, KillTimer, LoadCursorW, MessageBoxW, PostMessageW,
     PostQuitMessage, RegisterClassW, SetCursor, SetForegroundWindow, SetTimer, SetWindowPos,
     ShowWindow, TranslateMessage, CS_HREDRAW, CS_VREDRAW, HTCAPTION, HWND_MESSAGE, HWND_TOPMOST,
-    IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, MB_ICONERROR, MSG, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW, SW_SHOWNOACTIVATE,
-    WM_APP, WM_DESTROY, WM_DPICHANGED, WM_NCLBUTTONDOWN, WM_SIZE, WM_TIMER, WNDCLASSW,
-    WS_EX_APPWINDOW, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_MINIMIZEBOX,
-    WS_POPUP, WS_SYSMENU,
+    IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, MA_NOACTIVATE, MB_ICONERROR, MSG,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, SW_SHOW,
+    SW_SHOWNOACTIVATE, WM_APP, WM_DESTROY, WM_DPICHANGED, WM_MOUSEACTIVATE, WM_NCLBUTTONDOWN,
+    WM_SIZE, WM_TIMER, WNDCLASSW, WS_EX_APPWINDOW, WS_EX_NOREDIRECTIONBITMAP, WS_EX_TOOLWINDOW,
+    WS_EX_TOPMOST, WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU,
 };
 
 /// Host message window: one boxed protocol line in lparam.
@@ -1508,6 +1508,15 @@ unsafe extern "system" fn surface_proc(
                 _ => {}
             }
             LRESULT(0)
+        }
+        WM_MOUSEACTIVATE => {
+            // Popups never take focus from the app the user is reading, the
+            // same as the classic popup. The manager page is a normal window.
+            let is_popup = win_for(hwnd).is_some_and(|win| win.surface != Surface::Manager);
+            if is_popup {
+                return LRESULT(MA_NOACTIVATE as isize);
+            }
+            unsafe { DefWindowProcW(hwnd, message, wparam, lparam) }
         }
         WM_SIZE => {
             // The manager page fills its window; popups keep their fixed,
