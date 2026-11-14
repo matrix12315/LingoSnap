@@ -46,6 +46,16 @@ pub enum UiLanguage {
     SimplifiedChinese,
 }
 
+/// Fair-copy colour theme. The classic UI is dark-only and ignores it.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum UiTheme {
+    #[default]
+    #[serde(rename = "light")]
+    Light,
+    #[serde(rename = "dark")]
+    Dark,
+}
+
 /// Which presentation the resident drives: the native `classic` popup or the
 /// WebView2 `fair-copy` companion.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -64,6 +74,8 @@ pub struct UiSettings {
     pub manager_language: UiLanguage,
     #[serde(default)]
     pub popup_skin: PopupSkin,
+    #[serde(default)]
+    pub theme: UiTheme,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -728,6 +740,39 @@ mod tests {
         );
         let invalid = serialized.replace("zh-CN", "fr");
         assert!(AppConfig::from_toml(&invalid).is_err());
+    }
+
+    #[test]
+    fn theme_round_trips_and_defaults_to_light() {
+        let mut config = AppConfig::default();
+        assert_eq!(config.ui.theme, UiTheme::Light);
+        config.ui.theme = UiTheme::Dark;
+        let serialized = config.to_toml().expect("serialize dark theme");
+        assert!(serialized.contains("theme = \"dark\""));
+        assert_eq!(
+            AppConfig::from_toml(&serialized)
+                .expect("dark config")
+                .ui
+                .theme,
+            UiTheme::Dark
+        );
+
+        // A config written before the setting existed loads as Light.
+        let plain = AppConfig::default().to_toml().expect("serialize defaults");
+        let mut document: toml::Value = toml::from_str(&plain).expect("parse serialized");
+        document
+            .get_mut("ui")
+            .and_then(toml::Value::as_table_mut)
+            .expect("ui table")
+            .remove("theme");
+        let legacy = toml::to_string_pretty(&document).expect("serialize legacy config");
+        assert_eq!(
+            AppConfig::from_toml(&legacy)
+                .expect("config without theme")
+                .ui
+                .theme,
+            UiTheme::Light
+        );
     }
 
     #[test]

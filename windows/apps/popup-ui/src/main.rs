@@ -267,6 +267,31 @@ thread_local! {
     /// classic popup's remembered window size, every later result card opens
     /// at it for the rest of the session.
     static LAST_CARD_SIZE: Cell<Option<(f64, f64)>> = const { Cell::new(None) };
+    /// Interface language and theme from the last `SetAppearance` event,
+    /// applied to every popup page (pooled and new ones included).
+    static APPEARANCE: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+}
+
+/// Script that applies a language and theme to a page. Only known codes are
+/// accepted, so the strings can be embedded without escaping.
+fn appearance_script(language: &str, theme: &str) -> String {
+    let language = if language == "zh-CN" { "zh-CN" } else { "en" };
+    let theme = if theme == "dark" { "dark" } else { "light" };
+    format!(
+        "(function(){{ try {{ window.setTheme && window.setTheme('{theme}'); \
+         window.setLang && window.setLang('{language}'); return 'ok'; }} \
+         catch (e) {{ return 'err:' + e.message; }} }})()"
+    )
+}
+
+/// Apply the remembered appearance to one popup page.
+fn apply_appearance(win: &Win) {
+    if win.surface == Surface::Manager {
+        return;
+    }
+    if let Some((language, theme)) = APPEARANCE.with(|cell| cell.borrow().clone()) {
+        run_on_page(win, appearance_script(&language, &theme));
+    }
 }
 
 /// Open a new result card at the size the user last chose, if any.
@@ -814,6 +839,8 @@ fn attach_webview(win: &Rc<Win>) -> bool {
 fn on_page_loaded(hwnd: HWND) {
     let Some(win) = win_for(hwnd) else { return };
     win.ready.set(true);
+    // Before the queued events, so a card never paints in the wrong theme.
+    apply_appearance(&win);
     let host = HOST.with(Cell::get);
     if !FIRST_LOAD.with(|cell| cell.replace(true)) {
         unsafe {
@@ -1107,6 +1134,12 @@ fn handle_event_line(line: &str) {
         | UiEvent::SetPinned { id, .. } => {
             if let Some(win) = win_by_id(*id) {
                 apply_page_event(&win, &event);
+            }
+        }
+        UiEvent::SetAppearance { language, theme } => {
+            APPEARANCE.with(|cell| *cell.borrow_mut() = Some((language.clone(), theme.clone())));
+            for win in wins() {
+                apply_appearance(&win);
             }
         }
         UiEvent::Shutdown => {}

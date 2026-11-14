@@ -1931,8 +1931,35 @@ mod windows_impl {
         match webview_ui::FairCopyUi::start("popup", hwnd) {
             Ok(ui) => {
                 state.fair_copy = Some(ui);
+                send_appearance(state);
             }
             Err(_) => state.fair_copy_failed_at = Some(Instant::now()),
+        }
+    }
+
+    /// The `SetAppearance` event for the current interface settings.
+    fn appearance_event(ui: &selection_core::UiSettings) -> UiEvent {
+        UiEvent::SetAppearance {
+            language: match ui.manager_language {
+                selection_core::UiLanguage::English => "en",
+                selection_core::UiLanguage::SimplifiedChinese => "zh-CN",
+            }
+            .to_owned(),
+            theme: match ui.theme {
+                selection_core::UiTheme::Light => "light",
+                selection_core::UiTheme::Dark => "dark",
+            }
+            .to_owned(),
+        }
+    }
+
+    /// Tell the companion the current language and theme. Not part of any
+    /// presentation, so it bypasses the replay log; best-effort like every
+    /// other companion event.
+    fn send_appearance(state: &mut ShellState) {
+        let event = appearance_event(&state.runtime.config.ui);
+        if let Some(ui) = state.fair_copy.as_mut() {
+            let _ = ui.send(event);
         }
     }
 
@@ -2228,6 +2255,7 @@ mod windows_impl {
             if state.runtime.config.ui.popup_skin != previous_skin {
                 apply_popup_skin(hwnd, state);
             }
+            send_appearance(state);
             runtime_trace::record("config_ui_only_applied");
             return;
         }
@@ -2242,6 +2270,7 @@ mod windows_impl {
         if state.runtime.config.ui.popup_skin != previous_skin {
             apply_popup_skin(hwnd, state);
         }
+        send_appearance(state);
         if state
             .active_prompt_id
             .as_deref()
@@ -4092,6 +4121,27 @@ mod windows_impl {
                 41,
                 41
             ));
+        }
+
+        #[test]
+        fn appearance_event_maps_language_and_theme_codes() {
+            let mut ui = selection_core::UiSettings::default();
+            assert_eq!(
+                appearance_event(&ui),
+                UiEvent::SetAppearance {
+                    language: "en".into(),
+                    theme: "light".into(),
+                }
+            );
+            ui.manager_language = selection_core::UiLanguage::SimplifiedChinese;
+            ui.theme = selection_core::UiTheme::Dark;
+            assert_eq!(
+                appearance_event(&ui),
+                UiEvent::SetAppearance {
+                    language: "zh-CN".into(),
+                    theme: "dark".into(),
+                }
+            );
         }
 
         #[test]
