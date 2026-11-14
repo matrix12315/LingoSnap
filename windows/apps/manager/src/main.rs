@@ -102,7 +102,6 @@ mod windows_app {
     const ID_SETTINGS_SELECTION_DEFAULT: usize = 164;
     const ID_SETTINGS_HOVER_DEFAULT: usize = 165;
     const ID_PROMPT_ID: usize = 166;
-    const ID_PROMPT_NAME: usize = 167;
     const ID_PROMPT_SYSTEM: usize = 168;
     const ID_PROMPT_USER_TEMPLATE: usize = 169;
     const ID_PROMPT_MODEL: usize = 170;
@@ -210,6 +209,7 @@ mod windows_app {
     const LBS_OWNERDRAWFIXED: u32 = 0x0010;
     const LBS_NOINTEGRALHEIGHT: u32 = 0x0100;
     const CBS_DROPDOWNLIST: u32 = 0x0003;
+    const CBS_DROPDOWN: u32 = 0x0002;
     const EM_SETREADONLY: u32 = 0x00CF;
 
     #[link(name = "kernel32")]
@@ -416,7 +416,7 @@ mod windows_app {
             (UiLanguage::English, Id) => "Profile",
             (UiLanguage::English, Name) => "Name",
             (UiLanguage::English, SystemPrompt) => "System prompt",
-            (UiLanguage::English, UserTemplate) => "User template",
+            (UiLanguage::English, UserTemplate) => "User Prompt",
             (UiLanguage::English, ModelOverride) => "Model override",
             (UiLanguage::English, Temperature) => "Temperature",
             (UiLanguage::English, MaxOutputTokens) => "Max tokens",
@@ -424,16 +424,16 @@ mod windows_app {
             (UiLanguage::English, DeleteProfile) => "Delete profile",
             (UiLanguage::English, DeletedProfile) => "Deleted profile",
             (UiLanguage::English, PromptHint) => {
-                "Use {target}, {context}, and {source}; every user template needs {target}."
+                "Use {target}, {context}, and {source}; every user prompt needs {target}."
             }
             (UiLanguage::English, HintModelOverride) => {
-                "Model override: leave empty to use the model set in Settings."
+                "Leave empty to use the model set in Settings."
             }
             (UiLanguage::English, HintTemperature) => {
-                "Temperature: 0–2. Lower gives steadier answers, higher gives more varied ones. Empty uses the provider default."
+                "0–2. Lower gives steadier answers, higher gives more varied ones. Empty uses the provider default."
             }
             (UiLanguage::English, HintMaxTokens) => {
-                "Max tokens: the longest reply allowed, in tokens. Empty uses the provider default."
+                "The longest reply allowed, in tokens. Empty uses the provider default."
             }
             (UiLanguage::English, SearchCard) => "Search",
             (UiLanguage::English, EntriesCard) => "Entries",
@@ -500,7 +500,7 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, Id) => "ID",
             (UiLanguage::SimplifiedChinese, Name) => "名称",
             (UiLanguage::SimplifiedChinese, SystemPrompt) => "系统提示词",
-            (UiLanguage::SimplifiedChinese, UserTemplate) => "用户模板",
+            (UiLanguage::SimplifiedChinese, UserTemplate) => "用户提示词",
             (UiLanguage::SimplifiedChinese, ModelOverride) => "模型覆盖",
             (UiLanguage::SimplifiedChinese, Temperature) => "温度",
             (UiLanguage::SimplifiedChinese, MaxOutputTokens) => "最大令牌数",
@@ -508,16 +508,16 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, DeleteProfile) => "删除配置档",
             (UiLanguage::SimplifiedChinese, DeletedProfile) => "已删除的配置档",
             (UiLanguage::SimplifiedChinese, PromptHint) => {
-                "可使用 {target}、{context} 和 {source}；用户模板必须包含 {target}。"
+                "可使用 {target}、{context} 和 {source}；用户提示词必须包含 {target}。"
             }
             (UiLanguage::SimplifiedChinese, HintModelOverride) => {
-                "模型覆盖：留空则使用设置中的模型。"
+                "留空则使用设置中的模型。"
             }
             (UiLanguage::SimplifiedChinese, HintTemperature) => {
-                "温度：0–2。越低越稳定，越高越多样。留空使用服务商默认值。"
+                "0–2。越低越稳定，越高越多样。留空使用服务商默认值。"
             }
             (UiLanguage::SimplifiedChinese, HintMaxTokens) => {
-                "最大令牌数：回复的最大长度（令牌数）。留空使用服务商默认值。"
+                "回复的最大长度（令牌数）。留空使用服务商默认值。"
             }
             (UiLanguage::SimplifiedChinese, SearchCard) => "搜索",
             (UiLanguage::SimplifiedChinese, EntriesCard) => "记录",
@@ -1893,24 +1893,10 @@ mod windows_app {
             ID_PROMPT_ID,
             Some(View::Prompts),
             Slot::PromptId,
-            CBS_DROPDOWNLIST,
+            CBS_DROPDOWN,
         )?;
-        add_label(
-            hwnd,
-            &mut h,
-            "Name",
-            Some(View::Prompts),
-            Slot::PromptNameLabel,
-        )?;
-        h.profile_name = add_edit_with_id(
-            hwnd,
-            &mut h,
-            Some(View::Prompts),
-            Slot::PromptName,
-            false,
-            false,
-            ID_PROMPT_NAME,
-        )?;
+        // The editable Profile picker doubles as the name field.
+        h.profile_name = h.profile_id;
         add_label(
             hwnd,
             &mut h,
@@ -1986,28 +1972,28 @@ mod windows_app {
         add_label(
             hwnd,
             &mut h,
-            "Use {target}, {context}, and {source}; every user template needs {target}.",
+            "Use {target}, {context}, and {source}; every user prompt needs {target}.",
             Some(View::Prompts),
             Slot::PromptHint,
         )?;
         add_label(
             hwnd,
             &mut h,
-            "Model override: leave empty to use the model set in Settings.",
+            "Leave empty to use the model set in Settings.",
             Some(View::Prompts),
             Slot::PromptModelHint,
         )?;
         add_label(
             hwnd,
             &mut h,
-            "Temperature: 0–2. Lower gives steadier answers, higher gives more varied ones. Empty uses the provider default.",
+            "0–2. Lower gives steadier answers, higher gives more varied ones. Empty uses the provider default.",
             Some(View::Prompts),
             Slot::PromptTempHint,
         )?;
         add_label(
             hwnd,
             &mut h,
-            "Max tokens: the longest reply allowed, in tokens. Empty uses the provider default.",
+            "The longest reply allowed, in tokens. Empty uses the provider default.",
             Some(View::Prompts),
             Slot::PromptTokensHint,
         )?;
@@ -2178,8 +2164,6 @@ mod windows_app {
         SaveSettings,
         PromptIdLabel,
         PromptId,
-        PromptNameLabel,
-        PromptName,
         PromptModelLabel,
         PromptModel,
         PromptTempLabel,
@@ -3115,67 +3099,40 @@ mod windows_app {
                 geometry_scroll_max = scroll_max;
             }
             View::Prompts => {
-                // Meta row: ID fixed, Name flexes, the numeric group stays
-                // right-aligned; editors and the status row absorb the rest.
+                // Meta row: the editable Profile picker (its text is the profile
+                // name), then Model override / Temperature / Max tokens, each
+                // with its help text beneath. Buttons and the template hint
+                // sit on the row below; the editors take the rest.
                 let meta_label = content_top + 4;
                 let meta_input = content_top + 20;
-                let name_right = (content_width - 560).max(170) + 160;
-                slots.push((
-                    Slot::PromptIdLabel,
-                    RECT {
-                        left: 0,
-                        top: meta_label,
-                        right: 150,
-                        bottom: meta_label + 14,
-                    },
-                ));
-                slots.push((
-                    Slot::PromptId,
-                    RECT {
-                        left: 0,
-                        top: meta_input,
-                        right: 150,
-                        bottom: meta_input + 28,
-                    },
-                ));
-                slots.push((
-                    Slot::PromptNameLabel,
-                    RECT {
-                        left: 160,
-                        top: meta_label,
-                        right: name_right,
-                        bottom: meta_label + 14,
-                    },
-                ));
-                slots.push((
-                    Slot::PromptName,
-                    RECT {
-                        left: 160,
-                        top: meta_input,
-                        right: name_right,
-                        bottom: meta_input + 28,
-                    },
-                ));
-                for (label_slot, input_slot, left, width) in [
+                let profile_width = 220;
+                let field_gap = 10;
+                let field_width = ((content_width - profile_width - field_gap * 3) / 3).max(120);
+                let fields = [
+                    (Slot::PromptIdLabel, Slot::PromptId, 0, profile_width, None),
                     (
                         Slot::PromptModelLabel,
                         Slot::PromptModel,
-                        content_width - 350,
-                        150,
+                        profile_width + field_gap,
+                        field_width,
+                        Some(Slot::PromptModelHint),
                     ),
                     (
                         Slot::PromptTempLabel,
                         Slot::PromptTemp,
-                        content_width - 190,
-                        90,
+                        profile_width + field_gap * 2 + field_width,
+                        field_width,
+                        Some(Slot::PromptTempHint),
                     ),
                     (
                         Slot::PromptTokensLabel,
                         Slot::PromptTokens,
-                        content_width - 90,
-                        90,
+                        profile_width + field_gap * 3 + field_width * 2,
+                        field_width,
+                        Some(Slot::PromptTokensHint),
                     ),
-                ] {
+                ];
+                for (label_slot, input_slot, left, width, hint_slot) in fields {
                     slots.push((
                         label_slot,
                         RECT {
@@ -3194,68 +3151,61 @@ mod windows_app {
                             bottom: meta_input + 28,
                         },
                     ));
+                    if let Some(hint_slot) = hint_slot {
+                        slots.push((
+                            hint_slot,
+                            RECT {
+                                left,
+                                top: meta_input + 32,
+                                right: left + width,
+                                bottom: meta_input + 32 + 48,
+                            },
+                        ));
+                    }
                 }
+                let button_top = content_top + 104;
                 slots.push((
                     Slot::NewPrompt,
                     RECT {
                         left: content_width - 250,
-                        top: content_top + 56,
+                        top: button_top,
                         right: content_width - 170,
-                        bottom: content_top + 92,
+                        bottom: button_top + 36,
                     },
                 ));
                 slots.push((
                     Slot::DeletePrompt,
                     RECT {
                         left: content_width - 420,
-                        top: content_top + 56,
+                        top: button_top,
                         right: content_width - 260,
-                        bottom: content_top + 92,
+                        bottom: button_top + 36,
                     },
                 ));
                 slots.push((
                     Slot::SavePrompt,
                     RECT {
                         left: content_width - 160,
-                        top: content_top + 56,
+                        top: button_top,
                         right: content_width,
-                        bottom: content_top + 92,
+                        bottom: button_top + 36,
                     },
                 ));
                 slots.push((
                     Slot::PromptHint,
                     RECT {
                         left: 0,
-                        top: content_top + 148,
-                        right: content_width,
-                        bottom: content_top + 164,
+                        top: button_top + 10,
+                        right: (content_width - 440).max(200),
+                        bottom: button_top + 26,
                     },
                 ));
-                for (index, slot) in [
-                    Slot::PromptModelHint,
-                    Slot::PromptTempHint,
-                    Slot::PromptTokensHint,
-                ]
-                .into_iter()
-                .enumerate()
-                {
-                    let top = content_top + 100 + 16 * index as i32;
-                    slots.push((
-                        slot,
-                        RECT {
-                            left: 0,
-                            top,
-                            right: content_width,
-                            bottom: top + 16,
-                        },
-                    ));
-                }
                 let editor_bottom = content_height - 24;
                 let editor_mid = (content_width - 10) / 2;
                 cards.push((
                     RECT {
                         left: 0,
-                        top: content_top + 176,
+                        top: content_top + 152,
                         right: editor_mid,
                         bottom: content_top + editor_bottom,
                     },
@@ -3264,7 +3214,7 @@ mod windows_app {
                 cards.push((
                     RECT {
                         left: editor_mid + 10,
-                        top: content_top + 176,
+                        top: content_top + 152,
                         right: content_width,
                         bottom: content_top + editor_bottom,
                     },
@@ -3274,7 +3224,7 @@ mod windows_app {
                     Slot::SystemPrompt,
                     RECT {
                         left: 10,
-                        top: content_top + 206,
+                        top: content_top + 182,
                         right: editor_mid - 10,
                         bottom: content_top + editor_bottom - 10,
                     },
@@ -3283,7 +3233,7 @@ mod windows_app {
                     Slot::UserTemplate,
                     RECT {
                         left: editor_mid + 20,
-                        top: content_top + 206,
+                        top: content_top + 182,
                         right: content_width - 10,
                         bottom: content_top + editor_bottom - 10,
                     },
@@ -3942,7 +3892,6 @@ mod windows_app {
                 | Slot::HotkeyPauseLabel
                 | Slot::HotkeyOpenPopupLabel
                 | Slot::PromptIdLabel
-                | Slot::PromptNameLabel
                 | Slot::PromptModelLabel
                 | Slot::PromptTempLabel
                 | Slot::PromptTokensLabel => small,
@@ -5626,6 +5575,7 @@ mod windows_app {
         state.config = next;
         let refresh = notify_config_changed();
         populate_history_filters(state);
+        populate_profile_selectors(state);
         state.draft_prompt = None;
         if was_draft {
             state.profile_index = state.config.profiles.len() - 1;

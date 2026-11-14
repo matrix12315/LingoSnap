@@ -15,7 +15,7 @@ preserved).
 | Profile bar | Choose how to interpret the selection (Translate / Expert / Program / Concise / More…) | Every use |
 | Translation popup | Deliver analysis you can trust at a glance: Selection (target + context) → structured Result → Copy | 90% of the time |
 | Manager · Settings | Provider endpoint, model, credentials, default profiles | Rare setup |
-| Manager · Prompts | Edit per-profile system prompt and user template | Occasional |
+| Manager · Prompts | Edit per-profile system prompt and user prompt | Occasional |
 | Manager · History | Reopen past results without holding the DB open | Occasional |
 
 ## Audience and scene

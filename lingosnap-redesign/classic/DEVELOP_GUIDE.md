@@ -15,7 +15,7 @@ Do **not** invent a second visual language. If a detail is missing, match `index
 | **Profile bar** | Choose interpretation mode | Every use |
 | **Popup** | Selection + context + result after text is selected | 90% of the time |
 | **Manager → Settings** | Provider, credentials, defaults | Rare setup |
-| **Manager → Prompts** | Edit system prompt / user template per profile | Occasional |
+| **Manager → Prompts** | Edit system prompt / user prompt per profile | Occasional |
 | **Manager → History** | Search and reopen past results | Occasional |
 
 - One **resident** process captures selection and shows the popup.
@@ -67,7 +67,7 @@ Do **not** use pure `#000` / `#FFF`, gradients on chrome, or purple–blue marke
 
 ### Scrollbars (mandatory — one style everywhere)
 
-Every scrollable region (popup Selection, Result markdown, System prompt, User template, History list, Output):
+Every scrollable region (popup Selection, Result markdown, System prompt, User Prompt, History list, Output):
 
 | Part | Spec |
 |---|---|
@@ -99,7 +99,7 @@ Never mix light system scrollbars with dark chrome. Never different scrollbar lo
 ### 3.2 Input / field well
 
 - Background `void` or `raised`, border `line`, radius 8px, min-height 36–40px, pad 8–12px.
-- Mono for: endpoint, model, credential target, API key mask, ID, temperature, max tokens, system prompt, user template, history output, selection target line.
+- Mono for: endpoint, model, credential target, API key mask, ID, temperature, max tokens, system prompt, user prompt, history output, selection target line.
 - UI font for: names, dropdown labels, manager language.
 - Dropdown affordance: small `▼` on the right in `muted` (or native combo styled dark).
 
@@ -253,11 +253,11 @@ Groups (field groups, stacked):
    - Max tokens  
    - **Save prompt** (primary)
 
-   Placeholders: `{target}`, `{context}`, `{source}`; user template **must** contain `{target}`.
+   Placeholders: `{target}`, `{context}`, `{source}`; user prompt **must** contain `{target}`.
 
 2. **Editors (fill remaining height)** — **two columns**, gap 10  
    - Left: **System prompt**  
-   - Right: **User template**  
+   - Right: **User Prompt**  
    - Each editor: `raised` frame (border `line`, radius 10), caption on top, inner mono well `void` (radius 8), pad 10–12, **fills column height**, scrolls.
 
 **Do not put on this tab:**
@@ -321,7 +321,7 @@ Never solve “too small” only by raising `min-height` on a box. Reallocate: s
 | Pin | Keep popup open |
 | Close / Esc | Close popup |
 | Save settings / key / prompt | Persist; status text updates; keys → Credential Manager only |
-| Prompts ID dropdown | Load that profile’s name, system prompt, user template, sampling |
+| Prompts ID dropdown | Load that profile’s name, system prompt, user prompt, sampling |
 | History row select | Fill Selection + Output; Refresh reloads list; Copy output copies raw output |
 | Cycle profiles (hotkey) | Same as More… order; optional |
 

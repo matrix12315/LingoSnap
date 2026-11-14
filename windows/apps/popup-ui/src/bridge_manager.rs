@@ -258,8 +258,6 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     promptId = payload.selectedId || '';
     set('pid', promptId);
     var sel = payload.selected || {};
-    var label = document.getElementById('pidLabel');
-    if (label) label.textContent = profileName({ id: promptId, name: sel.name });
     set('pname', sel.name || '');
     set('pmodel', sel.model || '');
     set('ptemp', sel.temp == null ? '' : sel.temp);

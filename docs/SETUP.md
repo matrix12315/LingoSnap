@@ -5,7 +5,7 @@ This package targets 64-bit Windows 10 22H2/Windows 11 with the MSVC runtime. It
 ## Configure the provider
 
 1. Copy `config.example.toml` to `%LOCALAPPDATA%\LingoSnap\config.toml`.
-2. Edit the endpoint, model, defaults, or the system prompt and user template of a profile. Templates may use only `{target}`, `{context}`, and `{source}` and must include `{target}`.
+2. Edit the endpoint, model, defaults, or the system prompt and user prompt of a profile. Templates may use only `{target}`, `{context}`, and `{source}` and must include `{target}`.
 3. Keep the API key outside the file. The resident checks `OPENAI_API_KEY`, then `LINGOSNAP_OPENAI_API_KEY`, then the Windows Credential Manager target named `LingoSnap/OpenAI`. A manager Settings action can save/delete the key through Credential Manager; do not paste it into TOML.
 4. Start `lingosnap-resident.exe`. It places an icon in the notification area.
 

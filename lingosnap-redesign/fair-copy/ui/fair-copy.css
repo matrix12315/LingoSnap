@@ -164,6 +164,7 @@
     box-shadow: inset 0 0 0 1px rgba(255, 244, 230, .28);
     flex-shrink: 0;
   }
+  .seal svg { display: block; fill: #FFFFFF; }
   /* The seal greys out when the card has nothing to show (error / idle). */
   .seal.idle { background: #8A8375; }
   [data-theme="dark"] .seal.idle { background: #6B6254; }
@@ -634,6 +635,15 @@
   .pidbtn { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; cursor: pointer; }
   .pidbtn svg { flex-shrink: 0; transition: transform .15s ease; }
   .select.open .pidbtn svg { transform: rotate(180deg); }
+  /* Editable picker: the profile name is typed in the field, the chevron opens the list. */
+  .select .pidchev {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 28px;
+    display: grid; place-items: center;
+    border: none; background: none; cursor: pointer;
+    color: var(--ink-faint);
+  }
+  .select .pidchev svg { position: static; transform: none; transition: transform .15s ease; }
+  .select.open .pidchev svg { transform: rotate(180deg); }
   .pmenu {
     position: absolute; top: calc(100% + 4px); left: 0; right: 0;
     z-index: 6;
