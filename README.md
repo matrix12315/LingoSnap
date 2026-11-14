@@ -1,8 +1,8 @@
-# Selection Translate
+# LingoSnap
 
 [简体中文](README.zh-CN.md)
 
-Selection Translate is a lightweight native Windows x64 assistant for selected or hovered text. It obtains sentence context when the target application exposes it, sends the chosen prompt to an OpenAI-compatible API, and streams Markdown into a compact popup. The resident uses native Windows UI instead of Electron or WebView, and the manager runs only when opened.
+LingoSnap is a lightweight native Windows x64 assistant for selected or hovered text. It obtains sentence context when the target application exposes it, sends the chosen profile to an OpenAI-compatible API, and streams Markdown into a compact popup. The resident uses native Windows UI instead of Electron or WebView, and the manager runs only when opened.
 
 This repository currently provides an unsigned preview build. Selection, Manual, and opt-in Hover share one priority-aware extraction pipeline. UI Automation is tried first and clipboard or Windows OCR is used only when applicable. No provider request is made when no valid text is detected.
 
@@ -11,7 +11,7 @@ This repository currently provides an unsigned preview build. Selection, Manual,
 Low resource use is a core product feature, not an afterthought:
 
 - The always-running resident is native Rust and Win32, with no Electron, WebView, browser engine, async runtime, or bundled OCR model.
-- Settings, prompts, and history live in a separate manager process that starts only when opened and exits when its last window closes.
+- Settings, profiles, and history live in a separate manager process that starts only when opened and exits when its last window closes.
 - OCR captures only a bounded in-memory region when it is needed; screenshots are not saved to disk.
 - SQLite is opened only for short background history writes, and completed history is capped at the newest 1,000 entries.
 - Hover is opt-in, and extraction stops as soon as one path returns valid text.
@@ -28,7 +28,7 @@ Windows SmartScreen may warn because the binaries are not code-signed. User conf
 
 ## Fill in the API address and key
 
-Selection Translate expects an OpenAI-compatible Chat Completions API. Before first use, set two things on the manager's **Settings** page: the API base URL and the API key.
+LingoSnap expects an OpenAI-compatible Chat Completions API. Before first use, set two things on the manager's **Settings** page: the API base URL and the API key.
 
 ### API address (base URL)
 
@@ -52,4 +52,4 @@ The key is stored as a Windows Credential Manager Generic Credential (default ta
 
 Environment variables are an alternative to saving a key: the resident reads credentials in the order `OPENAI_API_KEY`, `SELECTION_TRANSLATE_OPENAI_API_KEY`, then the Windows Credential Manager target.
 
-To verify the configuration, select some text and choose a prompt profile: a streamed result means the address and key are valid. `Provider authentication failed` means the key is invalid; `Provider connection failed` means the address could not be reached — check the URL spelling, network, and proxy.
+To verify the configuration, select some text and choose a profile: a streamed result means the address and key are valid. `Provider authentication failed` means the key is invalid; `Provider connection failed` means the address could not be reached — check the URL spelling, network, and proxy.

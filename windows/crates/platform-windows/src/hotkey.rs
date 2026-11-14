@@ -281,7 +281,7 @@ mod windows_impl {
                 self.registered.push(id);
                 true
             } else {
-                eprintln!("Selection Translate could not register a configured hotkey");
+                eprintln!("LingoSnap could not register a configured hotkey");
                 false
             }
         }

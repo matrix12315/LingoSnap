@@ -18,13 +18,13 @@ The package script performs the same checks before staging, copies both executab
 
 ## Implemented automated coverage
 
-Core request admission, prompt/config validation, trigger priority, cache identity, provider parsing/error limits, UI Automation sentence offsets, clipboard restoration guards, OCR offsets, SQLite schema/search/pruning, manager prompt/history helpers, and resident history admission have unit tests. The current workspace test and Clippy results should be recorded from the final merged worktree, not inferred from an earlier agent run.
+Core request admission, profile/settings validation, trigger priority, cache identity, provider parsing/error limits, UI Automation sentence offsets, clipboard restoration guards, OCR offsets, SQLite schema/search/pruning, manager prompt/history helpers, and resident history admission have unit tests. The current workspace test and Clippy results should be recorded from the final merged worktree, not inferred from an earlier agent run.
 
 ## Manual release gates still required
 
 - Exercise Selection, Manual, and enabled Hover in Chromium, Firefox, Office, VS Code, a native control, a terminal, and a PDF reader.
 - Confirm fallback order and stop-on-first-valid-text behavior, whole-sentence context for a hovered word, clipboard restoration, OCR at 100/150/200% DPI and across two monitors, protected/blank surfaces, cancellation, stale completion suppression, offline/typed provider errors, and no request/loading/history row for no-text events.
-- Open and close the native manager repeatedly; verify Settings credential actions, prompt editing/reload, History lazy loading/search/filter/order/copy/delete confirmation, and database error handling.
+- Open and close the native manager repeatedly; verify Settings credential actions, profile editing/reload, History lazy loading/search/filter/order/copy/delete confirmation, and database error handling.
 - Warm the resident with one local mock request, close the popup and manager, ensure SQLite is closed, and run `windows\scripts\measure-memory.ps1 -DurationSeconds 300`. Acceptance is private working set below 20 MiB and average CPU at most 0.1%.
 
 Until those checks are performed on the final release binary, this remains an unsigned local test build rather than a release claim.

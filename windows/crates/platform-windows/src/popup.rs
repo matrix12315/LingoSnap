@@ -431,7 +431,7 @@ mod windows_impl {
                 CreateWindowExW(
                     WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW,
                     CLASS_NAME,
-                    w!("Selection Translate"),
+                    w!("LingoSnap"),
                     WS_POPUP,
                     anchor.x,
                     anchor.y,
@@ -1577,7 +1577,7 @@ mod windows_impl {
     }
 
     /// Left-aligned footer action widths derived from the current label so
-    /// Copy/Retry/Prompt/Pin/Close size to their text like the mockup row.
+    /// Copy/Retry/Profile/Pin/Close size to their text like the mockup row.
     pub(super) fn footer_button_width(label: &str) -> i32 {
         ((label.chars().count() as i32).saturating_mul(8) + 26).clamp(44, 150)
     }
@@ -2443,7 +2443,7 @@ mod windows_impl {
             apply_dark_scrollbar_theme(data.context_input);
             apply_dark_scrollbar_theme(data.output);
 
-            let labels = ["Copy", "Retry", "Prompt", "Pin", "Close"];
+            let labels = ["Copy", "Retry", "Profile", "Pin", "Close"];
             let ids = [COPY_ID, RETRY_ID, PROMPT_ID, PIN_ID, CLOSE_ID];
             for ((button, label), id) in data.buttons.iter_mut().zip(labels).zip(ids) {
                 let mut value: Vec<u16> = label.encode_utf16().chain(std::iter::once(0)).collect();
@@ -2998,7 +2998,7 @@ mod windows_impl {
         paint_section_label(
             hdc,
             title_font,
-            "Selection Translate",
+            "LingoSnap",
             RECT {
                 left: title_left,
                 top: layout.icon_top - scale(1, dpi),

@@ -1,8 +1,8 @@
-# Selection Translate
+# LingoSnap
 
 [English](README.md)
 
-Selection Translate 是一款轻量级 Windows x64 划词与悬停文本助手。目标程序能够提供上下文时，它会自动获取目标所在的完整句子，将所选提示词发送到 OpenAI 兼容 API，并在紧凑弹窗中流式渲染 Markdown。常驻程序采用原生 Rust 和 Win32，不使用 Electron 或 WebView；管理器仅在需要时启动。
+LingoSnap 是一款轻量级 Windows x64 划词与悬停文本助手。目标程序能够提供上下文时，它会自动获取目标所在的完整句子，将所选配置档发送到 OpenAI 兼容 API，并在紧凑弹窗中流式渲染 Markdown。常驻程序采用原生 Rust 和 Win32，不使用 Electron 或 WebView；管理器仅在需要时启动。
 
 当前仓库提供未签名的预览版本。划词、手动和可选的悬停功能共用一条带优先级的提取管线：先尝试 UI Automation，仅在适用时回退到剪贴板或 Windows OCR。没有检测到有效文本时，程序不会发送任何 API 请求。
 
@@ -11,7 +11,7 @@ Selection Translate 是一款轻量级 Windows x64 划词与悬停文本助手�
 低资源占用不是事后优化，而是产品的基础设计：
 
 - 常驻程序使用原生 Rust 和 Win32，不包含 Electron、WebView、浏览器内核、异步运行时或内置 OCR 模型。
-- 设置、提示词和历史记录由独立管理器负责；管理器只在打开时运行，最后一个窗口关闭后立即退出。
+- 设置、配置档和历史记录由独立管理器负责；管理器只在打开时运行，最后一个窗口关闭后立即退出。
 - OCR 只在需要时截取有限的内存区域，不把截图保存到磁盘。
 - SQLite 只在后台短暂写入历史记录时打开，并且仅保留最近 1,000 条完成记录。
 - 悬停功能默认关闭；任一提取路径获得有效文本后，其他路径立即停止。
@@ -52,4 +52,4 @@ Selection Translate 是一款轻量级 Windows x64 划词与悬停文本助手�
 
 也可以不改密钥而改用环境变量：常驻程序按 `OPENAI_API_KEY`、`SELECTION_TRANSLATE_OPENAI_API_KEY`、Windows 凭据管理器的顺序读取密钥。
 
-配置完成后，选中一段文本并选择提示词即可验证：能正常返回结果说明地址和密钥均有效。如果提示 `Provider authentication failed`，说明密钥无效；如果提示 `Provider connection failed`，说明网络无法连接到所填地址，请检查地址拼写、网络和代理。
+配置完成后，选中一段文本并选择配置档即可验证：能正常返回结果说明地址和密钥均有效。如果提示 `Provider authentication failed`，说明密钥无效；如果提示 `Provider connection failed`，说明网络无法连接到所填地址，请检查地址拼写、网络和代理。

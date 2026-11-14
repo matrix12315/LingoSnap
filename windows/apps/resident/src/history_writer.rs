@@ -56,7 +56,7 @@ impl HistoryWriter {
                     if !persisted {
                         // Persistence failures must not affect translation or
                         // expose target/output/provider data in logs.
-                        eprintln!("Selection Translate history write failed");
+                        eprintln!("LingoSnap history write failed");
                     }
                     for acknowledgement in flushes {
                         let _ = acknowledgement.send(persisted);

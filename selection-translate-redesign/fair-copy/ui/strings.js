@@ -119,7 +119,7 @@
       required: '\u5fc5\u586b \u00b7 \u6280\u672f\u5b57\u6bb5\u5df2\u9884\u586b\u9ed8\u8ba4\u503c\uff1b\u5b8c\u6210\u7f16\u8f91\u540e\u81ea\u52a8\u4fdd\u5b58',
       gProvider: '\u670d\u52a1\u5546',
       gCredentials: '\u51ed\u636e',
-      gDefaults: '\u9ed8\u8ba4\u914d\u7f6e',
+      gDefaults: '\u9ed8\u8ba4\u914d\u7f6e\u6863',
       gHotkey: '\u70ed\u952e',
       gProfiles: '\u914d\u7f6e\u6863',
       lEndpoint: '\u670d\u52a1\u7aef\u70b9',

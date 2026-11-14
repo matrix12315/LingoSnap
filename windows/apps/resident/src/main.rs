@@ -106,7 +106,7 @@ fn main() {
     if selection_platform_windows::app::run(runtime).is_err() {
         // The executable uses the Windows subsystem, so stderr is normally
         // invisible. Keep both channels generic and privacy-safe.
-        eprintln!("Selection Translate resident could not start");
+        eprintln!("LingoSnap resident could not start");
         selection_platform_windows::app::show_resident_startup_failure();
         std::process::exit(1);
     }
@@ -140,7 +140,7 @@ fn build_history_store() -> Option<Arc<dyn HistoryStore>> {
         Err(_) => {
             // History is optional. A storage failure must never disable
             // translation, and the path/target is intentionally not logged.
-            eprintln!("Selection Translate history is unavailable");
+            eprintln!("LingoSnap history is unavailable");
             return None;
         }
     };

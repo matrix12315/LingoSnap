@@ -579,7 +579,7 @@ fn create_surface(surface: Surface) -> Option<Rc<Win>> {
             MANAGER_CLASS_NAME,
             WS_EX_APPWINDOW | WS_EX_NOREDIRECTIONBITMAP,
             WS_POPUP | WS_SYSMENU | WS_MINIMIZEBOX,
-            "Selection Translate — Manager",
+            "LingoSnap — Manager",
         )
     } else {
         (

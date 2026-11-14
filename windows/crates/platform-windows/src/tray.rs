@@ -48,7 +48,7 @@ mod windows_impl {
                 uCallbackMessage: TRAY_CALLBACK,
                 ..Default::default()
             };
-            let tip: Vec<u16> = "Selection Translate\0".encode_utf16().collect();
+            let tip: Vec<u16> = "LingoSnap\0".encode_utf16().collect();
             let len = tip.len().min(data.szTip.len());
             data.szTip[..len].copy_from_slice(&tip[..len]);
             data
@@ -57,11 +57,11 @@ mod windows_impl {
         pub fn update_status(&self, hover_enabled: bool, rest_enabled: bool) {
             let mut data = self.data(NIF_TIP);
             let text = if rest_enabled {
-                "Selection Translate (Rest mode)\0"
+                "LingoSnap (Rest mode)\0"
             } else if hover_enabled {
-                "Selection Translate (Hover on)\0"
+                "LingoSnap (Hover on)\0"
             } else {
-                "Selection Translate\0"
+                "LingoSnap\0"
             };
             let tip: Vec<u16> = text.encode_utf16().collect();
             let len = tip.len().min(data.szTip.len());

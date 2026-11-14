@@ -100,10 +100,10 @@ mod windows_impl {
         fn message(self) -> &'static str {
             match self {
                 Self::FatalStartup => {
-                    "Selection Translate could not start. Restart the app; if the problem continues, reinstall this package."
+                    "LingoSnap could not start. Restart the app; if the problem continues, reinstall this package."
                 }
                 Self::ManualHotkeyUnavailable => {
-                    "Manual translation shortcut Ctrl+Alt+T is already in use. Close the conflicting app, then restart Selection Translate."
+                    "Manual translation shortcut Ctrl+Alt+T is already in use. Close the conflicting app, then restart LingoSnap."
                 }
                 Self::ResultWindowUnavailable => {
                     "The translation result window could not be opened. No provider request was sent."
@@ -419,7 +419,7 @@ mod windows_impl {
             CreateWindowExW(
                 Default::default(),
                 CLASS_NAME,
-                w!("Selection Translate"),
+                w!("LingoSnap"),
                 Default::default(),
                 0,
                 0,
@@ -560,7 +560,7 @@ mod windows_impl {
             let _ = MessageBoxW(
                 None,
                 PCWSTR(text.as_ptr()),
-                w!("Selection Translate"),
+                w!("LingoSnap"),
                 MB_OK | diagnostic.icon(),
             );
         }
@@ -3458,7 +3458,7 @@ mod windows_impl {
         if history.insert_completed(entry).is_err() {
             // Keep the UI silent and avoid logging target/output/provider
             // details. Persistence is best-effort and never blocks usage.
-            eprintln!("Selection Translate history queue unavailable");
+            eprintln!("LingoSnap history queue unavailable");
         }
     }
 
@@ -3596,7 +3596,7 @@ mod windows_impl {
             RequestRejection::Cancelled => "Request cancelled",
             RequestRejection::StaleJob { .. } => "Request became stale",
             RequestRejection::MissingPrompt | RequestRejection::InvalidPrompt => {
-                "Prompt configuration is invalid"
+                "Profile configuration is invalid"
             }
             RequestRejection::MissingProviderConfig | RequestRejection::InvalidProviderConfig => {
                 "Provider configuration is unavailable"

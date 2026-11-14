@@ -364,15 +364,15 @@ mod windows_app {
     fn ui_text(language: UiLanguage, key: TextKey) -> &'static str {
         use TextKey::*;
         match (language, key) {
-            (UiLanguage::English, WindowTitle) => "Selection Translate — Manager",
-            (UiLanguage::English, Brand) => "SELECTION TRANSLATE",
+            (UiLanguage::English, WindowTitle) => "LingoSnap — Manager",
+            (UiLanguage::English, Brand) => "LingoSnap",
             (UiLanguage::English, Manager) => "Manager",
             (UiLanguage::English, Settings) => "Settings",
-            (UiLanguage::English, Prompts) => "Prompts",
+            (UiLanguage::English, Prompts) => "Profiles",
             (UiLanguage::English, History) => "History",
             (UiLanguage::English, Close) => "Close",
             (UiLanguage::English, SettingsSubtitle) => "Provider, credentials and default profiles",
-            (UiLanguage::English, PromptsSubtitle) => "Create and tune reusable LLM instructions",
+            (UiLanguage::English, PromptsSubtitle) => "Create and tune reusable profiles",
             (UiLanguage::English, HistorySubtitle) => {
                 "Search recent translations without keeping the database open"
             }
@@ -403,14 +403,14 @@ mod windows_app {
                 "Keys are held by Windows Credential Manager; they never enter config.toml."
             }
             (UiLanguage::English, New) => "New",
-            (UiLanguage::English, Id) => "ID",
+            (UiLanguage::English, Id) => "Profile",
             (UiLanguage::English, Name) => "Name",
             (UiLanguage::English, SystemPrompt) => "System prompt",
             (UiLanguage::English, UserTemplate) => "User template",
             (UiLanguage::English, ModelOverride) => "Model override",
             (UiLanguage::English, Temperature) => "Temperature",
-            (UiLanguage::English, MaxOutputTokens) => "Max output tokens",
-            (UiLanguage::English, SavePrompt) => "Save prompt",
+            (UiLanguage::English, MaxOutputTokens) => "Max tokens",
+            (UiLanguage::English, SavePrompt) => "Save profile",
             (UiLanguage::English, PromptHint) => {
                 "Use {target}, {context}, and {source}; every user template needs {target}."
             }
@@ -419,7 +419,7 @@ mod windows_app {
             (UiLanguage::English, SearchTarget) => "Search targets",
             (UiLanguage::English, Refresh) => "Refresh",
             (UiLanguage::English, CopyOutput) => "Copy output",
-            (UiLanguage::English, Prompt) => "Prompt",
+            (UiLanguage::English, Prompt) => "Profile",
             (UiLanguage::English, Source) => "Source",
             (UiLanguage::English, Order) => "Order",
             (UiLanguage::English, Target) => "Target",
@@ -429,7 +429,7 @@ mod windows_app {
             (UiLanguage::English, HistoryPrivacy) => {
                 "History is loaded only while this tab is open; the database is never held open."
             }
-            (UiLanguage::English, AllPrompts) => "All prompts",
+            (UiLanguage::English, AllPrompts) => "All profiles",
             (UiLanguage::English, AllSources) => "All sources",
             (UiLanguage::English, Selection) => "Selection",
             (UiLanguage::English, Hover) => "Hover",
@@ -439,20 +439,20 @@ mod windows_app {
             (UiLanguage::English, Oldest) => "Oldest",
             (UiLanguage::English, English) => "English",
             (UiLanguage::English, SimplifiedChinese) => "Simplified Chinese",
-            (UiLanguage::SimplifiedChinese, WindowTitle) => "划词翻译 — 管理器",
-            (UiLanguage::SimplifiedChinese, Brand) => "划词翻译",
+            (UiLanguage::SimplifiedChinese, WindowTitle) => "LingoSnap — 管理器",
+            (UiLanguage::SimplifiedChinese, Brand) => "LingoSnap",
             (UiLanguage::SimplifiedChinese, Manager) => "管理器",
             (UiLanguage::SimplifiedChinese, Settings) => "设置",
-            (UiLanguage::SimplifiedChinese, Prompts) => "提示词",
+            (UiLanguage::SimplifiedChinese, Prompts) => "配置档",
             (UiLanguage::SimplifiedChinese, History) => "历史记录",
             (UiLanguage::SimplifiedChinese, Close) => "关闭",
             (UiLanguage::SimplifiedChinese, SettingsSubtitle) => "服务商、凭据和默认配置",
-            (UiLanguage::SimplifiedChinese, PromptsSubtitle) => "创建和调整可复用的 LLM 指令",
+            (UiLanguage::SimplifiedChinese, PromptsSubtitle) => "创建和调整可复用的配置档",
             (UiLanguage::SimplifiedChinese, HistorySubtitle) => "搜索最近结果；数据库仅按需打开",
             (UiLanguage::SimplifiedChinese, InterfaceLanguage) => "界面语言",
             (UiLanguage::SimplifiedChinese, ProviderCard) => "服务商",
             (UiLanguage::SimplifiedChinese, CredentialsCard) => "凭据",
-            (UiLanguage::SimplifiedChinese, DefaultsCard) => "默认配置",
+            (UiLanguage::SimplifiedChinese, DefaultsCard) => "默认配置档",
             (UiLanguage::SimplifiedChinese, HotkeyCard) => "热键",
             (UiLanguage::SimplifiedChinese, HotkeySelectionLabel) => "划词翻译",
             (UiLanguage::SimplifiedChinese, HotkeyHoverLabel) => "悬停翻译",
@@ -469,8 +469,8 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, ApiKey) => "API 密钥",
             (UiLanguage::SimplifiedChinese, SaveKey) => "保存密钥",
             (UiLanguage::SimplifiedChinese, DeleteSavedKey) => "删除已存密钥",
-            (UiLanguage::SimplifiedChinese, SelectionDefaultProfile) => "划词配置",
-            (UiLanguage::SimplifiedChinese, HoverDefaultProfile) => "悬停配置",
+            (UiLanguage::SimplifiedChinese, SelectionDefaultProfile) => "划词配置档",
+            (UiLanguage::SimplifiedChinese, HoverDefaultProfile) => "悬停配置档",
             (UiLanguage::SimplifiedChinese, SaveSettings) => "保存设置",
             (UiLanguage::SimplifiedChinese, CredentialPrivacy) => {
                 "密钥保存在 Windows 凭据管理器中，绝不会写入 config.toml。"
@@ -482,8 +482,8 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, UserTemplate) => "用户模板",
             (UiLanguage::SimplifiedChinese, ModelOverride) => "模型覆盖",
             (UiLanguage::SimplifiedChinese, Temperature) => "温度",
-            (UiLanguage::SimplifiedChinese, MaxOutputTokens) => "最大输出令牌数",
-            (UiLanguage::SimplifiedChinese, SavePrompt) => "保存提示词",
+            (UiLanguage::SimplifiedChinese, MaxOutputTokens) => "最大令牌数",
+            (UiLanguage::SimplifiedChinese, SavePrompt) => "保存配置档",
             (UiLanguage::SimplifiedChinese, PromptHint) => {
                 "可使用 {target}、{context} 和 {source}；用户模板必须包含 {target}。"
             }
@@ -492,7 +492,7 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, SearchTarget) => "搜索目标文本",
             (UiLanguage::SimplifiedChinese, Refresh) => "刷新",
             (UiLanguage::SimplifiedChinese, CopyOutput) => "复制输出",
-            (UiLanguage::SimplifiedChinese, Prompt) => "提示词",
+            (UiLanguage::SimplifiedChinese, Prompt) => "配置档",
             (UiLanguage::SimplifiedChinese, Source) => "来源",
             (UiLanguage::SimplifiedChinese, Order) => "排序",
             (UiLanguage::SimplifiedChinese, Target) => "目标",
@@ -502,7 +502,7 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, HistoryPrivacy) => {
                 "仅在此页面打开历史数据库，离开后立即关闭。"
             }
-            (UiLanguage::SimplifiedChinese, AllPrompts) => "全部提示词",
+            (UiLanguage::SimplifiedChinese, AllPrompts) => "全部配置档",
             (UiLanguage::SimplifiedChinese, AllSources) => "全部来源",
             (UiLanguage::SimplifiedChinese, Selection) => "划词",
             (UiLanguage::SimplifiedChinese, Hover) => "悬停",
@@ -727,11 +727,11 @@ mod windows_app {
             NoSavedApiKey => match language { UiLanguage::English => "No saved key for this target.".to_owned(), UiLanguage::SimplifiedChinese => "此目标没有已保存的密钥。".to_owned() },
             ApiKeyInactiveTargetDeleted => match language { UiLanguage::English => "API key deleted, but this credential target is not active; the resident was not refreshed.".to_owned(), UiLanguage::SimplifiedChinese => "API 密钥已删除，但此凭据目标未启用；未刷新驻留程序。".to_owned() },
             DeleteApiKeyFailed { detail } => match language { UiLanguage::English => format!("Could not delete API key: {detail}"), UiLanguage::SimplifiedChinese => format!("无法删除 API 密钥：{detail}") },
-            NoPromptProfile => match language { UiLanguage::English => "There is no prompt profile to save.".to_owned(), UiLanguage::SimplifiedChinese => "没有可保存的提示词配置。".to_owned() },
-            CannotSavePrompt { detail } => match language { UiLanguage::English => format!("Cannot save prompt: {detail}"), UiLanguage::SimplifiedChinese => format!("无法保存提示词：{detail}") },
-            NewPromptUnsaved => match language { UiLanguage::English => "New prompt is unsaved. Edit it, then choose Save prompt.".to_owned(), UiLanguage::SimplifiedChinese => "新提示词尚未保存。编辑后请选择“保存提示词”。".to_owned() },
-            UnsavedPromptDiscarded => match language { UiLanguage::English => "Unsaved new prompt discarded; the saved configuration was unchanged.".to_owned(), UiLanguage::SimplifiedChinese => "已丢弃未保存的新提示词；已保存的配置未更改。".to_owned() },
-            PromptInvalid { detail } => match language { UiLanguage::English => format!("Prompt is invalid: {detail}"), UiLanguage::SimplifiedChinese => format!("提示词无效：{detail}") },
+            NoPromptProfile => match language { UiLanguage::English => "There is no profile to save.".to_owned(), UiLanguage::SimplifiedChinese => "没有可保存的配置档。".to_owned() },
+            CannotSavePrompt { detail } => match language { UiLanguage::English => format!("Cannot save profile: {detail}"), UiLanguage::SimplifiedChinese => format!("无法保存配置档：{detail}") },
+            NewPromptUnsaved => match language { UiLanguage::English => "New profile is unsaved. Edit it, then choose Save profile.".to_owned(), UiLanguage::SimplifiedChinese => "新配置档尚未保存。编辑后请选择“保存配置档”。".to_owned() },
+            UnsavedPromptDiscarded => match language { UiLanguage::English => "Unsaved new profile discarded; the saved settings were unchanged.".to_owned(), UiLanguage::SimplifiedChinese => "已丢弃未保存的新配置档；已保存的设置未更改。".to_owned() },
+            PromptInvalid { detail } => match language { UiLanguage::English => format!("Profile is invalid: {detail}"), UiLanguage::SimplifiedChinese => format!("配置档无效：{detail}") },
             InvalidTemperature => match language { UiLanguage::English => "Temperature must be a number from 0 to 2.".to_owned(), UiLanguage::SimplifiedChinese => "温度必须是 0 到 2 之间的数字。".to_owned() },
             InvalidMaxOutputTokens => match language { UiLanguage::English => "Max output tokens must be a positive integer.".to_owned(), UiLanguage::SimplifiedChinese => "最大输出令牌数必须是正整数。".to_owned() },
             ConfigPathUnavailable => match language { UiLanguage::English => "LOCALAPPDATA is not available".to_owned(), UiLanguage::SimplifiedChinese => "LOCALAPPDATA 不可用".to_owned() },
@@ -1516,7 +1516,7 @@ mod windows_app {
             hwnd,
             &mut h,
             ID_PROMPTS_TAB,
-            "Prompts",
+            "Profiles",
             None,
             Slot::SaveSettings,
         )?;
@@ -1769,7 +1769,13 @@ mod windows_app {
         )?;
 
         // —— Prompts: meta row on top, side-by-side editors below ——
-        add_label(hwnd, &mut h, "ID", Some(View::Prompts), Slot::PromptIdLabel)?;
+        add_label(
+            hwnd,
+            &mut h,
+            "Profile",
+            Some(View::Prompts),
+            Slot::PromptIdLabel,
+        )?;
         h.profile_id = add_combo_with_kind(
             hwnd,
             &mut h,
@@ -1829,7 +1835,7 @@ mod windows_app {
         add_label(
             hwnd,
             &mut h,
-            "Max output tokens",
+            "Max tokens",
             Some(View::Prompts),
             Slot::PromptTokensLabel,
         )?;
@@ -1854,7 +1860,7 @@ mod windows_app {
             hwnd,
             &mut h,
             ID_SAVE_PROMPT,
-            "Save prompt",
+            "Save profile",
             Some(View::Prompts),
             Slot::SavePrompt,
         )?;
@@ -5363,7 +5369,7 @@ mod windows_app {
     }
     fn new_prompt(state: &mut ManagerState) {
         let mut prompt = PromptConfig::new(format!("custom-{}", state.config.profiles.len() + 1));
-        prompt.name = "New prompt".to_owned();
+        prompt.name = "New profile".to_owned();
         prompt.system_prompt = "Interpret the target using the supplied context.".to_owned();
         prompt.user_template =
             "Target:\n{target}\nContext:\n{context}\nSource:\n{source}".to_owned();
@@ -6629,7 +6635,7 @@ mod windows_app {
 #[cfg(windows)]
 fn main() {
     if let Err(error) = windows_app::run() {
-        eprintln!("selection translate manager failed: {error}");
+        eprintln!("LingoSnap manager failed: {error}");
         std::process::exit(1);
     }
 }
