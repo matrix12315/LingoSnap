@@ -30,8 +30,8 @@ pub enum HistoryOrder {
     OldestFirst,
 }
 
-/// Parameterized search and filter options.  Search is over target and output
-/// text; all user-provided values are bound parameters, never SQL fragments.
+/// Parameterized search and filter options.  Search is over the target text
+/// only; all user-provided values are bound parameters, never SQL fragments.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HistoryQuery {
     pub search: Option<String>,
@@ -207,8 +207,7 @@ pub(crate) fn query(
     let mut values: Vec<Box<dyn ToSql>> = Vec::new();
 
     if let Some(search) = query.search.as_deref() {
-        sql.push_str(" AND (instr(target, ?1) > 0 OR instr(output, ?2) > 0)");
-        values.push(Box::new(search.to_owned()));
+        sql.push_str(" AND instr(lower(target), lower(?1)) > 0");
         values.push(Box::new(search.to_owned()));
     }
     if let Some(prompt_id) = query.prompt_id.as_deref() {

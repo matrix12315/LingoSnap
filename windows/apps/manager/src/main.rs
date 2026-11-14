@@ -266,7 +266,7 @@ mod windows_app {
         PromptHint,
         SearchCard,
         EntriesCard,
-        SearchTargetOutput,
+        SearchTarget,
         Refresh,
         CopyOutput,
         Prompt,
@@ -334,7 +334,7 @@ mod windows_app {
         TextKey::PromptHint,
         TextKey::SearchCard,
         TextKey::EntriesCard,
-        TextKey::SearchTargetOutput,
+        TextKey::SearchTarget,
         TextKey::Refresh,
         TextKey::CopyOutput,
         TextKey::Prompt,
@@ -415,7 +415,7 @@ mod windows_app {
             }
             (UiLanguage::English, SearchCard) => "Search",
             (UiLanguage::English, EntriesCard) => "Entries",
-            (UiLanguage::English, SearchTargetOutput) => "Search target/output",
+            (UiLanguage::English, SearchTarget) => "Search targets",
             (UiLanguage::English, Refresh) => "Refresh",
             (UiLanguage::English, CopyOutput) => "Copy output",
             (UiLanguage::English, Prompt) => "Prompt",
@@ -488,7 +488,7 @@ mod windows_app {
             }
             (UiLanguage::SimplifiedChinese, SearchCard) => "搜索",
             (UiLanguage::SimplifiedChinese, EntriesCard) => "记录",
-            (UiLanguage::SimplifiedChinese, SearchTargetOutput) => "搜索目标/输出",
+            (UiLanguage::SimplifiedChinese, SearchTarget) => "搜索目标文本",
             (UiLanguage::SimplifiedChinese, Refresh) => "刷新",
             (UiLanguage::SimplifiedChinese, CopyOutput) => "复制输出",
             (UiLanguage::SimplifiedChinese, Prompt) => "提示词",
@@ -4513,7 +4513,7 @@ mod windows_app {
     /// the placeholder inside the input).
     fn apply_search_placeholder(state: &ManagerState) {
         const EM_SETCUEBANNER: u32 = 0x1501;
-        let text = wide(ui_text(state.language(), TextKey::SearchTargetOutput));
+        let text = wide(ui_text(state.language(), TextKey::SearchTarget));
         unsafe {
             let _ = SendMessageW(
                 state.handles.history_search,
