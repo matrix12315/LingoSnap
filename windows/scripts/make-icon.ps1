@@ -1,12 +1,11 @@
 <#
 .SYNOPSIS
-Draws the LingoSnap seal (a vermilion rounded square with the white glyph 译)
+Draws the LingoSnap seal (a vermilion rounded square with white text lines and an AI sparkle)
 and packs it into windows\assets\lingosnap.ico.
 
 .DESCRIPTION
 The .ico is committed, so builds do not need this script. Run it only to change
-the artwork. Sizes 16 and 20 px are too small for the glyph and use a solid seal
-with a white bar. Every entry is stored as PNG.
+the artwork. Every entry is stored as PNG. A preview strip is written next to the icon.
 #>
 [CmdletBinding()]
 param(
@@ -22,7 +21,6 @@ Add-Type -AssemblyName System.Drawing
 
 $sizes = 16, 20, 24, 32, 40, 48, 64, 256
 $seal = [System.Drawing.ColorTranslator]::FromHtml('#B23A25')
-$glyph = [string][char]0x8BD1
 
 function New-RoundedPath([single]$size, [single]$radius) {
     $path = New-Object System.Drawing.Drawing2D.GraphicsPath
@@ -35,31 +33,47 @@ function New-RoundedPath([single]$size, [single]$radius) {
     return $path
 }
 
+function New-RoundedBar([single]$x, [single]$y, [single]$w, [single]$h) {
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $d = $h
+    $path.AddArc($x, $y, $d, $d, 90, 180)
+    $path.AddArc($x + $w - $d, $y, $d, $d, 270, 180)
+    $path.CloseFigure()
+    return $path
+}
+
+function New-Sparkle([single]$cx, [single]$cy, [single]$outer, [single]$inner) {
+    # Four-point star: the usual "AI" mark.
+    $points = New-Object 'System.Collections.Generic.List[System.Drawing.PointF]'
+    for ($i = 0; $i -lt 8; $i++) {
+        $angle = [Math]::PI / 4 * $i - [Math]::PI / 2
+        $r = if ($i % 2 -eq 0) { $outer } else { $inner }
+        $points.Add((New-Object System.Drawing.PointF([single]($cx + $r * [Math]::Cos($angle)), [single]($cy + $r * [Math]::Sin($angle)))))
+    }
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $path.AddPolygon($points.ToArray())
+    return $path
+}
+
+# Text lines (the app processes text) plus a sparkle (AI models), white on the seal.
 function New-SealPng([int]$size) {
     $bitmap = New-Object System.Drawing.Bitmap($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($bitmap)
     try {
         $g.SmoothingMode = 'AntiAlias'
-        $g.TextRenderingHint = 'AntiAliasGridFit'
         $g.Clear([System.Drawing.Color]::Transparent)
         # The page's .seal is 4px radius at 27px.
         $radius = [Math]::Max(2.0, $size * 4.0 / 27.0)
         $path = New-RoundedPath $size $radius
         $g.FillPath((New-Object System.Drawing.SolidBrush($seal)), $path)
         $white = [System.Drawing.Brushes]::White
-        if ($size -lt 24) {
-            $barWidth = [Math]::Round($size * 0.5)
-            $barHeight = [Math]::Max(2, [Math]::Round($size * 0.14))
-            $g.FillRectangle($white, [single](($size - $barWidth) / 2), [single](($size - $barHeight) / 2), [single]$barWidth, [single]$barHeight)
+        $barHeight = [Math]::Max(2.0, $size * 0.10)
+        $left = $size * 0.18
+        foreach ($bar in @(@(0.30, 0.26), @(0.54, 0.64), @(0.72, 0.44))) {
+            $top = $size * $bar[0] - $barHeight / 2
+            $g.FillPath($white, (New-RoundedBar $left $top ($size * $bar[1]) $barHeight))
         }
-        else {
-            $font = New-Object System.Drawing.Font('Microsoft YaHei', [single]($size * 0.62), [System.Drawing.FontStyle]::Bold, [System.Drawing.GraphicsUnit]::Pixel)
-            $format = New-Object System.Drawing.StringFormat
-            $format.Alignment = 'Center'
-            $format.LineAlignment = 'Center'
-            $box = New-Object System.Drawing.RectangleF(0, [single]($size * 0.02), $size, $size)
-            $g.DrawString($glyph, $font, $white, $box, $format)
-        }
+        $g.FillPath($white, (New-Sparkle ($size * 0.67) ($size * 0.27) ($size * 0.23) ($size * 0.06)))
     }
     finally {
         $g.Dispose()
