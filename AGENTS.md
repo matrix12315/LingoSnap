@@ -10,6 +10,7 @@ This repository contains an ultralight selection and hover translation applicati
 - `windows/crates/platform-windows/`: Win32, UI Automation, clipboard, capture, OCR, credential, and other Windows adapters.
 - `windows/apps/`: Windows executable packages (`resident` and `manager`).
 - `windows/scripts/`: Windows-only development, measurement, and local packaging scripts.
+- `windows/assets/`: Windows icons and other resources.
 - `windows/target/` and `windows/tmp/`: generated Windows build output and Windows-only scratch files; neither contains source of record.
 - `crates/`: portable shared Rust crates only. Shared crates must not be placed under `windows/`.
 - `android/`: Reserved for a possible Android client; do not add Android code without an approved plan.
