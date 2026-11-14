@@ -114,7 +114,7 @@ mod windows_impl {
         lparam: LPARAM,
         hover_enabled: bool,
         rest_enabled: bool,
-        skin: selection_core::config::PopupSkin,
+        skin: lingosnap_core::config::PopupSkin,
     ) {
         match lparam.0 as u32 {
             WM_LBUTTONDBLCLK => unsafe {
@@ -135,7 +135,7 @@ mod windows_impl {
         hwnd: HWND,
         hover_enabled: bool,
         rest_enabled: bool,
-        skin: selection_core::config::PopupSkin,
+        skin: lingosnap_core::config::PopupSkin,
     ) {
         let menu = match unsafe { CreatePopupMenu() } {
             Ok(menu) => menu,
@@ -149,7 +149,7 @@ mod windows_impl {
         } else {
             MF_STRING
         };
-        use selection_core::config::PopupSkin;
+        use lingosnap_core::config::PopupSkin;
         let classic_flags = if skin == PopupSkin::Classic {
             MF_STRING | MF_CHECKED
         } else {

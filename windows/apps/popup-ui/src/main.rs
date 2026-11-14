@@ -11,7 +11,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 #![cfg(windows)]
 
-use selection_ui_protocol::{
+use lingosnap_ui_protocol::{
     Anchor, Envelope, Handshake, Surface, UiCommand, UiEvent, MANAGER_PIPE_NAME, PIPE_NAME,
 };
 use std::cell::{Cell, RefCell};
@@ -105,7 +105,7 @@ static SHARED_PIPE: std::sync::Mutex<Option<pipe_connection::Pipe>> = std::sync:
 /// Dev capture target.
 static PENDING_CAPTURE: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
-// Keep in sync with selection_ui_protocol::COMPANION_WINDOW_CLASS (the
+// Keep in sync with lingosnap_ui_protocol::COMPANION_WINDOW_CLASS (the
 // resident matches clicks against this class) and MANAGER_WINDOW_CLASS.
 const CLASS_NAME: PCWSTR = w!("LingoSnapPopupUi");
 const MANAGER_CLASS_NAME: PCWSTR = w!("LingoSnapManagerUi");
@@ -2052,11 +2052,11 @@ mod tests {
         // literal, so the agreement with ui-protocol is checked here.
         assert_eq!(
             text(super::CLASS_NAME),
-            selection_ui_protocol::COMPANION_WINDOW_CLASS
+            lingosnap_ui_protocol::COMPANION_WINDOW_CLASS
         );
         assert_eq!(
             text(super::MANAGER_CLASS_NAME),
-            selection_ui_protocol::MANAGER_WINDOW_CLASS
+            lingosnap_ui_protocol::MANAGER_WINDOW_CLASS
         );
     }
 }

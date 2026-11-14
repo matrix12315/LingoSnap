@@ -1,8 +1,8 @@
 //! Completed-entry insertion and manager-facing history queries.
 
+use lingosnap_core::{normalize::normalize_target, ExtractionSource};
+use lingosnap_platform_interface::CompletedEntry;
 use rusqlite::{params, params_from_iter, types::Type, Connection, Error as SqliteError, ToSql};
-use selection_core::{normalize::normalize_target, ExtractionSource};
-use selection_platform_interface::CompletedEntry;
 
 use crate::db::StorageError;
 

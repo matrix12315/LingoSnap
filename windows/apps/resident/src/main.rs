@@ -2,17 +2,17 @@
 
 mod history_writer;
 
-use selection_core::{default_config_path, AppConfig, ProviderConfig, RequestGate};
-use selection_platform_interface::{
+use lingosnap_core::{default_config_path, AppConfig, ProviderConfig, RequestGate};
+use lingosnap_platform_interface::{
     CancellationToken, HistoryStore, PopupSink, PreparedRequest,
     ProviderError as InterfaceProviderError, ProviderResult, TranslationProvider,
 };
-use selection_platform_windows::composition::{AppRuntime, ProviderRuntime};
-use selection_platform_windows::credentials;
-use selection_provider_openai::{
+use lingosnap_platform_windows::composition::{AppRuntime, ProviderRuntime};
+use lingosnap_platform_windows::credentials;
+use lingosnap_provider_openai::{
     CancellationToken as OpenAiCancellation, DeltaSink, OpenAiConfig, OpenAiProvider,
 };
-use selection_storage::{default_history_path, HistoryDatabase};
+use lingosnap_storage::{default_history_path, HistoryDatabase};
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
@@ -33,8 +33,8 @@ impl DeltaSink for DeltaChannel {
 /// platform contract.  Keep this mapping explicit: the platform layer and
 /// popup must never receive provider response bodies, endpoints, request
 /// content, credentials, or raw Windows error strings.
-fn map_provider_error(error: selection_provider_openai::ProviderError) -> InterfaceProviderError {
-    use selection_provider_openai::ProviderError as OpenAiError;
+fn map_provider_error(error: lingosnap_provider_openai::ProviderError) -> InterfaceProviderError {
+    use lingosnap_provider_openai::ProviderError as OpenAiError;
 
     match error {
         OpenAiError::InvalidConfiguration(_)
@@ -103,11 +103,11 @@ impl TranslationProvider for OpenAiAdapter {
 
 fn main() {
     let runtime = build_runtime();
-    if selection_platform_windows::app::run(runtime).is_err() {
+    if lingosnap_platform_windows::app::run(runtime).is_err() {
         // The executable uses the Windows subsystem, so stderr is normally
         // invisible. Keep both channels generic and privacy-safe.
         eprintln!("LingoSnap resident could not start");
-        selection_platform_windows::app::show_resident_startup_failure();
+        lingosnap_platform_windows::app::show_resident_startup_failure();
         std::process::exit(1);
     }
 }
@@ -232,8 +232,8 @@ fn load_config() -> (AppConfig, Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::map_provider_error;
-    use selection_platform_interface::ProviderError as InterfaceError;
-    use selection_provider_openai::ProviderError as OpenAiError;
+    use lingosnap_platform_interface::ProviderError as InterfaceError;
+    use lingosnap_provider_openai::ProviderError as OpenAiError;
 
     #[test]
     fn maps_provider_categories_without_preserving_sensitive_details() {

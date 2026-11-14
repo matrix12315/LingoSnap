@@ -33,4 +33,4 @@ pub use response_format::normalize_terminal_response;
 pub use text::{ExtractionSource, ScreenRect, TextContext, TriggerKind};
 
 /// Marker retained for compatibility with the bootstrap crate.
-pub const CRATE_NAME: &str = "selection-core";
+pub const CRATE_NAME: &str = "lingosnap-core";

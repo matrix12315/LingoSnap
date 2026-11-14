@@ -12,7 +12,7 @@ pub use db::{default_history_path, HistoryDatabase, StorageError};
 pub use history::{HistoryEntry, HistoryOrder, HistoryQuery, MAX_HISTORY_ENTRIES};
 
 /// Marker retained for compatibility with the bootstrap crate.
-pub const CRATE_NAME: &str = "selection-storage";
+pub const CRATE_NAME: &str = "lingosnap-storage";
 
 #[cfg(test)]
 mod tests {
@@ -22,9 +22,9 @@ mod tests {
     use std::sync::Arc;
     use std::thread;
 
+    use lingosnap_core::ExtractionSource;
+    use lingosnap_platform_interface::CompletedEntry;
     use rusqlite::Connection;
-    use selection_core::ExtractionSource;
-    use selection_platform_interface::CompletedEntry;
 
     use super::{
         default_history_path, HistoryDatabase, HistoryOrder, HistoryQuery, StorageError,

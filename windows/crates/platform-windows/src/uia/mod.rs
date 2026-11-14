@@ -16,8 +16,8 @@ mod selection;
 mod worker {
     use super::point;
     use super::selection;
-    use selection_core::TriggerKind;
-    use selection_platform_interface::{
+    use lingosnap_core::TriggerKind;
+    use lingosnap_platform_interface::{
         CancellationToken, ExtractionFailure, ExtractionResult, ScreenPoint, ScreenRect,
     };
     use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
@@ -122,7 +122,7 @@ mod worker {
         }
     }
 
-    impl selection_platform_interface::TextExtractor for UiaExtractor {
+    impl lingosnap_platform_interface::TextExtractor for UiaExtractor {
         fn extract(
             &self,
             trigger: TriggerKind,
@@ -278,8 +278,8 @@ pub use worker::UiaExtractor;
 
 #[cfg(not(windows))]
 mod unsupported {
-    use selection_core::TriggerKind;
-    use selection_platform_interface::{
+    use lingosnap_core::TriggerKind;
+    use lingosnap_platform_interface::{
         ExtractionFailure, ExtractionResult, ScreenPoint, ScreenRect, TextExtractor,
     };
 

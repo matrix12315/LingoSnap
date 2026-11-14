@@ -6,7 +6,7 @@
 //! window around the actual UIA range and returns the target's UTF-8 byte
 //! offset inside that window.
 
-use selection_core::sentence::sentence_for_target_at;
+use lingosnap_core::sentence::sentence_for_target_at;
 
 #[cfg(windows)]
 use windows::Win32::UI::Accessibility::{
@@ -102,7 +102,7 @@ pub(crate) fn sentence_context_for_range(
 }
 
 /// Selection variant: the target's own sentence on its own line, bounded,
-/// or nothing (see `selection_core::sentence::selection_context`).
+/// or nothing (see `lingosnap_core::sentence::selection_context`).
 #[cfg(windows)]
 pub(crate) fn selection_context_for_range(
     range: &IUIAutomationTextRange,
@@ -110,5 +110,5 @@ pub(crate) fn selection_context_for_range(
     target: &str,
 ) -> Option<String> {
     let (context, target_offset) = context_for_range(range, expand_unit)?;
-    selection_core::sentence::selection_context_at(&context, target, target_offset)
+    lingosnap_core::sentence::selection_context_at(&context, target, target_offset)
 }

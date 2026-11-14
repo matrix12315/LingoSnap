@@ -5,14 +5,14 @@ mod windows_impl {
     use super::super::composition::{AppRuntime, Pipeline, PipelineEvent, PIPELINE_EVENT};
     use super::super::mouse::{self, MouseTrigger, ScreenPoint};
     use super::super::{config_reload, foreground, hotkey, popup, runtime_trace, tray, webview_ui};
-    use selection_core::{
+    use lingosnap_core::{
         cache::{CacheKey, ResultCache},
         config::{save_config_atomic, PopupSkin},
         default_config_path, Coordinator, JobInput, JobPriority, RequestGate, RequestRejection,
         TextContext, TriggerKind,
     };
-    use selection_platform_interface::{canonical_utc_now, CancellationToken, CompletedEntry};
-    use selection_ui_protocol::{Anchor, UiCommand, UiEvent};
+    use lingosnap_platform_interface::{canonical_utc_now, CancellationToken, CompletedEntry};
+    use lingosnap_ui_protocol::{Anchor, UiCommand, UiEvent};
     use std::process::{Child, Command};
     use std::sync::mpsc::Receiver;
     use std::thread;
@@ -255,7 +255,7 @@ mod windows_impl {
         presented_trigger: Option<TriggerKind>,
         popup_guard_root_window: isize,
         popup_anchor: popup::Point,
-        last_selection_rect: Option<(selection_core::ScreenRect, isize)>,
+        last_selection_rect: Option<(lingosnap_core::ScreenRect, isize)>,
         active_prompt_id: Option<String>,
         config_generation: u64,
         popup_failure_reported: bool,
@@ -304,7 +304,7 @@ mod windows_impl {
         source_root_window: isize,
         foreground_guard_root_window: isize,
         pointer: Option<ScreenPoint>,
-        selection_rect: Option<selection_core::ScreenRect>,
+        selection_rect: Option<lingosnap_core::ScreenRect>,
         prompt_id: String,
         bypass_duplicate_suppression: bool,
         source_popup_id: Option<popup::PopupId>,
@@ -328,7 +328,7 @@ mod windows_impl {
     struct ActiveRequest {
         process_id: u32,
         text: TextContext,
-        prepared: selection_core::PreparedRequest,
+        prepared: lingosnap_core::PreparedRequest,
         cache_key: CacheKey,
     }
 
@@ -707,7 +707,7 @@ mod windows_impl {
                         lparam,
                         false,
                         false,
-                        selection_core::config::PopupSkin::Classic,
+                        lingosnap_core::config::PopupSkin::Classic,
                     );
                 } else {
                     tray::handle_callback(
@@ -1068,7 +1068,7 @@ mod windows_impl {
 
     /// True when `class` is the window class of the fair-copy companion.
     fn is_companion_class(class: &str) -> bool {
-        class == selection_ui_protocol::COMPANION_WINDOW_CLASS
+        class == lingosnap_ui_protocol::COMPANION_WINDOW_CLASS
     }
 
     /// True when `hwnd`'s top-level window is a fair-copy companion window.
@@ -1639,9 +1639,9 @@ mod windows_impl {
     }
 
     fn selection_rect_for_root(
-        remembered: Option<(selection_core::ScreenRect, isize)>,
+        remembered: Option<(lingosnap_core::ScreenRect, isize)>,
         current_root: isize,
-    ) -> Option<selection_core::ScreenRect> {
+    ) -> Option<lingosnap_core::ScreenRect> {
         remembered.and_then(|(rect, root)| (root != 0 && root == current_root).then_some(rect))
     }
 
@@ -1797,15 +1797,15 @@ mod windows_impl {
     fn popup_output_selected_text(
         state: &ShellState,
         source_root_window: isize,
-    ) -> Option<selection_core::TextContext> {
+    ) -> Option<lingosnap_core::TextContext> {
         let entry = state
             .popups
             .iter()
             .find(|entry| entry.popup.is_root_window(source_root_window))?;
         let text = entry.popup.output_selected_text()?;
-        Some(selection_core::TextContext::new(
+        Some(lingosnap_core::TextContext::new(
             text,
-            selection_core::ExtractionSource::UiaSelection,
+            lingosnap_core::ExtractionSource::UiaSelection,
         ))
     }
 
@@ -1959,7 +1959,7 @@ mod windows_impl {
         if state.fair_copy.is_none() {
             return false;
         }
-        let class: Vec<u16> = selection_ui_protocol::COMPANION_WINDOW_CLASS
+        let class: Vec<u16> = lingosnap_ui_protocol::COMPANION_WINDOW_CLASS
             .encode_utf16()
             .chain(Some(0))
             .collect();
@@ -2013,12 +2013,12 @@ mod windows_impl {
     fn send_appearance(state: &mut ShellState) {
         let ui = &state.runtime.config.ui;
         let language = match ui.manager_language {
-            selection_core::UiLanguage::English => "en",
-            selection_core::UiLanguage::SimplifiedChinese => "zh-CN",
+            lingosnap_core::UiLanguage::English => "en",
+            lingosnap_core::UiLanguage::SimplifiedChinese => "zh-CN",
         };
         let theme = match ui.theme {
-            selection_core::UiTheme::Light => "light",
-            selection_core::UiTheme::Dark => "dark",
+            lingosnap_core::UiTheme::Light => "light",
+            lingosnap_core::UiTheme::Dark => "dark",
         };
         let event = UiEvent::SetAppearance {
             language: language.to_owned(),
@@ -2207,14 +2207,14 @@ mod windows_impl {
         let Some(path) = default_config_path() else {
             return false;
         };
-        let Ok(config) = selection_core::AppConfig::load(path) else {
+        let Ok(config) = lingosnap_core::AppConfig::load(path) else {
             return false;
         };
         apply_config(hwnd, state, config);
         true
     }
 
-    fn apply_config(hwnd: HWND, state: &mut ShellState, config: selection_core::AppConfig) {
+    fn apply_config(hwnd: HWND, state: &mut ShellState, config: lingosnap_core::AppConfig) {
         // One atomic save can yield more than one directory notification.
         // Reapplying identical configuration would needlessly cancel a slow
         // provider stream and leave its loading surface without a result.
@@ -2320,8 +2320,8 @@ mod windows_impl {
     }
 
     fn resident_runtime_config_eq(
-        left: &selection_core::AppConfig,
-        right: &selection_core::AppConfig,
+        left: &lingosnap_core::AppConfig,
+        right: &lingosnap_core::AppConfig,
     ) -> bool {
         left.profiles == right.profiles
             && left.defaults == right.defaults
@@ -2329,7 +2329,7 @@ mod windows_impl {
             && left.hotkeys == right.hotkeys
     }
 
-    fn apply_provider_runtime(state: &mut ShellState, config: &selection_core::AppConfig) {
+    fn apply_provider_runtime(state: &mut ShellState, config: &lingosnap_core::AppConfig) {
         let provider_runtime = (state.runtime.provider_reloader)(config);
         state.runtime.request_gate = RequestGate::with_optional_provider(
             provider_runtime.provider_config,
@@ -2364,8 +2364,8 @@ mod windows_impl {
         attempt: u64,
         trigger: TriggerKind,
         pointer: Option<ScreenPoint>,
-        selection_rect: Option<selection_core::ScreenRect>,
-        result: selection_platform_interface::ExtractionResult,
+        selection_rect: Option<lingosnap_core::ScreenRect>,
+        result: lingosnap_platform_interface::ExtractionResult,
     }
 
     fn take_matching_pending(
@@ -2626,7 +2626,7 @@ mod windows_impl {
             ),
         );
         let cached_output = state.cache.get(&cache_key).map(|output| {
-            selection_core::normalize_terminal_response(preflight_prepared.prompt_id(), output)
+            lingosnap_core::normalize_terminal_response(preflight_prepared.prompt_id(), output)
         });
         // The anchor must be committed BEFORE the result surface is created:
         // the surface's ShowLoading event carries it, and a chooser-first
@@ -2863,7 +2863,7 @@ mod windows_impl {
     /// The chooser rail follows the configured profile order verbatim: the
     /// manager's Profiles page owns that order (the first four entries sit
     /// on the rail, the rest fold under More…).
-    fn profile_chooser_order(profiles: &[selection_core::PromptConfig]) -> Vec<usize> {
+    fn profile_chooser_order(profiles: &[lingosnap_core::PromptConfig]) -> Vec<usize> {
         (0..profiles.len()).collect()
     }
 
@@ -2871,7 +2871,7 @@ mod windows_impl {
     /// popup's owner messages: chooser selection, retry, close, copy, and
     /// self-translation of selected output text.
     fn handle_fair_copy_command(hwnd: HWND, state: &mut ShellState, line: &str) {
-        use selection_ui_protocol::Envelope;
+        use lingosnap_ui_protocol::Envelope;
         let Ok(envelope) = serde_json::from_str::<Envelope<UiCommand>>(line) else {
             return;
         };
@@ -2963,7 +2963,7 @@ mod windows_impl {
                     spec,
                     config_generation: state.config_generation,
                 };
-                let context = TextContext::new(text, selection_core::ExtractionSource::Clipboard);
+                let context = TextContext::new(text, lingosnap_core::ExtractionSource::Clipboard);
                 let anchor = anchor
                     .map(|anchor| popup::Point {
                         x: anchor.x,
@@ -3040,7 +3040,7 @@ mod windows_impl {
     fn handle_finished(
         state: &mut ShellState,
         job_id: u64,
-        result: Result<(), selection_platform_interface::ProviderError>,
+        result: Result<(), lingosnap_platform_interface::ProviderError>,
     ) {
         if !is_current_presentation(&state.coordinator, state.popup_job_id, job_id) {
             return;
@@ -3052,7 +3052,7 @@ mod windows_impl {
                 let normalized_output = state.active_request.as_ref().map_or_else(
                     || state.stream_output.clone(),
                     |active| {
-                        selection_core::normalize_terminal_response(
+                        lingosnap_core::normalize_terminal_response(
                             active.prepared.prompt_id(),
                             &state.stream_output,
                         )
@@ -3113,7 +3113,7 @@ mod windows_impl {
             Err(error)
                 if !matches!(
                     error,
-                    selection_platform_interface::ProviderError::Cancelled
+                    lingosnap_platform_interface::ProviderError::Cancelled
                 ) =>
             {
                 runtime_trace::record_id("finish_received", job_id);
@@ -3438,7 +3438,7 @@ mod windows_impl {
         output: &str,
         served_from_cache: bool,
     ) {
-        if selection_core::normalize::normalize_target(output).is_empty() {
+        if lingosnap_core::normalize::normalize_target(output).is_empty() {
             return;
         }
         let Some(history) = state.runtime.history.as_ref() else {
@@ -3532,7 +3532,7 @@ mod windows_impl {
         }
     }
 
-    fn next_prompt(config: &selection_core::AppConfig, current: &str) -> String {
+    fn next_prompt(config: &lingosnap_core::AppConfig, current: &str) -> String {
         if config.profiles.is_empty() {
             return String::new();
         }
@@ -3603,69 +3603,69 @@ mod windows_impl {
         }
     }
 
-    fn extraction_error(error: selection_platform_interface::ExtractionFailure) -> &'static str {
+    fn extraction_error(error: lingosnap_platform_interface::ExtractionFailure) -> &'static str {
         match error {
-            selection_platform_interface::ExtractionFailure::UnsupportedPattern => {
+            lingosnap_platform_interface::ExtractionFailure::UnsupportedPattern => {
                 "This control does not expose selectable text"
             }
-            selection_platform_interface::ExtractionFailure::EmptyRange => {
+            lingosnap_platform_interface::ExtractionFailure::EmptyRange => {
                 "No selectable text was detected"
             }
-            selection_platform_interface::ExtractionFailure::PermissionDenied => {
+            lingosnap_platform_interface::ExtractionFailure::PermissionDenied => {
                 "Text access was denied"
             }
-            selection_platform_interface::ExtractionFailure::StaleElement => {
+            lingosnap_platform_interface::ExtractionFailure::StaleElement => {
                 "The text target changed before it could be read"
             }
-            selection_platform_interface::ExtractionFailure::Platform => {
+            lingosnap_platform_interface::ExtractionFailure::Platform => {
                 "Text extraction is unavailable"
             }
         }
     }
 
-    fn provider_error(error: selection_platform_interface::ProviderError) -> String {
+    fn provider_error(error: lingosnap_platform_interface::ProviderError) -> String {
         match error {
-            selection_platform_interface::ProviderError::Cancelled => "Request cancelled".into(),
-            selection_platform_interface::ProviderError::Configuration => {
+            lingosnap_platform_interface::ProviderError::Cancelled => "Request cancelled".into(),
+            lingosnap_platform_interface::ProviderError::Configuration => {
                 "Provider configuration is invalid".into()
             }
-            selection_platform_interface::ProviderError::Authentication => {
+            lingosnap_platform_interface::ProviderError::Authentication => {
                 "Provider authentication failed".into()
             }
-            selection_platform_interface::ProviderError::HttpStatus(status) => {
+            lingosnap_platform_interface::ProviderError::HttpStatus(status) => {
                 format!("Provider returned HTTP status {status}")
             }
-            selection_platform_interface::ProviderError::RateLimited => {
+            lingosnap_platform_interface::ProviderError::RateLimited => {
                 "Provider rate limit exceeded".into()
             }
-            selection_platform_interface::ProviderError::Dns => {
+            lingosnap_platform_interface::ProviderError::Dns => {
                 "Provider host could not be resolved".into()
             }
-            selection_platform_interface::ProviderError::Tls => {
+            lingosnap_platform_interface::ProviderError::Tls => {
                 "Secure provider connection failed".into()
             }
-            selection_platform_interface::ProviderError::Timeout => {
+            lingosnap_platform_interface::ProviderError::Timeout => {
                 "Provider request timed out".into()
             }
-            selection_platform_interface::ProviderError::Transport => {
+            lingosnap_platform_interface::ProviderError::Transport => {
                 "Provider connection failed".into()
             }
-            selection_platform_interface::ProviderError::MalformedResponse => {
+            lingosnap_platform_interface::ProviderError::MalformedResponse => {
                 "Provider returned malformed data".into()
             }
-            selection_platform_interface::ProviderError::IncompleteResponse => {
+            lingosnap_platform_interface::ProviderError::IncompleteResponse => {
                 "Provider response ended before completion".into()
             }
-            selection_platform_interface::ProviderError::ResponseTooLarge => {
+            lingosnap_platform_interface::ProviderError::ResponseTooLarge => {
                 "Provider response exceeded the safety limit".into()
             }
-            selection_platform_interface::ProviderError::Unavailable => {
+            lingosnap_platform_interface::ProviderError::Unavailable => {
                 "Provider is unavailable".into()
             }
-            selection_platform_interface::ProviderError::InvalidResponse => {
+            lingosnap_platform_interface::ProviderError::InvalidResponse => {
                 "Provider returned invalid data".into()
             }
-            selection_platform_interface::ProviderError::Local(_) => {
+            lingosnap_platform_interface::ProviderError::Local(_) => {
                 "Provider request failed".into()
             }
         }
@@ -3705,7 +3705,7 @@ mod windows_impl {
 
         #[test]
         fn remembered_selection_rect_is_only_reused_in_same_root_window() {
-            let rect = selection_core::ScreenRect::new(1, 2, 3, 4);
+            let rect = lingosnap_core::ScreenRect::new(1, 2, 3, 4);
             assert_eq!(selection_rect_for_root(Some((rect, 10)), 10), Some(rect));
             assert_eq!(selection_rect_for_root(Some((rect, 10)), 11), None);
             assert_eq!(selection_rect_for_root(Some((rect, 0)), 0), None);
@@ -3713,9 +3713,9 @@ mod windows_impl {
 
         #[test]
         fn manager_language_only_change_is_not_a_resident_runtime_change() {
-            let english = selection_core::AppConfig::default();
+            let english = lingosnap_core::AppConfig::default();
             let mut chinese = english.clone();
-            chinese.ui.manager_language = selection_core::UiLanguage::SimplifiedChinese;
+            chinese.ui.manager_language = lingosnap_core::UiLanguage::SimplifiedChinese;
             assert!(resident_runtime_config_eq(&english, &chinese));
 
             chinese.provider.model.push_str("-changed");
@@ -3760,11 +3760,11 @@ mod windows_impl {
         #[test]
         fn chooser_follows_the_configured_profile_order() {
             let profiles = vec![
-                selection_core::PromptConfig::new("translate"),
-                selection_core::PromptConfig::new("linguist-analysis"),
-                selection_core::PromptConfig::new("program"),
-                selection_core::PromptConfig::new("concise-explanation"),
-                selection_core::PromptConfig::new("contextual-zh-en"),
+                lingosnap_core::PromptConfig::new("translate"),
+                lingosnap_core::PromptConfig::new("linguist-analysis"),
+                lingosnap_core::PromptConfig::new("program"),
+                lingosnap_core::PromptConfig::new("concise-explanation"),
+                lingosnap_core::PromptConfig::new("contextual-zh-en"),
             ];
 
             // The manager's Profiles page owns the order; the rail mirrors it
@@ -3945,7 +3945,7 @@ mod windows_impl {
             let current_text = TextContext {
                 target: "current".to_owned(),
                 context: None,
-                source: selection_core::ExtractionSource::UiaSelection,
+                source: lingosnap_core::ExtractionSource::UiaSelection,
                 screen_rect: None,
             };
             let current = coordinator
@@ -3954,7 +3954,7 @@ mod windows_impl {
             let replacement_text = TextContext {
                 target: "replacement".to_owned(),
                 context: Some("whole sentence".to_owned()),
-                source: selection_core::ExtractionSource::UiaSelection,
+                source: lingosnap_core::ExtractionSource::UiaSelection,
                 screen_rect: None,
             };
             coordinator
@@ -3988,7 +3988,7 @@ mod windows_impl {
             let text = TextContext {
                 target: "target".to_owned(),
                 context: Some("whole sentence".to_owned()),
-                source: selection_core::ExtractionSource::UiaSelection,
+                source: lingosnap_core::ExtractionSource::UiaSelection,
                 screen_rect: None,
             };
             let job = coordinator
@@ -4043,7 +4043,7 @@ mod windows_impl {
         #[test]
         fn companion_class_matches_only_the_protocol_class() {
             assert!(is_companion_class(
-                selection_ui_protocol::COMPANION_WINDOW_CLASS
+                lingosnap_ui_protocol::COMPANION_WINDOW_CLASS
             ));
             assert!(!is_companion_class("Notepad"));
             assert!(!is_companion_class(""));

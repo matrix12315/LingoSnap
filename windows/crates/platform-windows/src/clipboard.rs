@@ -1,14 +1,14 @@
 //! Manual/Selection clipboard extraction with a bounded, independent clipboard snapshot.
 
-use selection_core::{ExtractionSource, TextContext, TriggerKind};
-use selection_platform_interface::{
+use lingosnap_core::{ExtractionSource, TextContext, TriggerKind};
+use lingosnap_platform_interface::{
     ExtractionFailure, ExtractionResult, ScreenPoint, ScreenRect, TextExtractor,
 };
 
 #[cfg(windows)]
 mod windows_impl {
     use super::*;
-    use selection_platform_interface::CancellationToken;
+    use lingosnap_platform_interface::CancellationToken;
     use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender, TrySendError};
     use std::sync::Mutex;
     use std::thread::{self, JoinHandle};
@@ -310,7 +310,7 @@ mod windows_impl {
         restore.observe_copy(copy);
 
         let target = read_unicode_text()?;
-        let target = selection_core::normalize::normalize_target(&target);
+        let target = lingosnap_core::normalize::normalize_target(&target);
         if target.is_empty() {
             return Err(ExtractionFailure::EmptyRange);
         }

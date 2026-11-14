@@ -1,5 +1,5 @@
 use crate::{error::ProviderResult, sse, ProviderError};
-use selection_core::PreparedRequest;
+use lingosnap_core::PreparedRequest;
 use serde_json::json;
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -159,7 +159,7 @@ impl OpenAiProvider {
         let payload = payload_from_request(request);
         let config = Arc::clone(&self.config);
         thread::Builder::new()
-            .name("selection-provider-openai".to_owned())
+            .name("lingosnap-provider-openai".to_owned())
             .spawn(move || stream_worker(&config, payload, cancellation, &mut sink))
             .map_err(|_| ProviderError::Transport)?
             .join()
@@ -826,7 +826,7 @@ mod tests {
     #[test]
     fn payload_uses_gate_rendering_and_profile_inference() {
         use super::{build_request_body, payload_from_request};
-        use selection_core::{
+        use lingosnap_core::{
             prepare_request, ExtractionSource, JobInput, PromptConfig, ProviderConfig, TextContext,
             TriggerKind,
         };
@@ -1048,7 +1048,7 @@ mod tests {
     mod local_mock {
         use super::super::{CancellationToken, DeltaSink, OpenAiConfig, OpenAiProvider};
         use crate::ProviderError;
-        use selection_core::{
+        use lingosnap_core::{
             prepare_request, ExtractionSource, JobInput, PromptConfig, ProviderConfig, TextContext,
             TriggerKind,
         };
@@ -1151,14 +1151,14 @@ mod tests {
             bytes
         }
 
-        fn prepared(endpoint: &str) -> selection_core::PreparedRequest {
+        fn prepared(endpoint: &str) -> lingosnap_core::PreparedRequest {
             prepared_with_max_output_tokens(endpoint, None)
         }
 
         fn prepared_with_max_output_tokens(
             endpoint: &str,
             max_output_tokens: Option<u32>,
-        ) -> selection_core::PreparedRequest {
+        ) -> lingosnap_core::PreparedRequest {
             let input = JobInput::new(
                 42,
                 TriggerKind::Selection,

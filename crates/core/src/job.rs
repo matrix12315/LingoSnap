@@ -2,7 +2,7 @@
 
 use crate::{TextContext, TriggerKind};
 
-// Kept available from `selection_core::job` as well as the crate root. The
+// Kept available from `lingosnap_core::job` as well as the crate root. The
 // definition remains in `request_gate`, which is the only construction site.
 pub use crate::request_gate::PreparedRequest;
 

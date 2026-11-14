@@ -1,5 +1,5 @@
 [package]
-name = "selection-core"
+name = "lingosnap-core"
 version = "0.1.0"
 edition = "2021"
 

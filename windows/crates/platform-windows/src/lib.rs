@@ -18,4 +18,4 @@ pub mod uia;
 pub mod webview_ui;
 
 /// Marker retained for callers that only need to identify the platform crate.
-pub const CRATE_NAME: &str = "selection-platform-windows";
+pub const CRATE_NAME: &str = "lingosnap-platform-windows";

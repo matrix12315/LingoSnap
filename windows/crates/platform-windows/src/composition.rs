@@ -5,10 +5,10 @@
 //! communicate back with small, owned messages and post one wake-up message
 //! to the resident window.
 
-use selection_core::{
+use lingosnap_core::{
     AppConfig, ExtractionSource, ProviderConfig, RequestGate, ScreenRect, TextContext, TriggerKind,
 };
-use selection_platform_interface::{
+use lingosnap_platform_interface::{
     CancellationToken, ExtractionFailure, ExtractionResult, HistoryStore, PopupSink, ProviderError,
     TranslationProvider,
 };
@@ -139,7 +139,7 @@ impl Pipeline {
             source_root_window,
             pointer,
             selection_rect,
-            cancellation: selection_platform_interface::CancellationToken::new(),
+            cancellation: lingosnap_platform_interface::CancellationToken::new(),
         };
 
         #[cfg(windows)]
@@ -197,7 +197,7 @@ impl Pipeline {
     pub fn stream(
         &self,
         job_id: u64,
-        request: selection_core::PreparedRequest,
+        request: lingosnap_core::PreparedRequest,
     ) -> CancellationToken {
         let token = CancellationToken::new();
         let worker_token = token.clone();
@@ -628,7 +628,7 @@ fn enrich_missing_selection_context(
 ) {
     let needs_context = result.as_ref().is_ok_and(|text| {
         text.source != ExtractionSource::Ocr
-            && selection_core::sentence::selection_target_wants_context(&text.target)
+            && lingosnap_core::sentence::selection_target_wants_context(&text.target)
             && selection_sentence(text).is_none()
     });
     if !needs_context || selection_rect.is_none() {
@@ -657,14 +657,14 @@ fn enrich_missing_selection_context(
 fn selection_sentence(text: &TextContext) -> Option<String> {
     text.context
         .as_deref()
-        .and_then(|context| selection_core::sentence::sentence_for_target(context, &text.target))
+        .and_then(|context| lingosnap_core::sentence::sentence_for_target(context, &text.target))
 }
 
 fn merge_selection_context(primary: &mut TextContext, candidate: &TextContext) -> bool {
     let context = candidate
         .context
         .as_deref()
-        .and_then(|context| selection_core::sentence::selection_context(context, &primary.target));
+        .and_then(|context| lingosnap_core::sentence::selection_context(context, &primary.target));
     let Some(context) = context else { return false };
     primary.context = Some(context);
     true
@@ -702,7 +702,7 @@ fn sanitize_extraction_result(trigger: TriggerKind, result: ExtractionResult) ->
         return result;
     }
     result.and_then(|text| {
-        selection_core::normalize::sanitize_hover_text_context(text)
+        lingosnap_core::normalize::sanitize_hover_text_context(text)
             .ok_or(ExtractionFailure::EmptyRange)
     })
 }
@@ -710,7 +710,7 @@ fn sanitize_extraction_result(trigger: TriggerKind, result: ExtractionResult) ->
 fn hover_sentence(text: &TextContext) -> Option<String> {
     text.context
         .as_deref()
-        .and_then(|context| selection_core::sentence::sentence_for_target(context, &text.target))
+        .and_then(|context| lingosnap_core::sentence::sentence_for_target(context, &text.target))
 }
 
 fn merge_hover_context(primary: &mut TextContext, candidate: &TextContext) -> bool {
@@ -718,7 +718,7 @@ fn merge_hover_context(primary: &mut TextContext, candidate: &TextContext) -> bo
         return false;
     }
     let context = candidate.context.as_deref().and_then(|context| {
-        selection_core::sentence::sentence_for_target(context, &primary.target)
+        lingosnap_core::sentence::sentence_for_target(context, &primary.target)
     });
     let Some(context) = context else { return false };
     primary.context = Some(context);
@@ -726,8 +726,8 @@ fn merge_hover_context(primary: &mut TextContext, candidate: &TextContext) -> bo
 }
 
 fn same_normalized_target(first: &str, second: &str) -> bool {
-    let first = selection_core::normalize::normalize_target(first);
-    let second = selection_core::normalize::normalize_target(second);
+    let first = lingosnap_core::normalize::normalize_target(first);
+    let second = lingosnap_core::normalize::normalize_target(second);
     first == second
         || (first.is_ascii() && second.is_ascii() && first.eq_ignore_ascii_case(&second))
 }
@@ -906,8 +906,8 @@ mod tests {
         native_failure_allows_fallback, sanitize_extraction_result, selection_sentence,
         ExtractionMailbox, ExtractionRequest,
     };
-    use selection_core::{ExtractionSource, ScreenRect, TextContext, TriggerKind};
-    use selection_platform_interface::ScreenPoint;
+    use lingosnap_core::{ExtractionSource, ScreenRect, TextContext, TriggerKind};
+    use lingosnap_platform_interface::ScreenPoint;
 
     #[test]
     fn clipboard_fallback_routing_allows_selection_and_manual_but_rejects_hover() {
@@ -920,10 +920,10 @@ mod tests {
     #[test]
     fn sensitive_native_failure_is_terminal_before_clipboard_or_ocr() {
         assert!(!native_failure_allows_fallback(
-            selection_platform_interface::ExtractionFailure::PermissionDenied
+            lingosnap_platform_interface::ExtractionFailure::PermissionDenied
         ));
         assert!(native_failure_allows_fallback(
-            selection_platform_interface::ExtractionFailure::UnsupportedPattern
+            lingosnap_platform_interface::ExtractionFailure::UnsupportedPattern
         ));
     }
 
@@ -1043,7 +1043,7 @@ mod tests {
         let junk = TextContext::new("foo***bar", ExtractionSource::UiaPoint);
         assert_eq!(
             sanitize_extraction_result(TriggerKind::Hover, Ok(junk.clone())),
-            Err(selection_platform_interface::ExtractionFailure::EmptyRange)
+            Err(lingosnap_platform_interface::ExtractionFailure::EmptyRange)
         );
         assert_eq!(
             sanitize_extraction_result(TriggerKind::Selection, Ok(junk.clone())),
@@ -1059,7 +1059,7 @@ mod tests {
             source_root_window: attempt as isize,
             pointer: Some(ScreenPoint::new(attempt as i32, 10)),
             selection_rect: Some(ScreenRect::new(1, 2, 3, 4)),
-            cancellation: selection_platform_interface::CancellationToken::new(),
+            cancellation: lingosnap_platform_interface::CancellationToken::new(),
         }
     }
 
@@ -1110,11 +1110,11 @@ mod tests {
 #[cfg(all(test, windows))]
 mod end_to_end_tests {
     use super::*;
-    use selection_core::{
+    use lingosnap_core::{
         ExtractionSource, JobInput, PromptConfig, ProviderConfig, RequestGate, TextContext,
         TriggerKind,
     };
-    use selection_platform_interface::{ProviderError, ProviderResult};
+    use lingosnap_platform_interface::{ProviderError, ProviderResult};
     use std::sync::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
@@ -1145,7 +1145,7 @@ mod end_to_end_tests {
     impl TranslationProvider for MockProvider {
         fn stream(
             &self,
-            prepared: &selection_platform_interface::PreparedRequest,
+            prepared: &lingosnap_platform_interface::PreparedRequest,
             cancellation: &CancellationToken,
             sink: &mut dyn PopupSink,
         ) -> ProviderResult {
@@ -1258,7 +1258,7 @@ mod end_to_end_tests {
         let empty = extracted_input(1, "\u{200b}\u{2060}\u{feff}  \n");
 
         let rejection = gate().prepare(&empty, 1, false).unwrap_err();
-        assert_eq!(rejection, selection_core::RequestRejection::MissingTarget);
+        assert_eq!(rejection, lingosnap_core::RequestRejection::MissingTarget);
         assert_eq!(provider.calls.load(Ordering::Acquire), 0);
     }
 

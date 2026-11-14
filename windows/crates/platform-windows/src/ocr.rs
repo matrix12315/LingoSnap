@@ -1,10 +1,10 @@
 //! Windows Runtime OCR adapter.  It is deliberately a fallback: callers can
 //! use UIA/clipboard first and instantiate this extractor only when needed.
 
-use selection_core::{
+use lingosnap_core::{
     normalize::normalize_target, ExtractionSource, ScreenRect, TextContext, TriggerKind,
 };
-use selection_platform_interface::{
+use lingosnap_platform_interface::{
     CancellationToken, ExtractionFailure, ExtractionResult, ScreenPoint, TextExtractor,
 };
 use std::sync::mpsc::{self, RecvTimeoutError};
@@ -566,7 +566,7 @@ fn recognize(
             .first()
             .and_then(|index| word_offsets.get(*index).copied().flatten())
             .and_then(|offset| {
-                selection_core::sentence::sentence_for_target_at(&context, &target, offset)
+                lingosnap_core::sentence::sentence_for_target_at(&context, &target, offset)
             })
     };
     let context = match trigger {
@@ -679,7 +679,7 @@ fn hover_sentence_from_lines(
         }
         source.push_str(line);
     }
-    selection_core::sentence::sentence_for_target_at(&source, target, target_offset?)
+    lingosnap_core::sentence::sentence_for_target_at(&source, target, target_offset?)
 }
 
 fn valid_line_bounds((left, top, right, bottom): (f32, f32, f32, f32)) -> bool {
@@ -787,8 +787,8 @@ mod tests {
         word_indices_in_region, OcrExtractor, WordBox, HOVER_CONTEXT_HEIGHT, HOVER_CONTEXT_WIDTH,
         MANUAL_POINTER_HEIGHT, MANUAL_POINTER_WIDTH,
     };
-    use selection_core::{ScreenRect, TriggerKind};
-    use selection_platform_interface::ScreenPoint;
+    use lingosnap_core::{ScreenRect, TriggerKind};
+    use lingosnap_platform_interface::ScreenPoint;
 
     #[test]
     fn nearest_word_prefers_containing_or_closest_box() {

@@ -6,18 +6,18 @@
 
 #[cfg(windows)]
 mod windows_app {
-    use selection_core::{
+    use lingosnap_core::{
         default_config_path, save_atomic, AppConfig, ExtractionSource, PromptConfig, UiLanguage,
         UiTheme,
     };
-    use selection_platform_windows::{
+    use lingosnap_platform_windows::{
         app::{
             ensure_resident_running, notify_config_changed, notify_credentials_changed,
             RefreshOutcome, ResidentStartOutcome,
         },
         credentials, webview_ui,
     };
-    use selection_storage::{
+    use lingosnap_storage::{
         default_history_path, HistoryDatabase, HistoryEntry, HistoryOrder, HistoryQuery,
     };
     use std::ffi::c_void;
@@ -1382,13 +1382,13 @@ mod windows_app {
                         let mtime = meta.modified().ok();
                         if mtime != (*state).config_skin_mtime {
                             (*state).config_skin_mtime = mtime;
-                            if let Ok(current) = selection_core::AppConfig::load(path) {
+                            if let Ok(current) = lingosnap_core::AppConfig::load(path) {
                                 let skin = current.ui.popup_skin;
                                 (*state).config.ui.popup_skin = skin;
                                 // Follow a tray skin switch: start the page
                                 // for fair-copy, hand back to the native
                                 // window for classic.
-                                if skin == selection_core::config::PopupSkin::FairCopy {
+                                if skin == lingosnap_core::config::PopupSkin::FairCopy {
                                     start_fair_copy_view(hwnd, &mut *state);
                                 } else if (*state).fair_copy.is_some() {
                                     if let Some(mut ui) = (*state).fair_copy.take() {
@@ -1420,7 +1420,7 @@ mod windows_app {
                     let ready = std::mem::take(&mut (*state).fair_copy_ready);
                     if ready
                         && (*state).config.ui.popup_skin
-                            == selection_core::config::PopupSkin::FairCopy
+                            == lingosnap_core::config::PopupSkin::FairCopy
                     {
                         // The user closed the fair-copy manager window: that
                         // closes the manager, exactly like closing the native
@@ -5913,11 +5913,11 @@ mod windows_app {
         // skin is re-read from config.toml — the manager's in-memory
         // snapshot predates any tray switch made after this process started.
         if let Some(path) = default_config_path() {
-            if let Ok(current) = selection_core::AppConfig::load(&path) {
+            if let Ok(current) = lingosnap_core::AppConfig::load(&path) {
                 state.config.ui.popup_skin = current.ui.popup_skin;
             }
         }
-        if state.config.ui.popup_skin != selection_core::config::PopupSkin::FairCopy {
+        if state.config.ui.popup_skin != lingosnap_core::config::PopupSkin::FairCopy {
             return;
         }
         let Ok(mut ui) = webview_ui::FairCopyUi::start("manager", hwnd) else {
@@ -6566,16 +6566,16 @@ mod windows_app {
             visibility_style, DeleteBlocked, ManagerLayout, StatusEvent, StatusOperation, View,
             ALL_TEXT_KEYS,
         };
-        use selection_core::{AppConfig, ExtractionSource, PromptConfig, UiLanguage};
-        use selection_platform_windows::app::{RefreshOutcome, ResidentStartOutcome};
-        use selection_storage::HistoryEntry;
+        use lingosnap_core::{AppConfig, ExtractionSource, PromptConfig, UiLanguage};
+        use lingosnap_platform_windows::app::{RefreshOutcome, ResidentStartOutcome};
+        use lingosnap_storage::HistoryEntry;
         use windows::Win32::UI::WindowsAndMessaging::WS_VISIBLE;
         #[test]
         fn manager_page_window_class_matches_the_protocol_constant() {
             // The resident and the companion find the page window by this
             // name; w! needs a literal, so the agreement is checked here.
             let class = unsafe { windows::core::w!("LingoSnapManagerUi").to_string() }.unwrap();
-            assert_eq!(class, selection_ui_protocol::MANAGER_WINDOW_CLASS);
+            assert_eq!(class, lingosnap_ui_protocol::MANAGER_WINDOW_CLASS);
         }
 
         fn named(id: &str, name: &str) -> PromptConfig {

@@ -99,11 +99,11 @@ Portable crates remain at the repository root so a future macOS adapter can reus
 
 Package names:
 
-- `selection-core`
-- `selection-platform-interface`
-- `selection-platform-windows`
-- `selection-provider-openai`
-- `selection-storage`
+- `lingosnap-core`
+- `lingosnap-platform-interface`
+- `lingosnap-platform-windows`
+- `lingosnap-provider-openai`
+- `lingosnap-storage`
 - `lingosnap-resident`
 - `lingosnap-manager`
 
@@ -181,7 +181,7 @@ Actions:
 Verification:
 
 ```powershell
-cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" test -p selection-platform-windows'
+cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" test -p lingosnap-platform-windows'
 cmd /c 'call "D:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 && "D:\DevTools\cargo\bin\cargo.exe" build --release -p lingosnap-resident'
 powershell -ExecutionPolicy Bypass -File .\windows\scripts\measure-memory.ps1 -ProcessName lingosnap-resident -DurationSeconds 300
 ```
@@ -244,7 +244,7 @@ Verification:
 
 - Unit-test missing, empty, whitespace-only, zero-width-only, context-only, oversized, cancelled, and stale inputs.
 - Use a fake provider counter and prove all rejected inputs result in exactly zero provider calls.
-- Run `D:\DevTools\cargo\bin\cargo.exe test -p selection-core -p selection-platform-interface` from the x64 `VsDevCmd.bat` environment.
+- Run `D:\DevTools\cargo\bin\cargo.exe test -p lingosnap-core -p lingosnap-platform-interface` from the x64 `VsDevCmd.bat` environment.
 
 Exit gate: no code outside the request gate can construct `PreparedRequest`.
 
@@ -914,7 +914,7 @@ the source surface or route streamed output to the wrong window.
 
 #### 21.3 — Sanitize only exact Hover targets before remote admission
 
-1. Add one portable, idempotent Hover-token sanitizer in `selection-core`. Use the already locked
+1. Add one portable, idempotent Hover-token sanitizer in `lingosnap-core`. Use the already locked
    and locally cached `unicode-ident` tables for Unicode identifier continuations/combining marks;
    add no network, global dependency, normalization fold, or case conversion.
 2. Remove zero-width formatting, surrounding whitespace, bullets, Markdown markers, quotation

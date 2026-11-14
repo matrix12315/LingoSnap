@@ -7,8 +7,8 @@
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
 
-use selection_core::ScreenRect;
-pub use selection_platform_interface::ScreenPoint;
+use lingosnap_core::ScreenRect;
+pub use lingosnap_platform_interface::ScreenPoint;
 
 pub const SELECTION_DELAY: Duration = Duration::from_millis(80);
 pub const HOVER_DELAY: Duration = Duration::from_millis(500);

@@ -2,8 +2,8 @@
 //! (`lingosnap-ui.exe`): named-pipe server plus child lifecycle. Protocol v1;
 //! see FAIR_COPY_UI_PLAN.md.
 
-use selection_core::config::PopupSkin;
-use selection_ui_protocol::{
+use lingosnap_core::config::PopupSkin;
+use lingosnap_ui_protocol::{
     Envelope, Handshake, UiEvent, MANAGER_PIPE_NAME, PIPE_NAME, PROTOCOL_VERSION,
 };
 use std::io::{BufRead, BufReader, Write};

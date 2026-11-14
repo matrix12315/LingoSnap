@@ -1,5 +1,5 @@
 [package]
-name = "selection-ui-protocol"
+name = "lingosnap-ui-protocol"
 version = "0.1.0"
 edition = "2021"
 

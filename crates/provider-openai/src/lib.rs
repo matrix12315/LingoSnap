@@ -12,4 +12,4 @@ pub use client::{CancellationToken, DeltaSink, OpenAiConfig, OpenAiProvider};
 pub use error::{ProviderError, ProviderResult};
 
 /// Marker retained for compatibility with the bootstrap crate.
-pub const CRATE_NAME: &str = "selection-provider-openai";
+pub const CRATE_NAME: &str = "lingosnap-provider-openai";

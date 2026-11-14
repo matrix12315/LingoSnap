@@ -112,13 +112,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "lingosnap-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "toml",
+ "unicode-ident",
+]
+
+[[package]]
 name = "lingosnap-manager"
 version = "0.1.0"
 dependencies = [
- "selection-core",
- "selection-platform-windows",
- "selection-storage",
- "selection-ui-protocol",
+ "lingosnap-core",
+ "lingosnap-platform-windows",
+ "lingosnap-storage",
+ "lingosnap-ui-protocol",
+ "serde_json",
+ "windows 0.61.3",
+]
+
+[[package]]
+name = "lingosnap-platform-interface"
+version = "0.1.0"
+dependencies = [
+ "lingosnap-core",
+]
+
+[[package]]
+name = "lingosnap-platform-windows"
+version = "0.1.0"
+dependencies = [
+ "lingosnap-core",
+ "lingosnap-platform-interface",
+ "lingosnap-ui-protocol",
+ "serde_json",
+ "windows 0.61.3",
+]
+
+[[package]]
+name = "lingosnap-provider-openai"
+version = "0.1.0"
+dependencies = [
+ "lingosnap-core",
+ "serde",
  "serde_json",
  "windows 0.61.3",
 ]
@@ -127,22 +165,39 @@ dependencies = [
 name = "lingosnap-resident"
 version = "0.1.0"
 dependencies = [
- "selection-core",
- "selection-platform-interface",
- "selection-platform-windows",
- "selection-provider-openai",
- "selection-storage",
+ "lingosnap-core",
+ "lingosnap-platform-interface",
+ "lingosnap-platform-windows",
+ "lingosnap-provider-openai",
+ "lingosnap-storage",
+]
+
+[[package]]
+name = "lingosnap-storage"
+version = "0.1.0"
+dependencies = [
+ "lingosnap-core",
+ "lingosnap-platform-interface",
+ "rusqlite",
 ]
 
 [[package]]
 name = "lingosnap-ui"
 version = "0.1.0"
 dependencies = [
- "selection-ui-protocol",
+ "lingosnap-ui-protocol",
  "serde",
  "serde_json",
  "webview2-com",
  "windows 0.62.2",
+]
+
+[[package]]
+name = "lingosnap-ui-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -193,61 +248,6 @@ dependencies = [
  "hashlink",
  "libsqlite3-sys",
  "smallvec",
-]
-
-[[package]]
-name = "selection-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "toml",
- "unicode-ident",
-]
-
-[[package]]
-name = "selection-platform-interface"
-version = "0.1.0"
-dependencies = [
- "selection-core",
-]
-
-[[package]]
-name = "selection-platform-windows"
-version = "0.1.0"
-dependencies = [
- "selection-core",
- "selection-platform-interface",
- "selection-ui-protocol",
- "serde_json",
- "windows 0.61.3",
-]
-
-[[package]]
-name = "selection-provider-openai"
-version = "0.1.0"
-dependencies = [
- "selection-core",
- "serde",
- "serde_json",
- "windows 0.61.3",
-]
-
-[[package]]
-name = "selection-storage"
-version = "0.1.0"
-dependencies = [
- "rusqlite",
- "selection-core",
- "selection-platform-interface",
-]
-
-[[package]]
-name = "selection-ui-protocol"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
 ]
 
 [[package]]

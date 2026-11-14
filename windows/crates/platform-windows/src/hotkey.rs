@@ -2,7 +2,7 @@
 
 #[cfg(windows)]
 mod windows_impl {
-    use selection_core::config::{HotkeyAction, HotkeySettings};
+    use lingosnap_core::config::{HotkeyAction, HotkeySettings};
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::Input::KeyboardAndMouse::HOT_KEY_MODIFIERS;
     use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -318,7 +318,7 @@ mod windows_impl {
         use super::{
             parse_hotkey, plan_transition, HotkeyTransition, ParseHotkeyError, ParsedHotkey,
         };
-        use selection_core::config::HotkeySettings;
+        use lingosnap_core::config::HotkeySettings;
 
         #[test]
         fn parses_default_cycle_hotkey() {

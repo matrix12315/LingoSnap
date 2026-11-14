@@ -5,8 +5,8 @@
 //! and delegates each write to `HistoryDatabase`, whose connection is opened
 //! and closed for that operation.
 
-use selection_platform_interface::{CompletedEntry, HistoryError, HistoryStore};
-use selection_storage::HistoryDatabase;
+use lingosnap_platform_interface::{CompletedEntry, HistoryError, HistoryStore};
+use lingosnap_storage::HistoryDatabase;
 use std::sync::mpsc::{self, Sender, SyncSender};
 use std::sync::Mutex;
 use std::thread::{self, JoinHandle};
@@ -131,8 +131,8 @@ impl Drop for HistoryWriter {
 #[cfg(test)]
 mod tests {
     use super::HistoryWriter;
-    use selection_platform_interface::{CompletedEntry, ExtractionSource};
-    use selection_storage::HistoryDatabase;
+    use lingosnap_platform_interface::{CompletedEntry, ExtractionSource};
+    use lingosnap_storage::HistoryDatabase;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 

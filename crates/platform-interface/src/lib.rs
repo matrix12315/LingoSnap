@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub use selection_core::{
+pub use lingosnap_core::{
     ExtractionSource, JobInput, PreparedRequest, ScreenRect, TextContext, TriggerKind,
 };
 
@@ -171,13 +171,13 @@ pub trait PopupSink {
 }
 
 /// Marker retained for compatibility with the bootstrap crate.
-pub const CRATE_NAME: &str = "selection-platform-interface";
+pub const CRATE_NAME: &str = "lingosnap-platform-interface";
 
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use selection_core::{
+    use lingosnap_core::{
         ExtractionSource, JobInput, PromptConfig, ProviderConfig, RequestGate, TextContext,
     };
 
@@ -220,7 +220,7 @@ mod tests {
     fn input(id: u64, target: &str) -> JobInput {
         JobInput::new(
             id,
-            selection_core::TriggerKind::Manual,
+            lingosnap_core::TriggerKind::Manual,
             TextContext {
                 target: target.to_owned(),
                 context: Some("context".to_owned()),

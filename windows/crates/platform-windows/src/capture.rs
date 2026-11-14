@@ -4,7 +4,7 @@
 //! disk.  The public geometry helpers are kept independent of Win32 so the
 //! important edge cases can be tested on every host.
 
-use selection_core::ScreenRect;
+use lingosnap_core::ScreenRect;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CapturedPixels {
@@ -47,7 +47,7 @@ pub fn clamp_rect(rect: ScreenRect, bounds: ScreenRect) -> Option<ScreenRect> {
 }
 
 #[cfg(windows)]
-pub fn nearest_work_area(point: selection_platform_interface::ScreenPoint) -> ScreenRect {
+pub fn nearest_work_area(point: lingosnap_platform_interface::ScreenPoint) -> ScreenRect {
     use windows::Win32::Foundation::POINT;
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
@@ -77,7 +77,7 @@ pub fn nearest_work_area(point: selection_platform_interface::ScreenPoint) -> Sc
 /// default. The resident is per-monitor-DPI-aware, so a crop around a pointer
 /// on a secondary monitor must be scaled using that monitor's DPI.
 #[cfg(windows)]
-pub fn monitor_dpi(point: selection_platform_interface::ScreenPoint) -> u32 {
+pub fn monitor_dpi(point: lingosnap_platform_interface::ScreenPoint) -> u32 {
     use windows::Win32::Foundation::POINT;
     use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MONITOR_DEFAULTTONEAREST};
     use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
@@ -127,7 +127,7 @@ fn rect_from_win32(rect: windows::Win32::Foundation::RECT) -> ScreenRect {
 #[cfg(windows)]
 pub fn capture(
     rect: ScreenRect,
-) -> Result<CapturedPixels, selection_platform_interface::ExtractionFailure> {
+) -> Result<CapturedPixels, lingosnap_platform_interface::ExtractionFailure> {
     use std::ffi::c_void;
     use windows::Win32::Graphics::Gdi::{
         BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC,
@@ -140,25 +140,25 @@ pub fn capture(
     // top-left would silently lose the other side of the selected sentence.
     #[cfg(windows)]
     let Some(rect) = clamp_rect(rect, virtual_screen_bounds()) else {
-        return Err(selection_platform_interface::ExtractionFailure::EmptyRange);
+        return Err(lingosnap_platform_interface::ExtractionFailure::EmptyRange);
     };
     let width_i = rect.right.saturating_sub(rect.left);
     let height_i = rect.bottom.saturating_sub(rect.top);
     let (width, height) = (u32::try_from(width_i).ok(), u32::try_from(height_i).ok());
     let (Some(width), Some(height)) = (width, height) else {
-        return Err(selection_platform_interface::ExtractionFailure::Platform);
+        return Err(lingosnap_platform_interface::ExtractionFailure::Platform);
     };
     let Some(buffer_len) = checked_capture_len(width, height) else {
-        return Err(selection_platform_interface::ExtractionFailure::Platform);
+        return Err(lingosnap_platform_interface::ExtractionFailure::Platform);
     };
     let screen = unsafe { GetDC(None) };
     if screen.is_invalid() {
-        return Err(selection_platform_interface::ExtractionFailure::Platform);
+        return Err(lingosnap_platform_interface::ExtractionFailure::Platform);
     }
     let memory = unsafe { CreateCompatibleDC(Some(screen)) };
     if memory.is_invalid() {
         unsafe { ReleaseDC(None, screen) };
-        return Err(selection_platform_interface::ExtractionFailure::Platform);
+        return Err(lingosnap_platform_interface::ExtractionFailure::Platform);
     }
     let bitmap = unsafe { CreateCompatibleBitmap(screen, width as i32, height as i32) };
     if bitmap.is_invalid() {
@@ -166,7 +166,7 @@ pub fn capture(
             let _ = DeleteDC(memory);
             ReleaseDC(None, screen);
         }
-        return Err(selection_platform_interface::ExtractionFailure::Platform);
+        return Err(lingosnap_platform_interface::ExtractionFailure::Platform);
     }
     let old = unsafe { SelectObject(memory, HGDIOBJ(bitmap.0)) };
     if old.0.is_null() || old.0 as isize == -1 {
@@ -175,7 +175,7 @@ pub fn capture(
             let _ = DeleteDC(memory);
             ReleaseDC(None, screen);
         }
-        return Err(selection_platform_interface::ExtractionFailure::Platform);
+        return Err(lingosnap_platform_interface::ExtractionFailure::Platform);
     }
     let mut pixels = vec![0u8; buffer_len];
     let copied = unsafe {
@@ -203,7 +203,7 @@ pub fn capture(
             let _ = DeleteObject(HGDIOBJ(bitmap.0));
             ReleaseDC(None, screen);
         }
-        return Err(selection_platform_interface::ExtractionFailure::Platform);
+        return Err(lingosnap_platform_interface::ExtractionFailure::Platform);
     }
     let mut info = BITMAPINFO {
         bmiHeader: BITMAPINFOHEADER {
@@ -235,7 +235,7 @@ pub fn capture(
         ReleaseDC(None, screen);
     }
     if !read {
-        return Err(selection_platform_interface::ExtractionFailure::Platform);
+        return Err(lingosnap_platform_interface::ExtractionFailure::Platform);
     }
     Ok(CapturedPixels {
         rect,
@@ -248,14 +248,14 @@ pub fn capture(
 #[cfg(not(windows))]
 pub fn capture(
     _rect: ScreenRect,
-) -> Result<CapturedPixels, selection_platform_interface::ExtractionFailure> {
-    Err(selection_platform_interface::ExtractionFailure::Platform)
+) -> Result<CapturedPixels, lingosnap_platform_interface::ExtractionFailure> {
+    Err(lingosnap_platform_interface::ExtractionFailure::Platform)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{checked_capture_len, clamp_rect, inflate_rect};
-    use selection_core::ScreenRect;
+    use lingosnap_core::ScreenRect;
 
     #[test]
     fn inflate_and_clamp_handles_negative_virtual_coordinates() {

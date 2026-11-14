@@ -1,10 +1,10 @@
 //! Focused-element UI Automation selection extraction.
 
-use selection_core::{ExtractionSource, ScreenRect, TextContext};
-use selection_platform_interface::{ExtractionFailure, ExtractionResult, ScreenPoint};
+use lingosnap_core::{ExtractionSource, ScreenRect, TextContext};
+use lingosnap_platform_interface::{ExtractionFailure, ExtractionResult, ScreenPoint};
 
 #[cfg(windows)]
-use selection_core::normalize::{normalize_optional, normalize_target};
+use lingosnap_core::normalize::{normalize_optional, normalize_target};
 #[cfg(windows)]
 use windows::Win32::Foundation::HWND;
 #[cfg(windows)]
@@ -308,7 +308,7 @@ fn context_for_range(
 #[cfg(all(test, windows))]
 mod tests {
     use super::{can_try_point_fallback, process_id_allowed};
-    use selection_platform_interface::ExtractionFailure;
+    use lingosnap_platform_interface::ExtractionFailure;
 
     #[test]
     fn zero_expected_process_id_is_unconstrained() {

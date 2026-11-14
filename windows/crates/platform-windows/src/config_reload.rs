@@ -8,7 +8,7 @@
 
 #![cfg(windows)]
 
-use selection_core::AppConfig;
+use lingosnap_core::AppConfig;
 use std::os::windows::ffi::OsStrExt;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -314,7 +314,7 @@ mod tests {
         // Regression guard: the first overlapped wait must time out while the
         // watch remains armed; a later save must still produce an event.
         thread::sleep(Duration::from_millis(800));
-        selection_core::save_atomic(&path, &AppConfig::default()).expect("atomic config save");
+        lingosnap_core::save_atomic(&path, &AppConfig::default()).expect("atomic config save");
         let event = watcher
             .receiver
             .recv_timeout(Duration::from_secs(3))

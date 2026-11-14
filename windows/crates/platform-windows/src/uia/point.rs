@@ -1,7 +1,7 @@
 //! Hover UI Automation extraction from the pointer coordinate.
 
-use selection_core::{normalize::normalize_target, ExtractionSource, TextContext};
-use selection_platform_interface::{ExtractionFailure, ExtractionResult, ScreenPoint};
+use lingosnap_core::{normalize::normalize_target, ExtractionSource, TextContext};
+use lingosnap_platform_interface::{ExtractionFailure, ExtractionResult, ScreenPoint};
 
 /// Testable representation of one UI Automation bounding rectangle.
 ///
@@ -46,7 +46,7 @@ fn point_is_inside_bounding_rectangles(point: (f64, f64), rectangles: &[f64]) ->
 }
 
 #[cfg(windows)]
-use selection_core::normalize::normalize_optional;
+use lingosnap_core::normalize::normalize_optional;
 #[cfg(windows)]
 use windows::Win32::Foundation::POINT;
 #[cfg(windows)]
@@ -240,7 +240,7 @@ fn extract_from_element(element: &IUIAutomationElement, pointer: ScreenPoint) ->
 fn word_containing_rect(
     range: &windows::Win32::UI::Accessibility::IUIAutomationTextRange,
     pointer: ScreenPoint,
-) -> Option<selection_core::ScreenRect> {
+) -> Option<lingosnap_core::ScreenRect> {
     let array = unsafe { range.GetBoundingRectangles() }.ok()?;
     if array.is_null() {
         crate::runtime_trace::record("hover_uia_rect_array_null");
@@ -315,7 +315,7 @@ fn word_containing_rect(
                     {
                         return None;
                     }
-                    Some(selection_core::ScreenRect::new(
+                    Some(lingosnap_core::ScreenRect::new(
                         left as i32,
                         top as i32,
                         right as i32,
@@ -358,7 +358,7 @@ fn bounded_context(
 #[cfg(test)]
 mod tests {
     use super::{admit_hover_context, can_try_ancestor, point_is_inside_bounding_rectangles};
-    use selection_platform_interface::ExtractionFailure;
+    use lingosnap_platform_interface::ExtractionFailure;
 
     #[test]
     fn point_containment_uses_half_open_rectangle_boundaries() {

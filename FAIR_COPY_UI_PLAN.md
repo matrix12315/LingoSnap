@@ -129,4 +129,4 @@ Status: approved 2026-10-07. Implements the fair-copy mockup in
 - Selection context: one sentence on the target's own line, at most 300
   characters around the unchanged target; none when the target spans
   sentences or lines, is 120+ characters, or is already (nearly) the whole
-  sentence (`selection_core::sentence::selection_context`).
+  sentence (`lingosnap_core::sentence::selection_context`).

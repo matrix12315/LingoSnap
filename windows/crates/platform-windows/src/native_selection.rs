@@ -4,8 +4,8 @@
 //! does not expose TextPattern. It prefers the focused control owned by the
 //! originating process, then falls back to the window under the mouse-up point.
 
-use selection_core::{ExtractionSource, ScreenRect, TextContext};
-use selection_platform_interface::{
+use lingosnap_core::{ExtractionSource, ScreenRect, TextContext};
+use lingosnap_platform_interface::{
     CancellationToken, ExtractionFailure, ExtractionResult, ScreenPoint,
 };
 
@@ -95,11 +95,11 @@ pub(crate) fn extract_cancellable(
     }
     let raw_target = String::from_utf16(&units[start as usize..end as usize])
         .map_err(|_| ExtractionFailure::StaleElement)?;
-    let target = selection_core::normalize::normalize_target(&raw_target);
+    let target = lingosnap_core::normalize::normalize_target(&raw_target);
     if target.is_empty() {
         return Err(ExtractionFailure::EmptyRange);
     }
-    if target.chars().count() > selection_core::request_gate::MAX_TARGET_SCALARS {
+    if target.chars().count() > lingosnap_core::request_gate::MAX_TARGET_SCALARS {
         return Err(ExtractionFailure::Platform);
     }
     let byte_offset =
@@ -249,8 +249,8 @@ fn derive_context(full_text: &str, byte_offset: usize, target: &str) -> Option<S
         .char_indices()
         .find(|(_, ch)| !ch.is_whitespace() && !matches!(ch, '\u{200B}' | '\u{2060}' | '\u{FEFF}'))
         .map_or(byte_offset, |(offset, _)| byte_offset + offset);
-    selection_core::sentence::selection_context_at(full_text, target, adjusted_offset)
-        .map(|value| selection_core::normalize::normalize_text(&value))
+    lingosnap_core::sentence::selection_context_at(full_text, target, adjusted_offset)
+        .map(|value| lingosnap_core::normalize::normalize_text(&value))
         .filter(|value| value != target && !value.is_empty())
 }
 
@@ -338,7 +338,7 @@ mod tests {
         derive_context, is_allowed_edit_class_name, native_fallback_allowed, utf16_offset_to_byte,
         valid_utf16_range,
     };
-    use selection_core::ScreenRect;
+    use lingosnap_core::ScreenRect;
 
     #[test]
     fn allowlist_is_narrow_and_unicode_only() {

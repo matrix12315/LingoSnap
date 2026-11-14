@@ -4,8 +4,8 @@ use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use lingosnap_platform_interface::{CompletedEntry, HistoryStore};
 use rusqlite::{Connection, Error as SqliteError};
-use selection_platform_interface::{CompletedEntry, HistoryStore};
 
 use crate::history::{
     delete_one, insert_completed, insert_completed_batch, query, validate_entry, HistoryEntry,
@@ -167,8 +167,8 @@ impl HistoryStore for HistoryDatabase {
     fn insert_completed(
         &self,
         entry: CompletedEntry,
-    ) -> Result<(), selection_platform_interface::HistoryError> {
+    ) -> Result<(), lingosnap_platform_interface::HistoryError> {
         HistoryDatabase::insert_completed(self, entry)
-            .map_err(|error| selection_platform_interface::HistoryError(error.to_string()))
+            .map_err(|error| lingosnap_platform_interface::HistoryError(error.to_string()))
     }
 }
