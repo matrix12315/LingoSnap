@@ -329,6 +329,24 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     }
     return out;
   }
+  // Field labels and empty answers, shared by the popup and History
+  // renderers (keep both copies identical). "Chinese: 你好" becomes a muted
+  // label plus an ink value (at most 3 words before the colon); a value that
+  // is only "None" becomes a muted, italic placeholder.
+  function fieldHtml(text) {
+    var s = String(text).trim();
+    function value(v) {
+      return /^none\.?$/i.test(v) ? '<span class="none">None</span>' : inline(v);
+    }
+    var m = s.match(/^(?:\*\*)?([^:\uFF1A*`]+?)(?:\*\*)?(?::(?:\*\*)?(?:\s+|$)|\uFF1A(?:\*\*)?\s*)([\s\S]*)$/);
+    if (m) {
+      var label = m[1].trim();
+      if (label.length && label.length <= 40 && label.split(/\s+/).length <= 3) {
+        return '<span class="flabel">' + esc(label) + '</span>' + value(m[2].trim());
+      }
+    }
+    return value(s);
+  }
   function renderOutput(markdown) {
     var out = q('#page-history .houtput');
     if (!out) return;
@@ -348,15 +366,15 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
       var li = t.match(/^(?:[-*+•]|\d+[.)])\s+(.*)$/);
       if (li) current.items.push(li[1]); else current.prose.push(t);
     });
-    sections.forEach(function (sec) {
+    sections.forEach(function (sec, index) {
       var div = document.createElement('div');
       div.className = 'sec';
       var html = '';
       if (sec.title) html += '<h3>' + inline(sec.title) + '</h3>';
       if (sec.items.length) {
-        html += '<ul>' + sec.items.map(function (i) { return '<li>' + inline(i) + '</li>'; }).join('') + '</ul>';
+        html += '<ul>' + sec.items.map(function (i) { return '<li>' + fieldHtml(i) + '</li>'; }).join('') + '</ul>';
       }
-      sec.prose.forEach(function (p) { html += '<p class="fineprint">' + inline(p) + '</p>'; });
+      sec.prose.forEach(function (p) { html += '<p class="' + (index === 0 ? 'trans' : 'fineprint') + '">' + fieldHtml(p) + '</p>'; });
       div.innerHTML = html;
       out.appendChild(div);
     });

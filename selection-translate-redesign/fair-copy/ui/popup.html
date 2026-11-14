@@ -47,9 +47,9 @@
     <div class="sec">
       <h3>Translation</h3>
       <ul>
-        <li id="transLine">Chinese: 更改会立即应用到弹窗，并保存至 <span class="alt">config.toml</span></li>
-        <li>English: None</li>
-        <li>Error check: no spelling or grammar issues found</li>
+        <li id="transLine"><span class="flabel">Chinese</span>更改会立即应用到弹窗，并保存至 <span class="alt">config.toml</span></li>
+        <li><span class="flabel">English</span><span class="none">None</span></li>
+        <li><span class="flabel">Error check</span>no spelling or grammar issues found</li>
       </ul>
     </div>
 
@@ -77,6 +77,11 @@
         <li>Verb: change, rechange</li>
         <li>Adjective: changeable</li>
       </ul>
+    </div>
+
+    <div class="sec">
+      <h3>Synonyms</h3>
+      <p class="fineprint"><span class="none">None</span></p>
     </div>
 
     <div class="sec">
@@ -109,7 +114,7 @@
 <script>
   const copyBtn = document.getElementById('copyBtn');
   copyBtn.addEventListener('click', async () => {
-    try { await navigator.clipboard.writeText(document.getElementById('transLine').textContent.trim()); } catch (e) {}
+    try { var line = document.getElementById('transLine').cloneNode(true); line.querySelectorAll('.flabel').forEach(function (el) { el.remove(); }); await navigator.clipboard.writeText(line.textContent.trim()); } catch (e) {}
     copyBtn.classList.add('copied');
     copyBtn.lastChild.textContent = ' Copied';
     setTimeout(() => { copyBtn.classList.remove('copied'); copyBtn.lastChild.textContent = ' Copy'; }, 1600);

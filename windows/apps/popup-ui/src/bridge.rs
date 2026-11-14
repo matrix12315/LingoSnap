@@ -134,10 +134,29 @@ pub const BRIDGE_JS: &str = r##"<script>
     }
     return out;
   }
+  // Field labels and empty answers, shared by the popup and History
+  // renderers (keep both copies identical). "Chinese: 你好" becomes a muted
+  // label plus an ink value (at most 3 words before the colon); a value that
+  // is only "None" becomes a muted, italic placeholder.
+  function fieldHtml(text) {
+    var s = String(text).trim();
+    function value(v) {
+      return /^none\.?$/i.test(v) ? '<span class="none">None</span>' : inline(v);
+    }
+    var m = s.match(/^(?:\*\*)?([^:\uFF1A*`]+?)(?:\*\*)?(?::(?:\*\*)?(?:\s+|$)|\uFF1A(?:\*\*)?\s*)([\s\S]*)$/);
+    if (m) {
+      var label = m[1].trim();
+      if (label.length && label.length <= 40 && label.split(/\s+/).length <= 3) {
+        return '<span class="flabel">' + esc(label) + '</span>' + value(m[2].trim());
+      }
+    }
+    return value(s);
+  }
   // Markdown → the manuscript's section grammar: every heading opens a
   // .sec with an h3; lists become the bulleted ul; prose of a heading-less
-  // first section is the hero translation line (.trans), other prose is the
-  // soft fine print, exactly as the mockup sheets set them.
+  // first section is the hero translation line (.trans), other prose is
+  // .fineprint (ink as well), exactly as the mockup sheets set them. Labels
+  // and "None" values are muted (see fieldHtml).
   function renderMarkdown(markdown) {
     var lines = String(markdown || '').split(/\r?\n/);
     var sections = [], cur = null, list = null, para = [], fence = null;
@@ -196,10 +215,10 @@ pub const BRIDGE_JS: &str = r##"<script>
       if (sec.title) html += '<h3>' + inline(sec.title) + '</h3>';
       sec.blocks.forEach(function (b) {
         if (b.kind === 'ul') {
-          html += '<ul>' + b.items.map(function (i) { return '<li>' + inline(i) + '</li>'; }).join('') + '</ul>';
+          html += '<ul>' + b.items.map(function (i) { return '<li>' + fieldHtml(i) + '</li>'; }).join('') + '</ul>';
         } else if (b.kind === 'p') {
           var hero = index === 0;
-          html += '<p class="' + (hero ? 'trans' : 'fineprint') + '">' + inline(b.text) + '</p>';
+          html += '<p class="' + (hero ? 'trans' : 'fineprint') + '">' + fieldHtml(b.text) + '</p>';
         } else if (b.kind === 'quote') {
           html += '<blockquote>' + inline(b.text) + '</blockquote>';
         } else if (b.kind === 'code') {
