@@ -240,7 +240,10 @@ pub const BRIDGE_JS: &str = r##"<script>
   var seal = q('.card .chrome .seal');
   var status = q('.card .chrome .who span');
   var copyBtn = document.getElementById('copyBtn');
-  var STATUS_READY = status ? status.innerHTML : '';
+  // Status line of the card header: a live dot plus a translatable label.
+  function statusHtml(key, dot) {
+    return (dot ? '<i class="live-dot"></i>' : '') + '<span class="lbl" data-i18n="' + key + '">' + esc(t(key)) + '</span>';
+  }
   var errbox = null;
   function refit() {
     var m = manuscript();
@@ -265,9 +268,9 @@ pub const BRIDGE_JS: &str = r##"<script>
     if (sourcepanel) sourcepanel.classList.toggle('float', !error);
     if (seal) seal.classList.toggle('idle', error);
     if (status) {
-      if (mode === 'streaming') status.innerHTML = '<i class="live-dot"></i>writing\u2026';
-      else if (error) status.textContent = 'idle';
-      else status.innerHTML = STATUS_READY;
+      if (mode === 'streaming') status.innerHTML = statusHtml('writing', true);
+      else if (error) status.innerHTML = statusHtml('idle', false);
+      else status.innerHTML = statusHtml('ready', true);
     }
     if (copyBtn) {
       copyBtn.disabled = mode !== 'result';
@@ -280,8 +283,8 @@ pub const BRIDGE_JS: &str = r##"<script>
       errbox = document.createElement('div');
       errbox.className = 'errbox';
       errbox.innerHTML = '<div class="headline"></div><div class="detail"></div>' +
-        '<div class="actions"><button class="btn sm" type="button" data-act="retry">Retry</button>' +
-        '<button class="btn sm" type="button" data-act="close">Close</button></div>';
+        '<div class="actions"><button class="btn sm" type="button" data-act="retry" data-i18n="retry">' + esc(t('retry')) + '</button>' +
+        '<button class="btn sm" type="button" data-act="close" data-i18n="close">' + esc(t('close')) + '</button></div>';
       errbox.addEventListener('click', function (e) {
         var b = e.target.closest('button');
         if (!b) return;
@@ -292,7 +295,7 @@ pub const BRIDGE_JS: &str = r##"<script>
       else card.appendChild(errbox);
       lens(errbox);
     }
-    var text = String(message || 'Something went wrong.');
+    var text = String(message || t('wentWrong'));
     var cut = text.search(/[.!?。！？]\s/);
     var headline = cut > 0 ? text.slice(0, cut + 1) : text;
     var detail = cut > 0 ? text.slice(cut + 1).trim() : '';
@@ -340,7 +343,7 @@ pub const BRIDGE_JS: &str = r##"<script>
     // a More… capsule; clicks post the TRUE profile index.
     var LIMIT = 4;
     function compact(name) {
-      var word = String(name).trim().split(/\s+/).filter(function (part) { return part.length; })[0] || 'Profile';
+      var word = String(name).trim().split(/\s+/).filter(function (part) { return part.length; })[0] || t('profile');
       return word.length > 11 ? word.slice(0, 11) + '\u2026' : word;
     }
     function pill(label, index, role) {
@@ -368,7 +371,7 @@ pub const BRIDGE_JS: &str = r##"<script>
       more.className = 'rpill rmore';
       more.setAttribute('aria-haspopup', 'menu');
       more.setAttribute('aria-expanded', 'false');
-      more.innerHTML = 'More\u2026 <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg>';
+      more.innerHTML = '<span data-i18n="more">' + esc(t('more')) + '</span> <svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg>';
       var menu = document.createElement('div');
       menu.className = 'rmenu';
       menu.style.display = 'none';
@@ -556,15 +559,10 @@ pub const BRIDGE_JS: &str = r##"<script>
       e.stopImmediatePropagation();
       window.LINGO.togglePin();
     }, true);
-    document.querySelectorAll('.foot .btn').forEach(function (b) {
-      var label = b.textContent.trim();
-      if (label === 'Retry') b.addEventListener('click', function () { window.LINGO.retry(); });
-      if (label === 'Close') b.addEventListener('click', function () { window.LINGO.close(); });
-    });
-    document.querySelectorAll('.chrome .iconbtn').forEach(function (b) {
-      if (b.getAttribute('aria-label') === 'Close') {
-        b.addEventListener('click', function () { window.LINGO.close(); });
-      }
+    // Buttons are found by data-act, never by their (translated) label.
+    document.querySelectorAll('[data-act]').forEach(function (b) {
+      if (b.dataset.act === 'retry') b.addEventListener('click', function () { window.LINGO.retry(); });
+      else if (b.dataset.act === 'close') b.addEventListener('click', function () { window.LINGO.close(); });
     });
     // Esc closes the surface, like the classic popup.
     document.addEventListener('keydown', function (e) {

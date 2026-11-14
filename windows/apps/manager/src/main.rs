@@ -5889,6 +5889,8 @@ mod windows_app {
                 let language = if text("language") == "zh-CN" { 1 } else { 0 };
                 set_combo_selection(state.handles.language, language);
                 save_manager_language(hwnd, state);
+                // Let the resident tell the popups about the new language.
+                let _ = notify_config_changed();
                 fair_copy_push_all(state);
                 fair_copy_push_status(state, false);
             }

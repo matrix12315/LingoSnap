@@ -143,6 +143,16 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
       .filter(function (p) { return p.length; }).join(' + ');
   }
   function profileLabel(p) { return p.name && p.name.trim() ? p.name.trim() + ' \u2014 ' + p.id : p.id; }
+  function buildThemeChoice() {
+    var themes = [{ id: 'light', label: t('themeLight') }, { id: 'dark', label: t('themeDark') }];
+    choice(document.getElementById('uitheme'), themes, current.theme === 'dark' ? 1 : 0, function (opt) {
+      if (opt.id !== current.theme) {
+        current.theme = opt.id;
+        if (window.setTheme) window.setTheme(opt.id);
+        post({ mcmd: 'save_theme', theme: opt.id });
+      }
+    });
+  }
   function applySettings(cfg) {
     set('endpoint', cfg.endpoint);
     set('model', cfg.model);
@@ -155,6 +165,7 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     current.selection = cfg.selectionId || '';
     current.hover = cfg.hoverId || '';
     current.language = cfg.language || 'en';
+    if (window.setLang) window.setLang(current.language);
     var opts = current.profiles.map(function (p) { return { id: p.id, label: profileLabel(p) }; });
     var idx = function (id) { return opts.findIndex(function (o) { return o.id === id; }); };
     choice(document.getElementById('selfprof'), opts, idx(current.selection), function (opt) {
@@ -169,14 +180,7 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     });
     current.theme = cfg.theme === 'dark' ? 'dark' : 'light';
     if (window.setTheme) window.setTheme(current.theme);
-    var themes = [{ id: 'light', label: 'Light' }, { id: 'dark', label: 'Dark' }];
-    choice(document.getElementById('uitheme'), themes, current.theme === 'dark' ? 1 : 0, function (opt) {
-      if (opt.id !== current.theme) {
-        current.theme = opt.id;
-        if (window.setTheme) window.setTheme(opt.id);
-        post({ mcmd: 'save_theme', theme: opt.id });
-      }
-    });
+    buildThemeChoice();
     var note = q('#page-settings .group .actions .statnote');
     if (note && cfg.credentialStatus) {
       note.innerHTML = '<i style="' + (cfg.credentialPresent ? '' : 'background:transparent;border:1px solid var(--rule)') + '"></i>' + esc(cfg.credentialStatus);
@@ -201,18 +205,19 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     // Keep the page's own divider node: the mockup's reorder script holds a
     // reference to it and re-inserts it after the fourth row.
     var divider = list.querySelector('.odivider');
-    if (!divider) { divider = document.createElement('div'); divider.className = 'odivider'; divider.textContent = 'beneath More\u2026'; }
+    if (!divider) { divider = document.createElement('div'); divider.className = 'odivider'; divider.setAttribute('data-i18n', 'beneathMore'); }
+    divider.textContent = t('beneathMore');
     list.innerHTML = '';
     ordered.forEach(function (p, index) {
       var row = document.createElement('div');
       row.className = 'orderrow';
       row.dataset.id = p.id;
-      row.innerHTML = '<span class="ogrip" title="Drag to reorder">' + GRIP + '</span>' +
+      row.innerHTML = '<span class="ogrip" data-i18n-title="dragReorder" title="' + esc(t('dragReorder')) + '">' + GRIP + '</span>' +
         '<span class="oname">' + esc(p.name || p.id) + '</span>' +
         '<span class="oid">' + esc(p.id) + '</span>' +
         '<span class="omove">' +
-        '<button class="iconbtn up" type="button" title="Move up" aria-label="Move up">' + UP_SVG + '</button>' +
-        '<button class="iconbtn down" type="button" title="Move down" aria-label="Move down">' + DOWN_SVG + '</button>' +
+        '<button class="iconbtn up" type="button" data-i18n-title="moveUp" data-i18n-aria="moveUp" title="' + esc(t('moveUp')) + '" aria-label="' + esc(t('moveUp')) + '">' + UP_SVG + '</button>' +
+        '<button class="iconbtn down" type="button" data-i18n-title="moveDown" data-i18n-aria="moveDown" title="' + esc(t('moveDown')) + '" aria-label="' + esc(t('moveDown')) + '">' + DOWN_SVG + '</button>' +
         '</span>';
       row.querySelector('.up').disabled = index === 0;
       row.querySelector('.down').disabled = index === ordered.length - 1;
@@ -293,18 +298,20 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
   function buildHistoryFilters() {
     var boxes = document.querySelectorAll('#page-history .htoolbar .select');
     if (boxes.length < 3) return;
-    var prompts = [{ label: 'All prompts' }].concat(current.profiles.map(function (p) { return { label: p.id }; }));
+    var prompts = [{ label: t('allProfiles') }].concat(current.profiles.map(function (p) { return { label: p.id }; }));
     choice(q('input', boxes[0]), prompts, Math.min(history.prompt, prompts.length - 1), function (o, i) { history.prompt = i; postQuery(); });
-    var sources = ['All sources', 'Selection', 'Hover', 'Clipboard', 'OCR'].map(function (l) { return { label: l }; });
+    var sources = ['allSources', 'srcSelection', 'srcHover', 'srcClipboard', 'srcOcr'].map(function (k) { return { label: t(k) }; });
     choice(q('input', boxes[1]), sources, history.source, function (o, i) { history.source = i; postQuery(); });
-    var orders = ['Newest first', 'Oldest first'].map(function (l) { return { label: l }; });
+    var orders = ['newest', 'oldest'].map(function (k) { return { label: t(k) }; });
     choice(q('input', boxes[2]), orders, history.order, function (o, i) { history.order = i; postQuery(); });
   }
+  function entriesText(n) { return t('entries').replace('{n}', n); }
   function applyHistory(payload) {
     history.entries = payload.entries || [];
     history.selected = payload.selected || 0;
     var stat = q('#page-history .pagehead .statnote');
-    if (stat) stat.textContent = (payload.total || 0) + ' entries';
+    history.total = payload.total || 0;
+    if (stat) stat.textContent = entriesText(history.total);
     var list = q('#page-history .hlist');
     if (!list) return;
     list.innerHTML = '';
@@ -406,6 +413,20 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     renderOutput(entry.output);
   }
 
+  // setLang relabels static markup; rebuild the controls this script builds.
+  document.addEventListener('langchange', function () {
+    buildThemeChoice();
+    buildHistoryFilters();
+    if (current.profiles.length) buildOrder(current.profiles, orderIdsNow());
+    var stat = q('#page-history .pagehead .statnote');
+    if (stat && history.total != null) stat.textContent = entriesText(history.total);
+  });
+  function orderIdsNow() {
+    var ids = [];
+    document.querySelectorAll('#orderlist .orderrow').forEach(function (row) { if (row.dataset.id) ids.push(row.dataset.id); });
+    return ids;
+  }
+
   window.LINGO_MANAGER = {
     applyManager: function (json) {
       var data;
@@ -430,9 +451,9 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
       var btns = document.createElement('span');
       btns.className = 'winbtns';
       btns.innerHTML =
-        '<button class="iconbtn" type="button" data-win="minimize" title="Minimize" aria-label="Minimize">' +
+        '<button class="iconbtn" type="button" data-win="minimize" data-i18n-title="minimize" data-i18n-aria="minimize" title="' + esc(t('minimize')) + '" aria-label="' + esc(t('minimize')) + '">' +
         '<svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 5.5h7"/></svg></button>' +
-        '<button class="iconbtn" type="button" data-win="close" title="Close" aria-label="Close">' +
+        '<button class="iconbtn" type="button" data-win="close" data-i18n-title="close" data-i18n-aria="close" title="' + esc(t('close')) + '" aria-label="' + esc(t('close')) + '">' +
         '<svg width="11" height="11" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 2.5l8 8M10.5 2.5l-8 8"/></svg></button>';
       bar.appendChild(btns);
       btns.addEventListener('click', function (e) {

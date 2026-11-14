@@ -114,7 +114,7 @@ const HOST_CLASS_NAME: PCWSTR = w!("SelectionTranslatePopupUiHost");
 mod bridge;
 mod bridge_manager;
 
-/// Embedded mockup assets. The page files link `fair-copy.css`, `theme.js`,
+/// Embedded mockup assets. The page files link `fair-copy.css`, `strings.js`, `theme.js`,
 /// and `liquid-lens.js` by relative path, which cannot resolve from a virtual
 /// document; `inlined_page` substitutes those references at load time.
 mod assets {
@@ -127,6 +127,7 @@ mod assets {
         };
     }
     pub const FAIR_COPY_CSS: &str = asset!("fair-copy.css");
+    pub const STRINGS_JS: &str = asset!("strings.js");
     pub const THEME_JS: &str = asset!("theme.js");
     pub const LIQUID_LENS_JS: &str = asset!("liquid-lens.js");
     pub const CHOOSER_HTML: &str = asset!("chooser.html");
@@ -175,6 +176,10 @@ fn inlined_page(surface: Surface) -> String {
         .replace(
             r#"<link rel="stylesheet" href="fair-copy.css" />"#,
             &format!("<style>{}</style>", assets::FAIR_COPY_CSS),
+        )
+        .replace(
+            r#"<script src="strings.js"></script>"#,
+            &format!("<script>{}</script>", assets::STRINGS_JS),
         )
         .replace(
             r#"<script src="theme.js"></script>"#,

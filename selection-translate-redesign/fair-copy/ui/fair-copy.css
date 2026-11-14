@@ -170,6 +170,8 @@
   .who { flex: 1; min-width: 0; }
   .who strong { display: block; font: 600 13.5px/1.2 var(--serif); letter-spacing: .01em; }
   .who span { display: block; font-size: 11px; color: var(--ink-faint); letter-spacing: .03em; margin-top: 1px; }
+  /* A translatable label inside the status line stays on the same line as the dot. */
+  .who span.lbl { display: inline; font-size: inherit; letter-spacing: inherit; margin-top: 0; }
   .who .live-dot {
     display: inline-block; width: 5px; height: 5px; border-radius: 50%;
     background: var(--ledger); margin-right: 5px; vertical-align: 1px;
