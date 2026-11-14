@@ -8,6 +8,7 @@
 mod windows_app {
     use selection_core::{
         default_config_path, save_atomic, AppConfig, ExtractionSource, PromptConfig, UiLanguage,
+        UiTheme,
     };
     use selection_platform_windows::{
         app::{
@@ -532,6 +533,9 @@ mod windows_app {
             detail: &'a str,
         },
         InterfaceLanguageSaved,
+        SaveThemeFailed {
+            detail: &'a str,
+        },
         HistoryRefreshed,
         HistoryUnavailable {
             detail: &'a str,
@@ -626,6 +630,10 @@ mod windows_app {
             InterfaceLanguageSaved => match language {
                 UiLanguage::English => "Interface language saved.".to_owned(),
                 UiLanguage::SimplifiedChinese => "界面语言已保存。".to_owned(),
+            },
+            SaveThemeFailed { detail } => match language {
+                UiLanguage::English => format!("Could not save theme: {detail}"),
+                UiLanguage::SimplifiedChinese => format!("无法保存主题：{detail}"),
             },
             HistoryRefreshed => match language {
                 UiLanguage::English => "History refreshed.".to_owned(),
@@ -4579,6 +4587,12 @@ mod windows_app {
         next
     }
 
+    fn config_with_theme(config: &AppConfig, theme: UiTheme) -> AppConfig {
+        let mut next = config.clone();
+        next.ui.theme = theme;
+        next
+    }
+
     fn populate_history_filters(state: &ManagerState) {
         let prompt_selection = combo_selection(state.handles.history_prompt).unwrap_or(0);
         let source_selection = combo_selection(state.handles.history_source).unwrap_or(0);
@@ -5597,6 +5611,10 @@ mod windows_app {
                         UiLanguage::SimplifiedChinese => "zh-CN",
                         UiLanguage::English => "en",
                     },
+                    "theme": match state.config.ui.theme {
+                        UiTheme::Dark => "dark",
+                        UiTheme::Light => "light",
+                    },
                     "selectionId": state.config.defaults.selection,
                     "hoverId": state.config.defaults.hover,
                     "credentialPresent": matches!(
@@ -5871,6 +5889,32 @@ mod windows_app {
                 let language = if text("language") == "zh-CN" { 1 } else { 0 };
                 set_combo_selection(state.handles.language, language);
                 save_manager_language(hwnd, state);
+                fair_copy_push_all(state);
+                fair_copy_push_status(state, false);
+            }
+            Some("save_theme") => {
+                let theme = if text("theme") == "dark" {
+                    UiTheme::Dark
+                } else {
+                    UiTheme::Light
+                };
+                if theme != state.config.ui.theme {
+                    let next = config_with_theme(&state.config, theme);
+                    match save_config(state, &next) {
+                        Ok(()) => {
+                            state.config = next;
+                            let refresh = notify_config_changed();
+                            set_status(state, &config_refresh_status(state.language(), refresh));
+                        }
+                        Err(error) => set_status(
+                            state,
+                            &status_text(
+                                state.language(),
+                                StatusEvent::SaveThemeFailed { detail: &error },
+                            ),
+                        ),
+                    }
+                }
                 fair_copy_push_all(state);
                 fair_copy_push_status(state, false);
             }
@@ -6304,6 +6348,9 @@ mod windows_app {
                     detail: "opaque-error",
                 },
                 StatusEvent::InterfaceLanguageSaved,
+                StatusEvent::SaveThemeFailed {
+                    detail: "opaque-error",
+                },
                 StatusEvent::HistoryRefreshed,
                 StatusEvent::HistoryUnavailable {
                     detail: "opaque-error",

@@ -267,6 +267,31 @@ thread_local! {
     /// classic popup's remembered window size, every later result card opens
     /// at it for the rest of the session.
     static LAST_CARD_SIZE: Cell<Option<(f64, f64)>> = const { Cell::new(None) };
+    /// The last `SetAppearance` (language, theme) from the resident, applied
+    /// to every popup page, including pooled and newly loaded ones.
+    static APPEARANCE: RefCell<Option<(String, String)>> = const { RefCell::new(None) };
+}
+
+/// Script that applies the stored appearance to a page. Only whitelisted
+/// values are interpolated, so the resident's strings never reach the page
+/// as code.
+fn appearance_script() -> Option<String> {
+    let (language, theme) = APPEARANCE.with(|cell| cell.borrow().clone())?;
+    let language = if language == "zh-CN" { "zh-CN" } else { "en" };
+    let theme = if theme == "dark" { "dark" } else { "light" };
+    Some(format!(
+        "window.setTheme && window.setTheme('{theme}'); window.setLang && window.setLang('{language}'); undefined"
+    ))
+}
+
+fn apply_appearance_to_popups() {
+    let Some(script) = appearance_script() else {
+        return;
+    };
+    let windows: Vec<Rc<Win>> = WINS.with(|wins| wins.borrow().clone());
+    for win in windows.iter().filter(|win| win.surface != Surface::Manager) {
+        run_on_page(win, script.clone());
+    }
 }
 
 /// Open a new result card at the size the user last chose, if any.
@@ -829,6 +854,11 @@ fn on_page_loaded(hwnd: HWND) {
         }
     }
     let queued = std::mem::take(&mut *win.queue.borrow_mut());
+    if win.surface != Surface::Manager {
+        if let Some(script) = appearance_script() {
+            execute_script(&win, &script);
+        }
+    }
     for script in queued {
         execute_script(&win, &script);
     }
@@ -1108,6 +1138,11 @@ fn handle_event_line(line: &str) {
             if let Some(win) = win_by_id(*id) {
                 apply_page_event(&win, &event);
             }
+        }
+        UiEvent::SetAppearance { language, theme } => {
+            // Not a popup event: remember it and restyle every popup page.
+            APPEARANCE.with(|cell| *cell.borrow_mut() = Some((language.clone(), theme.clone())));
+            apply_appearance_to_popups();
         }
         UiEvent::Shutdown => {}
     }

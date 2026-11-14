@@ -29,9 +29,7 @@ body, .rail, .railwrap, .chrome, .foot { user-select: none !important; -webkit-u
    popup card's paper — paper colour with the faint fibre under it — and an
    open More… reads pressed, its chevron turned. */
 .rail, .rmenu {
-  background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.13 0 0 0 0 0.11 0 0 0 0 0.08 0 0 0 0.06 0'/%3E%3C/filter%3E%3Crect width='280' height='280' filter='url(%23f)'/%3E%3C/svg%3E")
-    var(--paper) !important;
+  background: var(--fibre) var(--paper) !important;
 }
 .rpill { cursor: pointer; }
 .rpill.on, .rmore[aria-expanded="true"] { color: var(--btn-primary-ink) !important; font-weight: 600 !important;
@@ -265,7 +263,7 @@ pub const BRIDGE_JS: &str = r##"<script>
     if (foot) foot.hidden = error;
     if (errbox) errbox.hidden = !error;
     if (sourcepanel) sourcepanel.classList.toggle('float', !error);
-    if (seal) seal.style.background = error ? '#8A8375' : '';
+    if (seal) seal.classList.toggle('idle', error);
     if (status) {
       if (mode === 'streaming') status.innerHTML = '<i class="live-dot"></i>writing\u2026';
       else if (error) status.textContent = 'idle';

@@ -57,6 +57,16 @@ pub enum PopupSkin {
     FairCopy,
 }
 
+/// Colour theme of the fair-copy UI. The classic UI is always dark and ignores it.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum UiTheme {
+    #[default]
+    #[serde(rename = "light")]
+    Light,
+    #[serde(rename = "dark")]
+    Dark,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct UiSettings {
@@ -64,6 +74,8 @@ pub struct UiSettings {
     pub manager_language: UiLanguage,
     #[serde(default)]
     pub popup_skin: PopupSkin,
+    #[serde(default)]
+    pub theme: UiTheme,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -776,6 +788,36 @@ mod tests {
         assert_eq!(
             loaded.hotkeys.spec(HotkeyAction::SelectionTranslate),
             Some("Ctrl+Shift+T")
+        );
+    }
+
+    #[test]
+    fn theme_round_trips_and_defaults_to_light() {
+        let mut config = AppConfig::default();
+        assert_eq!(config.ui.theme, UiTheme::Light);
+        config.ui.theme = UiTheme::Dark;
+        let serialized = config.to_toml().expect("serialize theme config");
+        assert!(serialized.contains("theme = \"dark\""));
+        assert_eq!(
+            AppConfig::from_toml(&serialized)
+                .expect("theme config")
+                .ui
+                .theme,
+            UiTheme::Dark
+        );
+        let mut document: toml::Value = toml::from_str(&serialized).expect("parse serialized");
+        document
+            .get_mut("ui")
+            .and_then(toml::Value::as_table_mut)
+            .expect("ui table")
+            .remove("theme");
+        let legacy = toml::to_string_pretty(&document).expect("serialize legacy ui");
+        assert_eq!(
+            AppConfig::from_toml(&legacy)
+                .expect("legacy ui without theme")
+                .ui
+                .theme,
+            UiTheme::Light
         );
     }
 

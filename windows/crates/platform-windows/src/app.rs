@@ -1940,6 +1940,7 @@ mod windows_impl {
         match webview_ui::FairCopyUi::start("popup", hwnd) {
             Ok(ui) => {
                 state.fair_copy = Some(ui);
+                send_appearance(state);
             }
             Err(_) => state.fair_copy_failed_at = Some(Instant::now()),
         }
@@ -2007,10 +2008,33 @@ mod windows_impl {
         record_fair_copy_event(state, event);
     }
 
+    /// Tell the companion the interface language and theme. Sent after the
+    /// companion starts and whenever the settings change. It is not part of
+    /// the replay log: the companion keeps the last value itself.
+    fn send_appearance(state: &mut ShellState) {
+        let ui = &state.runtime.config.ui;
+        let language = match ui.manager_language {
+            selection_core::UiLanguage::English => "en",
+            selection_core::UiLanguage::SimplifiedChinese => "zh-CN",
+        };
+        let theme = match ui.theme {
+            selection_core::UiTheme::Light => "light",
+            selection_core::UiTheme::Dark => "dark",
+        };
+        let event = UiEvent::SetAppearance {
+            language: language.to_owned(),
+            theme: theme.to_owned(),
+        };
+        if let Some(ui) = state.fair_copy.as_mut() {
+            let _ = ui.send(event);
+        }
+    }
+
     /// Keep the replay log of the current presentation and the last
     /// completed card (see `fair_copy_last_event` / `fair_copy_last_result`).
     fn record_fair_copy_event(state: &mut ShellState, event: UiEvent) {
         match &event {
+            UiEvent::SetAppearance { .. } => return,
             UiEvent::ShowChooser { .. }
             | UiEvent::ShowLoading { .. }
             | UiEvent::LocalError {
@@ -2206,6 +2230,7 @@ mod windows_impl {
             if state.runtime.config.ui.popup_skin != previous_skin {
                 apply_popup_skin(hwnd, state);
             }
+            send_appearance(state);
             runtime_trace::record("config_ui_only_applied");
             return;
         }
@@ -2220,6 +2245,7 @@ mod windows_impl {
         if state.runtime.config.ui.popup_skin != previous_skin {
             apply_popup_skin(hwnd, state);
         }
+        send_appearance(state);
         if state
             .active_prompt_id
             .as_deref()

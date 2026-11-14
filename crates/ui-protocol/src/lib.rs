@@ -107,6 +107,12 @@ pub enum UiEvent {
     Close {
         id: u64,
     },
+    /// Interface language (`"en"` / `"zh-CN"`) and theme (`"light"` /
+    /// `"dark"`) for every popup. Not tied to a popup window.
+    SetAppearance {
+        language: String,
+        theme: String,
+    },
     Shutdown,
 }
 
@@ -207,6 +213,23 @@ mod tests {
         let parsed: Envelope<UiCommand> = serde_json::from_str(&line).expect("parse command");
         assert_eq!(parsed, command);
         assert!(line.contains(r#""type":"self_translate""#));
+    }
+
+    #[test]
+    fn set_appearance_round_trips() {
+        let event = Envelope::new(
+            11,
+            UiEvent::SetAppearance {
+                language: "zh-CN".into(),
+                theme: "dark".into(),
+            },
+        );
+        let line = serde_json::to_string(&event).expect("serialize appearance");
+        assert!(line.contains(r#""type":"set_appearance""#));
+        assert!(line.contains(r#""language":"zh-CN""#));
+        assert!(line.contains(r#""theme":"dark""#));
+        let parsed: Envelope<UiEvent> = serde_json::from_str(&line).expect("parse appearance");
+        assert_eq!(parsed, event);
     }
 
     #[test]

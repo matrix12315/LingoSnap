@@ -167,6 +167,16 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     choice(document.getElementById('uilang'), langs, current.language === 'zh-CN' ? 1 : 0, function (opt) {
       if (opt.id !== current.language) { current.language = opt.id; post({ mcmd: 'save_language', language: opt.id }); }
     });
+    current.theme = cfg.theme === 'dark' ? 'dark' : 'light';
+    if (window.setTheme) window.setTheme(current.theme);
+    var themes = [{ id: 'light', label: 'Light' }, { id: 'dark', label: 'Dark' }];
+    choice(document.getElementById('uitheme'), themes, current.theme === 'dark' ? 1 : 0, function (opt) {
+      if (opt.id !== current.theme) {
+        current.theme = opt.id;
+        if (window.setTheme) window.setTheme(opt.id);
+        post({ mcmd: 'save_theme', theme: opt.id });
+      }
+    });
     var note = q('#page-settings .group .actions .statnote');
     if (note && cfg.credentialStatus) {
       note.innerHTML = '<i style="' + (cfg.credentialPresent ? '' : 'background:transparent;border:1px solid var(--rule)') + '"></i>' + esc(cfg.credentialStatus);

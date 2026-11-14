@@ -6,7 +6,8 @@
     const theme = t === 'dark' ? 'dark' : 'light';
     document.documentElement.dataset.theme = theme;
     const sel = document.getElementById('uitheme');
-    if (sel) sel.value = theme === 'dark' ? 'Dark' : 'Light';
+    // In the app the manager bridge owns this field's (localised) label.
+    if (sel && !(window.chrome && window.chrome.webview)) sel.value = theme === 'dark' ? 'Dark' : 'Light';
     document.dispatchEvent(new CustomEvent('themechange', { detail: theme }));
   };
   window.setTheme = apply;
