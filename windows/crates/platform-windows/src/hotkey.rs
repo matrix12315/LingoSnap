@@ -308,7 +308,7 @@ mod windows_impl {
             HotkeyAction::SelectionTranslate => "selection translate",
             HotkeyAction::HoverTranslate => "hover translate",
             HotkeyAction::PauseResume => "pause/resume",
-            HotkeyAction::OpenPopup => "open popup",
+            HotkeyAction::OpenPopup => "manual query",
             HotkeyAction::CycleProfiles => "cycle profiles",
         }
     }

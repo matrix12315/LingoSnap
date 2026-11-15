@@ -13,6 +13,7 @@ pub mod mouse;
 pub mod native_selection;
 pub mod ocr;
 pub mod popup;
+pub mod query_input;
 pub mod runtime_trace;
 pub mod shell_open;
 pub mod tray;

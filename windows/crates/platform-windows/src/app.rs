@@ -5,7 +5,8 @@ mod windows_impl {
     use super::super::composition::{AppRuntime, Pipeline, PipelineEvent, PIPELINE_EVENT};
     use super::super::mouse::{self, MouseTrigger, ScreenPoint};
     use super::super::{
-        autostart, config_reload, foreground, hotkey, popup, runtime_trace, tray, webview_ui,
+        autostart, config_reload, foreground, hotkey, popup, query_input, runtime_trace, tray,
+        webview_ui,
     };
     use lingosnap_core::{
         cache::{CacheKey, ResultCache},
@@ -752,6 +753,24 @@ mod windows_impl {
                 }
                 return LRESULT(0);
             }
+            query_input::QUERY_SUBMITTED => {
+                if !state.is_null() && !(*state).rest_enabled {
+                    if let Some(submission) = query_input::take_submitted() {
+                        runtime_trace::record("manual_query_submitted");
+                        present_text_chooser(
+                            hwnd,
+                            &mut *state,
+                            0,
+                            submission.text,
+                            Some(popup::Point {
+                                x: submission.anchor.0,
+                                y: submission.anchor.1,
+                            }),
+                        );
+                    }
+                }
+                return LRESULT(0);
+            }
             webview_ui::FAIR_COPY_COMMAND_MESSAGE => {
                 if !state.is_null() {
                     let raw = lparam.0 as *mut String;
@@ -927,7 +946,7 @@ mod windows_impl {
                             set_rest_mode(hwnd, &mut *state, !(*state).rest_enabled);
                         }
                         hotkey::OPEN_POPUP_ID => {
-                            reopen_last_popup(hwnd, &mut *state, Instant::now());
+                            open_manual_query(hwnd, &mut *state);
                         }
                         _ => {}
                     }
@@ -1621,32 +1640,16 @@ mod windows_impl {
         );
     }
 
-    /// Re-present the most recent completed result popup. When no popup can
-    /// be reopened, fall back to the manual trigger so the hotkey always has
-    /// a useful effect.
-    fn reopen_last_popup(hwnd: HWND, state: &mut ShellState, now: Instant) {
-        let target = state
-            .popups
-            .iter()
-            .rev()
-            .find(|entry| entry.popup.is_completed() && entry.popup.is_result_surface_available())
-            .map(|entry| entry.id);
-        if let Some(id) = target {
-            if companion_presents(state) {
-                // The fair-copy page presents the card; the native popup is
-                // hidden bookkeeping and must never be shown in this skin.
-                if let Some((loading, completed)) = state.fair_copy_last_result.clone() {
-                    send_fair_copy(state, loading);
-                    send_fair_copy(state, completed);
-                    return;
-                }
-            } else if let Some(entry) = popup_entry_mut(state, id) {
-                if entry.popup.present_result() {
-                    return;
-                }
-            }
+    /// Manual query: a small input window for typing or pasting text. The
+    /// text goes through the same profile chooser as selected text.
+    fn open_manual_query(hwnd: HWND, state: &mut ShellState) {
+        let at = cursor_position().unwrap_or(popup::Point { x: 0, y: 0 });
+        if let Some(error) = state.runtime.startup_error.clone() {
+            show_local_error(hwnd, state, 0, at, &error);
+            return;
         }
-        observe_manual(hwnd, state, now);
+        runtime_trace::record("manual_query_opened");
+        query_input::show(hwnd, state.runtime.config.ui.manager_language, (at.x, at.y));
     }
 
     fn selection_rect_for_root(
@@ -2878,6 +2881,102 @@ mod windows_impl {
         (0..profiles.len()).collect()
     }
 
+    /// Offer the profile chooser for the given text at the given anchor;
+    /// picking a profile runs the request. Used for text selected inside a
+    /// result card (`id` is that card) and for Manual query (`id` is 0).
+    fn present_text_chooser(
+        hwnd: HWND,
+        state: &mut ShellState,
+        id: u64,
+        text: String,
+        anchor: Option<popup::Point>,
+    ) {
+        // Recursive translation of fair-copy output: the resident's
+        // mouse hook cannot see selection inside a WebView, so the
+        // page reports the selected text and where it sits. Like a
+        // selection gesture on a classic result, a fresh chooser
+        // popup appears at the selection, and its result becomes a
+        // new popup; the source card stays on screen.
+        if let Some(previous) = state
+            .pending_profile_choice
+            .as_ref()
+            .map(|choice| choice.popup_id)
+        {
+            remove_popup(state, previous, true);
+        }
+        let spec = RequestSpec {
+            trigger: TriggerKind::Selection,
+            process_id: std::process::id(),
+            source_root_window: 0,
+            foreground_guard_root_window: 0,
+            pointer: None,
+            selection_rect: None,
+            prompt_id: selected_prompt_id(state, TriggerKind::Selection).to_owned(),
+            bypass_duplicate_suppression: true,
+            source_popup_id: None,
+            destination_popup_id: None,
+        };
+        let pending = PendingAttempt {
+            attempt: 0,
+            spec,
+            config_generation: state.config_generation,
+        };
+        let context = TextContext::new(text, lingosnap_core::ExtractionSource::Clipboard);
+        let anchor = anchor.unwrap_or(state.popup_anchor);
+        let source = (id != 0).then_some(id);
+        let admission = ensure_popup(hwnd, state, anchor, None, None, true);
+        let popup_id = admission.map(|admission| admission.popup_id);
+        ensure_companion(hwnd, state);
+        let ordered = profile_chooser_order(&state.runtime.config.profiles);
+        let profile_ids: Vec<String> = ordered
+            .iter()
+            .map(|&index| state.runtime.config.profiles[index].id.clone())
+            .collect();
+        let profile_names: Vec<String> = ordered
+            .iter()
+            .map(|&index| state.runtime.config.profiles[index].name.clone())
+            .collect();
+        let highlight = profile_ids
+            .iter()
+            .position(|id| *id == pending.spec.prompt_id);
+        let shown = if companion_presents(state) {
+            popup_id.is_some_and(|id| {
+                send_fair_copy(
+                    state,
+                    UiEvent::ShowChooser {
+                        id: id as u64,
+                        profiles: profile_names.clone(),
+                        highlight,
+                        anchor: fair_copy_anchor(anchor),
+                        keeps_card: true,
+                        source,
+                    },
+                );
+                true
+            })
+        } else {
+            popup_id
+                .and_then(|id| popup_entry_mut(state, id))
+                .is_some_and(|entry| entry.popup.show_profile_choices(&profile_names, highlight))
+        };
+        if !shown {
+            if let Some(id) = popup_id {
+                remove_popup(state, id, true);
+            }
+            return;
+        }
+        state.popup_job_id = None;
+        state.presented_trigger = Some(TriggerKind::Selection);
+        state.pending_profile_choice = Some(PendingProfileChoice {
+            popup_id: popup_id.expect("shown chooser has a popup"),
+            pending,
+            text: context,
+            anchor,
+            profile_ids,
+        });
+        runtime_trace::record("selection_profile_chooser_shown");
+    }
+
     /// Commands arriving from the fair-copy page bridge. Mirrors the native
     /// popup's owner messages: chooser selection, retry, close, copy, and
     /// self-translation of selected output text.
@@ -2944,97 +3043,16 @@ mod windows_impl {
                 }
             }
             UiCommand::SelfTranslate { id, text, anchor } => {
-                // Recursive translation of fair-copy output: the resident's
-                // mouse hook cannot see selection inside a WebView, so the
-                // page reports the selected text and where it sits. Like a
-                // selection gesture on a classic result, a fresh chooser
-                // popup appears at the selection, and its result becomes a
-                // new popup; the source card stays on screen.
-                if let Some(previous) = state
-                    .pending_profile_choice
-                    .as_ref()
-                    .map(|choice| choice.popup_id)
-                {
-                    remove_popup(state, previous, true);
-                }
-                let spec = RequestSpec {
-                    trigger: TriggerKind::Selection,
-                    process_id: std::process::id(),
-                    source_root_window: 0,
-                    foreground_guard_root_window: 0,
-                    pointer: None,
-                    selection_rect: None,
-                    prompt_id: selected_prompt_id(state, TriggerKind::Selection).to_owned(),
-                    bypass_duplicate_suppression: true,
-                    source_popup_id: None,
-                    destination_popup_id: None,
-                };
-                let pending = PendingAttempt {
-                    attempt: 0,
-                    spec,
-                    config_generation: state.config_generation,
-                };
-                let context = TextContext::new(text, lingosnap_core::ExtractionSource::Clipboard);
-                let anchor = anchor
-                    .map(|anchor| popup::Point {
+                present_text_chooser(
+                    hwnd,
+                    state,
+                    id,
+                    text,
+                    anchor.map(|anchor| popup::Point {
                         x: anchor.x,
                         y: anchor.y,
-                    })
-                    .unwrap_or(state.popup_anchor);
-                let source = (id != 0).then_some(id);
-                let admission = ensure_popup(hwnd, state, anchor, None, None, true);
-                let popup_id = admission.map(|admission| admission.popup_id);
-                ensure_companion(hwnd, state);
-                let ordered = profile_chooser_order(&state.runtime.config.profiles);
-                let profile_ids: Vec<String> = ordered
-                    .iter()
-                    .map(|&index| state.runtime.config.profiles[index].id.clone())
-                    .collect();
-                let profile_names: Vec<String> = ordered
-                    .iter()
-                    .map(|&index| state.runtime.config.profiles[index].name.clone())
-                    .collect();
-                let highlight = profile_ids
-                    .iter()
-                    .position(|id| *id == pending.spec.prompt_id);
-                let shown = if companion_presents(state) {
-                    popup_id.is_some_and(|id| {
-                        send_fair_copy(
-                            state,
-                            UiEvent::ShowChooser {
-                                id: id as u64,
-                                profiles: profile_names.clone(),
-                                highlight,
-                                anchor: fair_copy_anchor(anchor),
-                                keeps_card: true,
-                                source,
-                            },
-                        );
-                        true
-                    })
-                } else {
-                    popup_id
-                        .and_then(|id| popup_entry_mut(state, id))
-                        .is_some_and(|entry| {
-                            entry.popup.show_profile_choices(&profile_names, highlight)
-                        })
-                };
-                if !shown {
-                    if let Some(id) = popup_id {
-                        remove_popup(state, id, true);
-                    }
-                    return;
-                }
-                state.popup_job_id = None;
-                state.presented_trigger = Some(TriggerKind::Selection);
-                state.pending_profile_choice = Some(PendingProfileChoice {
-                    popup_id: popup_id.expect("shown chooser has a popup"),
-                    pending,
-                    text: context,
-                    anchor,
-                    profile_ids,
-                });
-                runtime_trace::record("selection_profile_chooser_shown");
+                    }),
+                );
             }
             UiCommand::PageReady => {
                 // The companion queues events for a page that is still
