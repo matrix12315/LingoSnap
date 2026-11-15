@@ -98,6 +98,16 @@ Alibaba Cloud Bailian provides generous free quotas for fast flash models (such 
 
 ---
 
+## ☕ Buy the Author a Coffee
+
+If LingoSnap has helped improve your reading, writing, or learning workflow, consider buying the author a coffee to support continuous development!
+
+| WeChat Pay (微信支付) | Alipay (支付宝) |
+| :---: | :---: |
+| <img src="assets/qr-wechat-pay-1.png" width="220" alt="WeChat Pay" /> | <img src="assets/qr-alipay-1.png" width="220" alt="Alipay" /> |
+
+---
+
 ### Custom OpenAI-Compatible Provider
 
 To use OpenAI, DeepSeek, or another provider:
@@ -152,18 +162,6 @@ In the Manager's **History** page:
 - **Never Lose a Good Expression**: Every admitted selection, hover, or manual query target, along with its context and LLM analysis, is archived locally.
 - **Search, Review, and Replay**: Filter entries by date, filter by profile, or search by keywords. Re-run text processing tasks or copy results with one click—ideal for review, refinement, and writing retrospectives.
 - **100% Local & Private**: All history resides in a lightweight local SQLite database (capped to the newest 1,000 entries) and is never transmitted to any third-party cloud.
-
----
-
-## ☕ Buy the Author a Coffee
-
-If LingoSnap has helped improve your reading, writing, or learning workflow, consider buying the author a coffee to support continuous development!
-
-| WeChat Pay (微信支付) | Alipay (支付宝) |
-| :---: | :---: |
-| <img src="assets/qr-wechat-pay-1.png" width="220" alt="WeChat Pay" /> | <img src="assets/qr-alipay-1.png" width="220" alt="Alipay" /> |
-
----
 
 ## Documentation
 

@@ -98,6 +98,16 @@ LingoSnap 支持任何兼容 OpenAI Chat Completions 协议的模型服务。为
 
 ---
 
+## ☕ 请作者喝一杯咖啡
+
+如果 LingoSnap 帮到了您的日常阅读、学习或工作，欢迎请作者喝一杯咖啡，支持软件的持续打磨与维护！
+
+| 微信支付 | 支付宝 |
+| :---: | :---: |
+| <img src="assets/qr-wechat-pay-1.png" width="220" alt="微信支付" /> | <img src="assets/qr-alipay-1.png" width="220" alt="支付宝" /> |
+
+---
+
 ### 自定义 OpenAI 兼容服务商
 
 若您使用 OpenAI、DeepSeek 或其他兼容服务商：
@@ -154,23 +164,3 @@ LingoSnap 支持任何兼容 OpenAI Chat Completions 协议的模型服务。为
 - **隐私离线存储**：历史记录纯本地存储在轻量 SQLite 数据库中（默认自动滚动保留最新 1,000 条），不经过任何第三方云端。
 
 ---
-
-## ☕ 请作者喝一杯咖啡
-
-如果 LingoSnap 帮到了您的日常阅读、学习或工作，欢迎请作者喝一杯咖啡，支持软件的持续打磨与维护！
-
-| 微信支付 | 支付宝 |
-| :---: | :---: |
-| <img src="assets/qr-wechat-pay-1.png" width="220" alt="微信支付" /> | <img src="assets/qr-alipay-1.png" width="220" alt="支付宝" /> |
-
----
-
-## 详细文档
-
-- [环境与构建说明 (SETUP.md)](docs/SETUP.md)：详细安装、工具链与环境说明。
-- [完整快捷键指南 (HOTKEYS.md)](docs/HOTKEYS.md)：快捷键行为与冲突排查。
-- [提取回退机制 (FALLBACKS.md)](docs/FALLBACKS.md)：UI Automation、剪贴板与 OCR 协同原理。
-- [隐私与安全说明 (PRIVACY.md)](docs/PRIVACY.md)：凭据安全、零截图落盘与剪贴板完整性。
-- [疑难解答 (TROUBLESHOOTING.md)](docs/TROUBLESHOOTING.md)：常见错误码与解决方案。
-- [质量验证标准 (VERIFICATION.md)](docs/VERIFICATION.md)：测试门禁、Clippy 规范与内存压测标准。
-- [WebView2 内存报告 (WEBVIEW_MEMORY.md)](docs/WEBVIEW_MEMORY.md)：现代抄本 UI 性能与内存优化实测数据。
