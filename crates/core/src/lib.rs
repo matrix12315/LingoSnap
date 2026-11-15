@@ -35,3 +35,8 @@ pub use text::{ExtractionSource, ScreenRect, TextContext, TriggerKind};
 
 /// Marker retained for compatibility with the bootstrap crate.
 pub const CRATE_NAME: &str = "lingosnap-core";
+
+/// Author and project links shown at the bottom of the manager's Settings page.
+pub const AUTHOR_NAME: &str = "matrix12315";
+pub const AUTHOR_URL: &str = "https://github.com/matrix12315";
+pub const REPO_URL: &str = "https://github.com/matrix12315/LingoSnap";

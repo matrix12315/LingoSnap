@@ -10,6 +10,11 @@
   /* product shot: show the whole settings page, no inner scroll cap */
   .mpage { max-height: none; }
 
+  /* Author and project links at the bottom of Settings. */
+  .about { margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--rule-soft); font: 11.5px var(--ui); color: var(--ink-faint); text-align: center; }
+  .about a { color: var(--seal-deep); text-decoration: none; }
+  .about a:hover { text-decoration: underline; }
+
   /* A field with a button beside it (Endpoint + Open key page). */
   .inputrow { display: flex; align-items: center; gap: 8px; }
   .inputrow .input { flex: 1 1 auto; min-width: 0; }
@@ -233,6 +238,13 @@
           </div>
         </div>
         <p class="fhint" style="margin-top:8px" data-i18n="orderHint">The order here sets the chooser rail — the first four sit on the rail, the rest beneath More….</p>
+      </div>
+
+      <div class="about">
+        <span data-i18n="aboutAuthor">Author</span>
+        <a href="https://github.com/matrix12315" data-link="author" target="_blank" rel="noopener">matrix12315</a>
+        ·
+        <a href="https://github.com/matrix12315/LingoSnap" data-link="repo" target="_blank" rel="noopener" data-i18n="aboutRepo">GitHub repository</a>
       </div>
     </div>
 

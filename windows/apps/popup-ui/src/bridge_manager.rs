@@ -536,6 +536,13 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
       });
       list.addEventListener('drop', postSettings);
     }
+    // Author and repository links open in the browser through the host.
+    document.querySelectorAll('.about a[data-link]').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        post({ mcmd: 'open_link', link: a.dataset.link });
+      });
+    });
     var keyPage = document.getElementById('keyPageBtn');
     if (keyPage) keyPage.addEventListener('click', function () {
       post({ mcmd: 'open_provider_page', endpoint: get('endpoint') });

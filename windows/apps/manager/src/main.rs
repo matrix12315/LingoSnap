@@ -78,6 +78,8 @@ mod windows_app {
     const ID_SAVE_KEY: usize = 111;
     const ID_DELETE_KEY: usize = 112;
     const ID_OPEN_KEY_PAGE: usize = 113;
+    const ID_OPEN_AUTHOR: usize = 114;
+    const ID_OPEN_REPO: usize = 115;
     const ID_SAVE_PROMPT: usize = 120;
     const ID_NEW_PROMPT: usize = 121;
     const ID_DELETE_PROMPT: usize = 122;
@@ -269,6 +271,8 @@ mod windows_app {
         DeleteProfile,
         DeletedProfile,
         OpenKeyPage,
+        AuthorLink,
+        RepoLink,
         Autostart,
         On,
         Off,
@@ -346,6 +350,8 @@ mod windows_app {
         TextKey::DeleteProfile,
         TextKey::DeletedProfile,
         TextKey::OpenKeyPage,
+        TextKey::AuthorLink,
+        TextKey::RepoLink,
         TextKey::Autostart,
         TextKey::On,
         TextKey::Off,
@@ -434,6 +440,8 @@ mod windows_app {
             (UiLanguage::English, DeleteProfile) => "Delete profile",
             (UiLanguage::English, DeletedProfile) => "Deleted profile",
             (UiLanguage::English, OpenKeyPage) => "Open key page",
+            (UiLanguage::English, AuthorLink) => "Author: matrix12315",
+            (UiLanguage::English, RepoLink) => "GitHub repository",
             (UiLanguage::English, Autostart) => "Start with Windows",
             (UiLanguage::English, On) => "On",
             (UiLanguage::English, Off) => "Off",
@@ -522,6 +530,8 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, DeleteProfile) => "删除配置档",
             (UiLanguage::SimplifiedChinese, DeletedProfile) => "已删除的配置档",
             (UiLanguage::SimplifiedChinese, OpenKeyPage) => "打开密钥页面",
+            (UiLanguage::SimplifiedChinese, AuthorLink) => "作者：matrix12315",
+            (UiLanguage::SimplifiedChinese, RepoLink) => "GitHub 仓库",
             (UiLanguage::SimplifiedChinese, Autostart) => "开机自动启动",
             (UiLanguage::SimplifiedChinese, On) => "开",
             (UiLanguage::SimplifiedChinese, Off) => "关",
@@ -1951,6 +1961,22 @@ mod windows_app {
             Some(View::Settings),
             Slot::SaveSettings,
         )?;
+        add_button(
+            hwnd,
+            &mut h,
+            ID_OPEN_AUTHOR,
+            "Author: matrix12315",
+            Some(View::Settings),
+            Slot::AuthorLink,
+        )?;
+        add_button(
+            hwnd,
+            &mut h,
+            ID_OPEN_REPO,
+            "GitHub repository",
+            Some(View::Settings),
+            Slot::RepoLink,
+        )?;
 
         // —— Prompts: meta row on top, side-by-side editors below ——
         add_label(
@@ -2229,6 +2255,8 @@ mod windows_app {
         AutostartLabel,
         Autostart,
         OpenKeyPage,
+        AuthorLink,
+        RepoLink,
         HotkeySelectionLabel,
         HotkeySelection,
         HotkeyHoverLabel,
@@ -3187,6 +3215,25 @@ mod windows_app {
                         left: 0,
                         top: content_top + save_top,
                         right: 160,
+                        bottom: content_top + save_top + 36,
+                    },
+                ));
+                // Author and repository links share the Save row, at the right.
+                slots.push((
+                    Slot::AuthorLink,
+                    RECT {
+                        left: content_width - 420,
+                        top: content_top + save_top,
+                        right: content_width - 210,
+                        bottom: content_top + save_top + 36,
+                    },
+                ));
+                slots.push((
+                    Slot::RepoLink,
+                    RECT {
+                        left: content_width - 200,
+                        top: content_top + save_top,
+                        right: content_width,
                         bottom: content_top + save_top + 36,
                     },
                 ));
@@ -4657,6 +4704,8 @@ mod windows_app {
             ID_SAVE_PROMPT => save_prompt(state),
             ID_NEW_PROMPT => new_prompt(state),
             ID_DELETE_PROMPT => delete_profile(hwnd, state),
+            ID_OPEN_AUTHOR => open_about_link(state, "author"),
+            ID_OPEN_REPO => open_about_link(state, "repo"),
             ID_OPEN_KEY_PAGE => {
                 let endpoint = read_text(state.handles.endpoint);
                 open_provider_page(state, &endpoint);
@@ -5215,6 +5264,24 @@ mod windows_app {
             },
         };
         set_status(state, &message);
+    }
+
+    /// Open the author or repository page (fixed URLs, never page input).
+    fn open_about_link(state: &ManagerState, link: &str) {
+        let url = match link {
+            "author" => lingosnap_core::AUTHOR_URL,
+            "repo" => lingosnap_core::REPO_URL,
+            _ => return,
+        };
+        if let Err(error) = shell_open::open_url(url) {
+            set_status(
+                state,
+                &status_text(
+                    state.language(),
+                    StatusEvent::OpenProviderPageFailed { detail: &error },
+                ),
+            );
+        }
     }
 
     /// Turn "Start with Windows" on or off (a per-user Run registry value).
@@ -6390,6 +6457,10 @@ mod windows_app {
                     }
                 }
                 fair_copy_push_all(state);
+                fair_copy_push_status(state, false);
+            }
+            Some("open_link") => {
+                open_about_link(state, &text("link"));
                 fair_copy_push_status(state, false);
             }
             Some("open_provider_page") => {
