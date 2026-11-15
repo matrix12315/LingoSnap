@@ -410,7 +410,7 @@ mod windows_app {
             (UiLanguage::English, HotkeySelectionLabel) => "Selection translate",
             (UiLanguage::English, HotkeyHoverLabel) => "Hover translate",
             (UiLanguage::English, HotkeyPauseLabel) => "Pause / resume",
-            (UiLanguage::English, HotkeyOpenPopupLabel) => "Manual query",
+            (UiLanguage::English, HotkeyOpenPopupLabel) => "Open popup",
             (UiLanguage::English, ProfilesCard) => "Profiles",
             (UiLanguage::English, ProfilesBeneathDivider) => "BENEATH MORE…",
             (UiLanguage::English, ProfilesRailHint) => {
@@ -500,7 +500,7 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, HotkeySelectionLabel) => "划词翻译",
             (UiLanguage::SimplifiedChinese, HotkeyHoverLabel) => "悬停翻译",
             (UiLanguage::SimplifiedChinese, HotkeyPauseLabel) => "暂停/恢复",
-            (UiLanguage::SimplifiedChinese, HotkeyOpenPopupLabel) => "手动查询",
+            (UiLanguage::SimplifiedChinese, HotkeyOpenPopupLabel) => "打开弹窗",
             (UiLanguage::SimplifiedChinese, ProfilesCard) => "配置档",
             (UiLanguage::SimplifiedChinese, ProfilesBeneathDivider) => "MORE… 以下",
             (UiLanguage::SimplifiedChinese, ProfilesRailHint) => {
@@ -1921,7 +1921,7 @@ mod windows_app {
         add_label(
             hwnd,
             &mut h,
-            "Manual query",
+            "Open popup",
             Some(View::Settings),
             Slot::HotkeyOpenPopupLabel,
         )?;

@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LingoSnap — 02 Popup · input and profile rail, one card</title>
+<link rel="stylesheet" href="fair-copy.css" />
+<style>
+  body { display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 56px 32px 72px; }
+  .cap { font: 500 10.5px var(--mono); letter-spacing: .12em; color: rgba(241, 235, 223, .55); }
+
+  /* The chooser lives inside the popup's glass panel: the rail sits on the
+     glass, so only the pills carry emphasis. */
+  .sourcepanel .railwrap { position: static; display: block; width: auto; margin: 10px 0 0; padding: 0; }
+  .sourcepanel .rail { background: none; box-shadow: none; flex-wrap: wrap; }
+  .rpill { cursor: pointer; }
+  .rpill:hover, .rpill:active, .rpill.on {
+    color: var(--btn-primary-ink); font-weight: 600;
+    background: var(--btn-primary-bg);
+  }
+
+  /* The quote is now a field: the textarea inherits the quote's type. */
+  .srcinput {
+    display: block; width: 100%; margin: 0; padding: 0; border: 0; outline: 0;
+    background: transparent; resize: none; overflow-y: auto; max-height: 132px;
+    font: inherit; line-height: inherit; letter-spacing: inherit; color: inherit;
+  }
+  .srcinput::placeholder { color: inherit; opacity: .45; }
+  .linkbtn {
+    margin-left: 4px; padding: 0; border: 0; background: none; cursor: pointer;
+    font: inherit; color: inherit; text-decoration: underline; text-underline-offset: 2px;
+  }
+  /* Picking a profile with nothing typed points back at the field. */
+  .sourcepanel.need { outline: 1.5px solid transparent; outline-offset: 3px; animation: need .9s ease; }
+  @keyframes need { 30%, 70% { outline-color: var(--btn-primary-bg, #2b2721); } }
+
+  .manuscript .sec { animation: rise .25s ease both; }
+  .manuscript.stale .sec { opacity: .45; transition: opacity .2s; }
+  @keyframes rise { from { opacity: 0; transform: translateY(4px); } }
+  .btn:disabled { opacity: .45; pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) { .manuscript .sec, .sourcepanel.need { animation: none; } }
+</style>
+</head>
+<body>
+
+<div class="caprow"><div class="cap">02 · POPUP — INPUT AND PROFILE RAIL, ONE CARD</div><button class="themebtn" type="button">Dark theme</button></div>
+
+<div class="card pop">
+  <div class="chrome">
+    <div class="seal" aria-hidden="true"><svg viewBox="0 0 100 100" width="100%" height="100%" fill="currentColor" aria-hidden="true"><rect x="18" y="25" width="26" height="10" rx="5"/><rect x="18" y="49" width="64" height="10" rx="5"/><rect x="18" y="67" width="44" height="10" rx="5"/><path d="M67 4L71.2 22.8L90 27L71.2 31.2L67 50L62.8 31.2L44 27L62.8 22.8Z"/></svg></div>
+    <div class="who">
+      <strong>LingoSnap</strong>
+      <span><i class="live-dot"></i><span class="lbl" id="status">ready</span></span>
+    </div>
+    <button class="iconbtn" type="button" id="pinBtn" aria-pressed="false" title="Pin" aria-label="Pin" data-i18n-title="pin" data-i18n-aria="pin">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7.5 9.5v4"/>
+        <path d="M4.5 5.5c0-1.7 1.3-3 3-3s3 1.3 3 3c0 1.2-.7 2.2-1.5 2.8h-3C5.2 7.7 4.5 6.7 4.5 5.5z"/>
+      </svg>
+    </button>
+    <button class="iconbtn" type="button" title="Close" aria-label="Close" data-i18n-title="close" data-i18n-aria="close" data-act="close">
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round">
+        <path d="M2.5 2.5l8 8M10.5 2.5l-8 8"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="sourcepanel float">
+    <div class="target"><textarea class="srcinput" id="src" rows="2" placeholder="Type or paste text…" aria-label="Source text"></textarea></div>
+    <div class="context">Type or paste text, then choose a profile. <button class="linkbtn" type="button" id="sample">Use sample</button></div>
+
+    <div class="railwrap" id="chooser">
+      <div class="rail" role="toolbar" aria-label="Profile" data-i18n-aria="profile">
+        <button class="rpill" type="button" aria-pressed="false">Translate</button>
+        <button class="rpill" type="button" aria-pressed="false">Expert</button>
+        <button class="rpill" type="button" aria-pressed="false">Program</button>
+        <button class="rpill" type="button" aria-pressed="false">Concise</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="manuscript" aria-live="polite"></div>
+
+  <div class="foot">
+    <button class="btn primary" type="button" id="copyBtn" disabled>
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="4.2" y="4.2" width="7" height="7" rx="1.2"/>
+        <path d="M8.8 4.2V2.9a1 1 0 0 0-1-1H2.9a1 1 0 0 0-1 1v4.9a1 1 0 0 0 1 1h1.3"/>
+      </svg>
+      <span data-i18n="copy">Copy</span>
+    </button>
+    <button class="btn" type="button" data-act="retry">
+      <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10.8 6.5a4.3 4.3 0 1 1-1.3-3.1"/>
+        <path d="M10.9 1.6v2.3H8.6"/>
+      </svg>
+      <span data-i18n="retry">Retry</span>
+    </button>
+    <button class="btn push" type="button" style="padding:0 10px" data-act="close" data-i18n="close">Close</button>
+  </div>
+  <span class="resize-grip" aria-hidden="true" title="Drag to resize" data-i18n-title="resize"></span>
+</div>
+
+<script>
+(function () {
+  var SAMPLE = 'The change applies immediately to the popup and is saved to config.toml';
+  var ZH = '更改会立即应用到弹窗，并保存至 <span class="alt">config.toml</span>';
+  var WORDS = ['change: /tʃeɪndʒ/ (n. / v.) 改变，变更；更换，替换', 'apply: /əˈplaɪ/ (v.) 应用，生效'];
+  var IDIOMS = ['change of mind: 改变主意', 'for a change: 换换花样'];
+  var WHY = 'Context treats <span class="alt">change</span> as a configuration mutation, so 更改 is more precise than 改变.';
+
+  // Sample output per profile; Translate is the popup's complete body.
+  // Replace the setTimeout in run() with the real backend call.
+  var PROFILES = {
+    Translate: [
+      { h: 'Translation', li: [['Chinese', ZH], ['English', '<span class="none">None</span>'], ['Error check', 'no spelling or grammar issues found']] },
+      { h: 'Words', li: WORDS },
+      { h: 'Idioms and Grammar', li: IDIOMS, p: 'In this context “change” is a configuration mutation; countable as a noun, transitive and intransitive as a verb.' },
+      { h: 'Other Forms', li: ['Noun: change, changing', 'Verb: change, rechange', 'Adjective: changeable'] },
+      { h: 'Synonyms', p: '<span class="none">None</span>' },
+      { h: 'Reasoning', p: WHY }
+    ],
+    Expert: [
+      { h: 'Translation', li: [['Chinese', ZH]] },
+      { h: 'Idioms and Grammar', li: IDIOMS },
+      { h: 'Reasoning', p: WHY }
+    ],
+    Program: [
+      { h: 'Translation', li: [['Chinese', ZH]] },
+      { h: 'Kept verbatim', li: [['File', 'config.toml'], ['Term', 'popup → 弹窗 (UI term)']] }
+    ],
+    Concise: [
+      { h: 'Translation', li: [['Chinese', '更改即时生效，并保存至 <span class="alt">config.toml</span>']] }
+    ]
+  };
+
+  var $ = function (s) { return document.querySelector(s); };
+  var src = $('#src'), glass = $('.sourcepanel.float'), ms = $('.manuscript'), status = $('#status');
+  var copyBtn = $('#copyBtn'), retryBtn = $('[data-act="retry"]');
+  var pills = Array.prototype.slice.call(document.querySelectorAll('#chooser .rpill'));
+  var active = null, busy = false, timer = 0;
+
+  function sec(s) {
+    var d = document.createElement('div'); d.className = 'sec';
+    var h = '<h3>' + s.h + '</h3>';
+    if (s.li) h += '<ul>' + s.li.map(function (x) {
+      return '<li>' + (Array.isArray(x) ? '<span class="flabel">' + x[0] + '</span>' + x[1] : x) + '</li>';
+    }).join('') + '</ul>';
+    if (s.p) h += '<p class="fineprint">' + s.p + '</p>';
+    d.innerHTML = h; return d;
+  }
+  function note(html) {
+    var d = document.createElement('div'); d.className = 'sec';
+    d.innerHTML = '<p class="fineprint">' + html + '</p>'; return d;
+  }
+  function grow() { src.style.height = 'auto'; src.style.height = Math.min(src.scrollHeight, 132) + 'px'; }
+  function nudge() { glass.classList.remove('need'); void glass.offsetWidth; glass.classList.add('need'); src.focus(); }
+
+  function mark(name) {
+    pills.forEach(function (p) {
+      var on = p.textContent.trim() === name;
+      p.classList.toggle('on', on);
+      p.setAttribute('aria-pressed', String(on));
+    });
+  }
+
+  function run(name) {
+    if (!src.value.trim()) { nudge(); return; }
+    active = name; busy = true; mark(name);
+    clearTimeout(timer);
+    ms.classList.remove('stale');
+    ms.replaceChildren(note('Running <span class="alt">' + name + '</span>…'));
+    status.textContent = name.toLowerCase() + '…';
+    copyBtn.disabled = true;
+    timer = setTimeout(function () {
+      ms.replaceChildren.apply(ms, PROFILES[name].map(sec));
+      if (src.value.trim() !== SAMPLE) ms.appendChild(note('Demo content: results are canned for the sample sentence.'));
+      status.textContent = name.toLowerCase();
+      copyBtn.disabled = false; busy = false;
+    }, 800);
+  }
+
+  pills.forEach(function (p) {
+    p.addEventListener('click', function () {
+      run(p.textContent.trim());
+    });
+  });
+
+  src.addEventListener('input', function () {
+    grow();
+    if (active && !busy) { ms.classList.add('stale'); status.textContent = active.toLowerCase() + ' · edited'; }
+  });
+  src.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && active) { e.preventDefault(); run(active); }
+  });
+  $('#sample').addEventListener('click', function () {
+    src.value = SAMPLE; src.dispatchEvent(new Event('input')); src.focus();
+  });
+  retryBtn.addEventListener('click', function () { if (active) run(active); });
+
+  copyBtn.addEventListener('click', async function () {
+    var el = ms.querySelector('li, p.fineprint'); if (!el) return;
+    var line = el.cloneNode(true);
+    line.querySelectorAll('.flabel').forEach(function (n) { n.remove(); });
+    try { await navigator.clipboard.writeText(line.textContent.trim()); } catch (e) {}
+    copyBtn.classList.add('copied');
+    var label = copyBtn.querySelector('[data-i18n]');
+    label.textContent = typeof t === 'function' ? t('copied') : 'Copied';
+    setTimeout(function () {
+      copyBtn.classList.remove('copied');
+      label.textContent = typeof t === 'function' ? t('copy') : 'Copy';
+    }, 1600);
+  });
+
+  var pinBtn = $('#pinBtn');
+  pinBtn.addEventListener('click', function () {
+    pinBtn.setAttribute('aria-pressed', String(pinBtn.getAttribute('aria-pressed') !== 'true'));
+  });
+
+  ms.replaceChildren(note('Choose a profile to run it on your text.'));
+  grow();
+})();
+</script>
+<script>
+  // The manuscript's first section must always clear the floating glass panel,
+  // whatever the field and rail grow to — size the top padding from the panel.
+  (function () {
+    var sp = document.querySelector('.sourcepanel.float'), m = document.querySelector('.manuscript');
+    if (!sp || !m) return;
+    var fit = function () { m.style.paddingTop = (sp.offsetTop + sp.offsetHeight - m.offsetTop + 24) + 'px'; };
+    fit();
+    if (window.ResizeObserver) new ResizeObserver(fit).observe(sp);
+    window.addEventListener('resize', fit);
+  })();
+</script>
+<script src="strings.js"></script>
+<script src="theme.js"></script>
+<script src="liquid-lens.js"></script>
+</body>
+</html>
