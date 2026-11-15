@@ -1664,11 +1664,11 @@ mod windows_impl {
         let popup_id = admission.popup_id;
         ensure_companion(hwnd, state);
         let ordered = profile_chooser_order(&state.runtime.config.profiles);
-        // Only display the first 6 pills in setting's order list
-        let displayed_indices: Vec<usize> = ordered.into_iter().take(6).collect();
+        // Only display the first 5 pills in setting's order list, reduced to the first word
+        let displayed_indices: Vec<usize> = ordered.into_iter().take(5).collect();
         let profile_names: Vec<String> = displayed_indices
             .iter()
-            .map(|&idx| state.runtime.config.profiles[idx].name.clone())
+            .map(|&idx| popup::compact_profile_label(&state.runtime.config.profiles[idx].name))
             .collect();
         let default_id = state.runtime.config.default_profile_id(TriggerKind::Manual);
         let default_index = displayed_indices
@@ -3077,7 +3077,7 @@ mod windows_impl {
             }
             UiCommand::SubmitInput { id, text, index } => {
                 let ordered = profile_chooser_order(&state.runtime.config.profiles);
-                let displayed_indices: Vec<usize> = ordered.into_iter().take(6).collect();
+                let displayed_indices: Vec<usize> = ordered.into_iter().take(5).collect();
                 if let Some(&profile_idx) = displayed_indices.get(index) {
                     let profile_id = state.runtime.config.profiles[profile_idx].id.clone();
                     let spec = RequestSpec {
@@ -3789,12 +3789,21 @@ mod windows_impl {
         }
 
         #[test]
-        fn input_card_displays_at_most_six_pills_and_selects_default_profile() {
+        fn input_card_displays_at_most_five_pills_and_selects_default_profile() {
             let mut config = lingosnap_core::AppConfig::default();
-            assert!(config.profiles.len() >= 6);
+            assert!(config.profiles.len() >= 5);
             let ordered = profile_chooser_order(&config.profiles);
-            let displayed: Vec<usize> = ordered.into_iter().take(6).collect();
-            assert_eq!(displayed.len(), 6);
+            let displayed: Vec<usize> = ordered.into_iter().take(5).collect();
+            assert_eq!(displayed.len(), 5);
+
+            let profile_names: Vec<String> = displayed
+                .iter()
+                .map(|&idx| popup::compact_profile_label(&config.profiles[idx].name))
+                .collect();
+            assert_eq!(profile_names.len(), 5);
+            for name in &profile_names {
+                assert!(!name.contains(' '));
+            }
 
             // Default input profile is contextual-zh-en
             let default_id = config.default_profile_id(TriggerKind::Manual);
@@ -3807,7 +3816,7 @@ mod windows_impl {
                 "contextual-zh-en"
             );
 
-            // Change default input profile to another profile in the first 6
+            // Change default input profile to another profile in the first 5
             config.defaults.input = config.profiles[displayed[2]].id.clone();
             let new_default_id = config.default_profile_id(TriggerKind::Manual);
             let new_default_index = displayed

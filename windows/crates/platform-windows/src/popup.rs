@@ -1327,7 +1327,7 @@ mod windows_impl {
         logical.clamp(CHOOSER_MIN_BUTTON_WIDTH, CHOOSER_MAX_BUTTON_WIDTH)
     }
 
-    pub(super) fn compact_profile_label(name: &str) -> String {
+    pub(crate) fn compact_profile_label(name: &str) -> String {
         let word = name
             .trim()
             .split(|character: char| {

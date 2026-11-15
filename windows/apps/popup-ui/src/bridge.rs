@@ -329,12 +329,18 @@ pub const BRIDGE_JS: &str = r##"<script>
       if (src) src.focus();
     }
 
+    function compactWord(name) {
+      var word = String(name).trim().split(/[\s\-_\/\\]+/).filter(function (part) { return part.length; })[0] || (typeof t === 'function' ? t('profile') : 'Profile');
+      return word.length > 11 ? word.slice(0, 11) + '\u2026' : word;
+    }
+
     profiles.forEach(function (name, idx) {
       var pill = document.createElement('button');
       pill.type = 'button';
       pill.className = 'rpill' + (idx === activeIndex ? ' on' : '');
       pill.setAttribute('aria-pressed', String(idx === activeIndex));
-      pill.textContent = name;
+      pill.textContent = compactWord(name);
+      pill.title = name;
       pill.addEventListener('click', function () {
         activeIndex = idx;
         markPills(activeIndex);
