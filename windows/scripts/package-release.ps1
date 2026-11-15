@@ -134,6 +134,15 @@ foreach ($document in $documentation) {
     Copy-Item -LiteralPath $source -Destination $destination -Force
 }
 
+$packageAssets = Join-Path $outputDirectory "assets"
+New-Item -ItemType Directory -Path $packageAssets -Force | Out-Null
+$assetsSource = Join-Path $repoRoot "assets"
+if (Test-Path -LiteralPath $assetsSource -PathType Container) {
+    Get-ChildItem -LiteralPath $assetsSource -File | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $packageAssets $_.Name) -Force
+    }
+}
+
 $gitCommand = Get-Command git.exe -ErrorAction SilentlyContinue
 if ($null -ne $gitCommand) {
     $gitErrorAction = $ErrorActionPreference

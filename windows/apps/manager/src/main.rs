@@ -1451,6 +1451,17 @@ mod windows_app {
                             if let Ok(current) = lingosnap_core::AppConfig::load(path) {
                                 let skin = current.ui.popup_skin;
                                 (*state).config.ui.popup_skin = skin;
+                                if current.ui.manager_language
+                                    != (*state).config.ui.manager_language
+                                {
+                                    (*state).config.ui.manager_language =
+                                        current.ui.manager_language;
+                                    apply_static_localization(hwnd, &*state);
+                                    relabel_credential_status(&*state);
+                                    if let Some(ui) = (*state).fair_copy.as_mut() {
+                                        fair_copy_push_settings(&*state, ui);
+                                    }
+                                }
                                 // Follow a tray skin switch: start the page
                                 // for fair-copy, hand back to the native
                                 // window for classic.

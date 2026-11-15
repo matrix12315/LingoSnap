@@ -63,38 +63,38 @@ LingoSnap 支持任何兼容 OpenAI Chat Completions 协议的模型服务。为
 
 1. 打开 `lingosnap-manager.exe`，切换到**设置**页，点击 API 地址右侧的 **“打开密钥页面”**（Open key page）按钮，将自动打开阿里云百炼 API Key 管理控制台。
 
-   ![管理器设置页中的打开密钥页面按钮](image.png)
+   ![管理器设置页中的打开密钥页面按钮](assets/image.png)
 
 2. 登录阿里云账号（未实名认证需按提示完成实名），点击 **“创建 API-Key”**。
 
-   ![在百炼控制台创建 API Key](image-1.png)
-   ![百炼 API Key 确认弹窗](image-2.png)
+   ![在百炼控制台创建 API Key](assets/image-1.png)
+   ![百炼 API Key 确认弹窗](assets/image-2.png)
 
 3. 复制生成的 API Key 字符串。
 
-   ![复制百炼 API Key](image-3.png)
+   ![复制百炼 API Key](assets/image-3.png)
 
 4. 返回 LingoSnap 管理器，将密钥粘贴到 **API key** 输入框中，点击 **“保存密钥”**（配置将自动生效）。
 
-   ![在管理器中保存 API Key](image-4.png)
+   ![在管理器中保存 API Key](assets/image-4.png)
 
 5. **免费额度查询与防扣费设置**：
    - 可以在 [百炼免费额度控制台](https://bailian.console.aliyun.com/cn-beijing/costing-balance/free-quota) 查看各模型的剩余免费 Token。
    - > [!IMPORTANT]
      > 强烈建议在阿里云费用与成本设置中开启 **“用完即停”** 功能，防止免费额度耗尽后产生未预期的按量扣费。
 
-   ![开启百炼用完即停选项](image-5.png)
+   ![开启百炼用完即停选项](assets/image-5.png)
 
 6. **选择与切换模型**：
    - 在百炼模型广场中挑选支持的模型（例如 `qwen3.8-flash` 等轻快实惠模型），复制其 **“模型 Code”**，粘贴至管理器的 **“模型”** 输入框中保存即可。
 
-   ![复制模型 Code 到管理器中](image-6.png)
+   ![复制模型 Code 到管理器中](assets/image-6.png)
 
 7. **验证效果**：
    - 在任意应用程序中选中一段文字（或按下快捷键），屏幕上将浮现配置档选择器；点击模式后立刻流式生成解析卡片。
 
-   ![选择器](image-7.png)
-   ![结果卡片](image-8.png)
+   ![选择器](assets/image-7.png)
+   ![结果卡片](assets/image-8.png)
 
 ---
 
@@ -161,7 +161,7 @@ LingoSnap 支持任何兼容 OpenAI Chat Completions 协议的模型服务。为
 
 | 微信支付 | 支付宝 |
 | :---: | :---: |
-| <img src="qr-wechat-pay-1.png" width="220" alt="微信支付" /> | <img src="qr-alipay-1.png" width="220" alt="支付宝" /> |
+| <img src="assets/qr-wechat-pay-1.png" width="220" alt="微信支付" /> | <img src="assets/qr-alipay-1.png" width="220" alt="支付宝" /> |
 
 ---
 

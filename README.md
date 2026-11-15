@@ -63,38 +63,38 @@ Alibaba Cloud Bailian provides generous free quotas for fast flash models (such 
 
 1. Open `lingosnap-manager.exe`, go to the **Settings** page, and click **Open key page** next to the Endpoint field to navigate to the Bailian API-Key console.
 
-   ![Open key page button in Manager Settings](image.png)
+   ![Open key page button in Manager Settings](assets/image.png)
 
 2. Sign in or complete real-name verification if prompted, then click **Create API-Key** (创建 API-Key).
 
-   ![Create API Key on Bailian](image-1.png)
-   ![Bailian API Key Dialog](image-2.png)
+   ![Create API Key on Bailian](assets/image-1.png)
+   ![Bailian API Key Dialog](assets/image-2.png)
 
 3. Copy your generated API Key.
 
-   ![Copy Bailian API Key](image-3.png)
+   ![Copy Bailian API Key](assets/image-3.png)
 
 4. Return to LingoSnap Manager, paste the key into the **API key** field, and click **Save key**.
 
-   ![Save API Key in Manager](image-4.png)
+   ![Save API Key in Manager](assets/image-4.png)
 
 5. **Quota Protection & Models**:
    - Check your free quota balance on the [Bailian Free Quota Page](https://bailian.console.aliyun.com/cn-beijing/costing-balance/free-quota).
    - > [!IMPORTANT]
      > Ensure the **"用完即停" (Stop when quota exceeded)** switch is turned **ON** in your Alibaba Cloud billing settings to prevent unintended charges once free quotas expire.
 
-   ![Enable Stop on Quota Exceeded](image-5.png)
+   ![Enable Stop on Quota Exceeded](assets/image-5.png)
 
 6. **Select Model**:
    - In the Bailian model list, find your preferred model (e.g., `qwen3.8-flash`), copy its **Model Code (模型 Code)**, paste it into the **Model** field in LingoSnap Manager, and save.
 
-   ![Copy Model Code into Manager](image-6.png)
+   ![Copy Model Code into Manager](assets/image-6.png)
 
 7. **Verify Presentation**:
    - Select text in any window to display the profile chooser, then click any profile to stream the structured result card:
 
-   ![Profile Chooser](image-7.png)
-   ![Result Card](image-8.png)
+   ![Profile Chooser](assets/image-7.png)
+   ![Result Card](assets/image-8.png)
 
 ---
 
@@ -161,7 +161,7 @@ If LingoSnap has helped improve your reading, writing, or learning workflow, con
 
 | WeChat Pay (微信支付) | Alipay (支付宝) |
 | :---: | :---: |
-| <img src="qr-wechat-pay-1.png" width="220" alt="WeChat Pay" /> | <img src="qr-alipay-1.png" width="220" alt="Alipay" /> |
+| <img src="assets/qr-wechat-pay-1.png" width="220" alt="WeChat Pay" /> | <img src="assets/qr-alipay-1.png" width="220" alt="Alipay" /> |
 
 ---
 

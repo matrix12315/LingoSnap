@@ -10,8 +10,8 @@ mod windows_impl {
     };
     use windows::Win32::UI::WindowsAndMessaging::{
         AppendMenuW, CreatePopupMenu, DestroyMenu, GetCursorPos, LoadIconW, SetForegroundWindow,
-        TrackPopupMenu, IDI_APPLICATION, MF_CHECKED, MF_SEPARATOR, MF_STRING, TPM_BOTTOMALIGN,
-        TPM_LEFTALIGN, WM_APP, WM_COMMAND, WM_LBUTTONDBLCLK, WM_RBUTTONUP,
+        TrackPopupMenu, IDI_APPLICATION, MF_CHECKED, MF_POPUP, MF_SEPARATOR, MF_STRING,
+        TPM_BOTTOMALIGN, TPM_LEFTALIGN, WM_APP, WM_COMMAND, WM_LBUTTONDBLCLK, WM_RBUTTONUP,
     };
 
     pub const TRAY_CALLBACK: u32 = WM_APP + 7;
@@ -22,6 +22,8 @@ mod windows_impl {
     pub const SET_SKIN_CLASSIC_COMMAND: usize = 0x7205;
     pub const SET_SKIN_FAIRCOPY_COMMAND: usize = 0x7206;
     pub const TOGGLE_AUTOSTART_COMMAND: usize = 0x7207;
+    pub const SET_LANG_EN_COMMAND: usize = 0x7208;
+    pub const SET_LANG_ZH_COMMAND: usize = 0x7209;
 
     /// The LingoSnap icon embedded in the resident (resource ID 1), sized for
     /// the tray at the current DPI.
@@ -83,14 +85,28 @@ mod windows_impl {
             data
         }
 
-        pub fn update_status(&self, hover_enabled: bool, rest_enabled: bool) {
+        pub fn update_status(
+            &self,
+            hover_enabled: bool,
+            rest_enabled: bool,
+            language: lingosnap_core::config::UiLanguage,
+        ) {
             let mut data = self.data(NIF_TIP);
-            let text = if rest_enabled {
-                "LingoSnap (Rest mode)\0"
-            } else if hover_enabled {
-                "LingoSnap (Hover on)\0"
-            } else {
-                "LingoSnap\0"
+            let text = match (language, rest_enabled, hover_enabled) {
+                (lingosnap_core::config::UiLanguage::SimplifiedChinese, true, _) => {
+                    "LingoSnap (休息模式)\0"
+                }
+                (lingosnap_core::config::UiLanguage::SimplifiedChinese, false, true) => {
+                    "LingoSnap (悬停开启)\0"
+                }
+                (lingosnap_core::config::UiLanguage::SimplifiedChinese, false, false) => {
+                    "LingoSnap\0"
+                }
+                (lingosnap_core::config::UiLanguage::English, true, _) => "LingoSnap (Rest mode)\0",
+                (lingosnap_core::config::UiLanguage::English, false, true) => {
+                    "LingoSnap (Hover on)\0"
+                }
+                (lingosnap_core::config::UiLanguage::English, false, false) => "LingoSnap\0",
             };
             let tip: Vec<u16> = text.encode_utf16().collect();
             let len = tip.len().min(data.szTip.len());
@@ -116,6 +132,7 @@ mod windows_impl {
         hover_enabled: bool,
         rest_enabled: bool,
         skin: lingosnap_core::config::PopupSkin,
+        language: lingosnap_core::config::UiLanguage,
     ) {
         match lparam.0 as u32 {
             WM_LBUTTONDBLCLK => unsafe {
@@ -127,7 +144,7 @@ mod windows_impl {
                 )
                 .ok();
             },
-            WM_RBUTTONUP => show_menu(hwnd, hover_enabled, rest_enabled, skin),
+            WM_RBUTTONUP => show_menu(hwnd, hover_enabled, rest_enabled, skin, language),
             _ => {}
         }
     }
@@ -137,6 +154,7 @@ mod windows_impl {
         hover_enabled: bool,
         rest_enabled: bool,
         skin: lingosnap_core::config::PopupSkin,
+        language: lingosnap_core::config::UiLanguage,
     ) {
         let menu = match unsafe { CreatePopupMenu() } {
             Ok(menu) => menu,
@@ -150,7 +168,7 @@ mod windows_impl {
         } else {
             MF_STRING
         };
-        use lingosnap_core::config::PopupSkin;
+        use lingosnap_core::config::{PopupSkin, UiLanguage};
         let classic_flags = if skin == PopupSkin::Classic {
             MF_STRING | MF_CHECKED
         } else {
@@ -166,38 +184,109 @@ mod windows_impl {
         } else {
             MF_STRING
         };
-        let result = unsafe {
-            AppendMenuW(menu, MF_STRING, OPEN_MANAGER_COMMAND, w!("Open Manager"))
-                .and_then(|_| {
-                    AppendMenuW(menu, hover_flags, TOGGLE_HOVER_COMMAND, w!("Toggle Hover"))
-                })
-                .and_then(|_| {
+
+        let lang_menu = match unsafe { CreatePopupMenu() } {
+            Ok(m) => m,
+            Err(error) => {
+                eprintln!("could not create language submenu: {error}");
+                let _ = unsafe { DestroyMenu(menu) };
+                return;
+            }
+        };
+
+        let lang_en_flags = if language == UiLanguage::English {
+            MF_STRING | MF_CHECKED
+        } else {
+            MF_STRING
+        };
+        let lang_zh_flags = if language == UiLanguage::SimplifiedChinese {
+            MF_STRING | MF_CHECKED
+        } else {
+            MF_STRING
+        };
+
+        let submenu_ok = unsafe {
+            AppendMenuW(lang_menu, lang_en_flags, SET_LANG_EN_COMMAND, w!("English")).and_then(
+                |_| {
                     AppendMenuW(
-                        menu,
-                        MF_STRING,
-                        TOGGLE_REST_COMMAND,
-                        if rest_enabled {
-                            w!("Disable Rest Mode")
-                        } else {
-                            w!("Enable Rest Mode")
-                        },
+                        lang_menu,
+                        lang_zh_flags,
+                        SET_LANG_ZH_COMMAND,
+                        w!("简体中文"),
                     )
-                })
+                },
+            )
+        };
+        if submenu_ok.is_err() {
+            unsafe {
+                let _ = DestroyMenu(lang_menu);
+                let _ = DestroyMenu(menu);
+            }
+            return;
+        }
+
+        let is_zh = language == UiLanguage::SimplifiedChinese;
+        let open_manager_text = if is_zh {
+            w!("打开管理器")
+        } else {
+            w!("Open Manager")
+        };
+        let hover_text = if is_zh {
+            w!("悬停翻译")
+        } else {
+            w!("Toggle Hover")
+        };
+        let rest_text = if is_zh {
+            if rest_enabled {
+                w!("退出休息模式")
+            } else {
+                w!("开启休息模式")
+            }
+        } else if rest_enabled {
+            w!("Disable Rest Mode")
+        } else {
+            w!("Enable Rest Mode")
+        };
+        let classic_text = if is_zh {
+            w!("界面: Classic")
+        } else {
+            w!("UI: Classic")
+        };
+        let faircopy_text = if is_zh {
+            w!("界面: Fair Copy")
+        } else {
+            w!("UI: Fair Copy")
+        };
+        let autostart_text = if is_zh {
+            w!("开机自启动")
+        } else {
+            w!("Start with Windows")
+        };
+        let exit_text = if is_zh { w!("退出") } else { w!("Exit") };
+
+        let mut attached = false;
+        let result = unsafe {
+            AppendMenuW(menu, MF_STRING, OPEN_MANAGER_COMMAND, open_manager_text)
+                .and_then(|_| AppendMenuW(menu, hover_flags, TOGGLE_HOVER_COMMAND, hover_text))
+                .and_then(|_| AppendMenuW(menu, MF_STRING, TOGGLE_REST_COMMAND, rest_text))
                 .and_then(|_| AppendMenuW(menu, MF_SEPARATOR, 0, None))
                 .and_then(|_| {
-                    AppendMenuW(
-                        menu,
-                        classic_flags,
-                        SET_SKIN_CLASSIC_COMMAND,
-                        w!("UI: Classic"),
-                    )
+                    let res =
+                        AppendMenuW(menu, MF_POPUP, lang_menu.0 as usize, w!("Language / 语言"));
+                    if res.is_ok() {
+                        attached = true;
+                    }
+                    res
+                })
+                .and_then(|_| {
+                    AppendMenuW(menu, classic_flags, SET_SKIN_CLASSIC_COMMAND, classic_text)
                 })
                 .and_then(|_| {
                     AppendMenuW(
                         menu,
                         faircopy_flags,
                         SET_SKIN_FAIRCOPY_COMMAND,
-                        w!("UI: Fair Copy"),
+                        faircopy_text,
                     )
                 })
                 .and_then(|_| AppendMenuW(menu, MF_SEPARATOR, 0, None))
@@ -206,10 +295,10 @@ mod windows_impl {
                         menu,
                         autostart_flags,
                         TOGGLE_AUTOSTART_COMMAND,
-                        w!("Start with Windows"),
+                        autostart_text,
                     )
                 })
-                .and_then(|_| AppendMenuW(menu, MF_STRING, EXIT_COMMAND, w!("Exit")))
+                .and_then(|_| AppendMenuW(menu, MF_STRING, EXIT_COMMAND, exit_text))
         };
         if result.is_ok() {
             let mut point = POINT::default();
@@ -228,6 +317,9 @@ mod windows_impl {
                 }
             }
         }
+        if !attached {
+            let _ = unsafe { DestroyMenu(lang_menu) };
+        }
         unsafe {
             let _ = DestroyMenu(menu);
         }
@@ -241,7 +333,41 @@ pub use windows_impl::*;
 pub mod windows_impl {
     #[derive(Debug)]
     pub struct TrayIcon;
+
+    impl TrayIcon {
+        pub fn update_status(
+            &self,
+            _hover_enabled: bool,
+            _rest_enabled: bool,
+            _language: lingosnap_core::config::UiLanguage,
+        ) {
+        }
+    }
 }
 
 #[cfg(not(windows))]
 pub use windows_impl::*;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tray_command_ids_are_distinct() {
+        let commands = [
+            OPEN_MANAGER_COMMAND,
+            TOGGLE_HOVER_COMMAND,
+            TOGGLE_REST_COMMAND,
+            EXIT_COMMAND,
+            SET_SKIN_CLASSIC_COMMAND,
+            SET_SKIN_FAIRCOPY_COMMAND,
+            TOGGLE_AUTOSTART_COMMAND,
+            SET_LANG_EN_COMMAND,
+            SET_LANG_ZH_COMMAND,
+        ];
+        let mut unique = commands.to_vec();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), commands.len());
+    }
+}

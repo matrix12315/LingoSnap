@@ -9,7 +9,7 @@ mod windows_impl {
     };
     use lingosnap_core::{
         cache::{CacheKey, ResultCache},
-        config::{save_config_atomic, PopupSkin},
+        config::{save_config_atomic, PopupSkin, UiLanguage},
         default_config_path, Coordinator, JobInput, JobPriority, RequestGate, RequestRejection,
         TextContext, TriggerKind,
     };
@@ -710,6 +710,7 @@ mod windows_impl {
                         false,
                         false,
                         lingosnap_core::config::PopupSkin::Classic,
+                        UiLanguage::English,
                     );
                 } else {
                     tray::handle_callback(
@@ -718,6 +719,7 @@ mod windows_impl {
                         (*state).hover_enabled,
                         (*state).rest_enabled,
                         (*state).runtime.config.ui.popup_skin,
+                        (*state).runtime.config.ui.manager_language,
                     );
                 }
                 return LRESULT(0);
@@ -859,7 +861,11 @@ mod windows_impl {
                             });
                             (*state).mouse.set_hover_enabled(enabled, Instant::now());
                             (*state).hover_trace_deadline = None;
-                            (*state).tray.update_status(enabled, false);
+                            (*state).tray.update_status(
+                                enabled,
+                                false,
+                                (*state).runtime.config.ui.manager_language,
+                            );
                             arm_mouse_timers(hwnd, &mut *state, Instant::now());
                         }
                     }
@@ -877,6 +883,16 @@ mod windows_impl {
                     tray::SET_SKIN_FAIRCOPY_COMMAND => {
                         if !state.is_null() {
                             set_popup_skin(hwnd, &mut *state, PopupSkin::FairCopy);
+                        }
+                    }
+                    tray::SET_LANG_EN_COMMAND => {
+                        if !state.is_null() {
+                            set_manager_language(&mut *state, UiLanguage::English);
+                        }
+                    }
+                    tray::SET_LANG_ZH_COMMAND => {
+                        if !state.is_null() {
+                            set_manager_language(&mut *state, UiLanguage::SimplifiedChinese);
                         }
                     }
                     tray::TOGGLE_AUTOSTART_COMMAND => match std::env::current_exe() {
@@ -917,7 +933,11 @@ mod windows_impl {
                             });
                             (*state).mouse.set_hover_enabled(enabled, Instant::now());
                             (*state).hover_trace_deadline = None;
-                            (*state).tray.update_status(enabled, false);
+                            (*state).tray.update_status(
+                                enabled,
+                                false,
+                                (*state).runtime.config.ui.manager_language,
+                            );
                             arm_mouse_timers(hwnd, &mut *state, Instant::now());
                         }
                         hotkey::CYCLE_PROFILES_ID => {
@@ -1935,6 +1955,28 @@ mod windows_impl {
         apply_popup_skin(hwnd, state);
     }
 
+    /// Switch the interface language, persist the choice, update the tray
+    /// tooltip, and notify the fair-copy companion live.
+    fn set_manager_language(state: &mut ShellState, language: UiLanguage) {
+        if state.runtime.config.ui.manager_language == language {
+            return;
+        }
+        let mut next = state.runtime.config.clone();
+        next.ui.manager_language = language;
+        if let Some(path) = default_config_path() {
+            if let Err(error) = save_config_atomic(&path, &next) {
+                runtime_trace::record("manager_language_save_failed");
+                eprintln!("could not persist manager language: {error}");
+                return;
+            }
+        }
+        state.runtime.config = next;
+        send_appearance(state);
+        state
+            .tray
+            .update_status(state.hover_enabled, state.rest_enabled, language);
+    }
+
     /// Bring the companion in line with `config.ui.popup_skin`.
     fn apply_popup_skin(hwnd: HWND, state: &mut ShellState) {
         // A skin switch starts a clean session: a replayed last event would
@@ -2159,9 +2201,11 @@ mod windows_impl {
             let _ = KillTimer(Some(hwnd), mouse::TIMER_SELECTION);
             let _ = KillTimer(Some(hwnd), mouse::TIMER_HOVER);
         }
-        state
-            .tray
-            .update_status(state.hover_enabled, state.rest_enabled);
+        state.tray.update_status(
+            state.hover_enabled,
+            state.rest_enabled,
+            state.runtime.config.ui.manager_language,
+        );
         runtime_trace::record(if enabled {
             "rest_enabled"
         } else {
@@ -2280,6 +2324,11 @@ mod windows_impl {
                 apply_popup_skin(hwnd, state);
             }
             send_appearance(state);
+            state.tray.update_status(
+                state.hover_enabled,
+                state.rest_enabled,
+                state.runtime.config.ui.manager_language,
+            );
             runtime_trace::record("config_ui_only_applied");
             return;
         }
@@ -2295,6 +2344,11 @@ mod windows_impl {
             apply_popup_skin(hwnd, state);
         }
         send_appearance(state);
+        state.tray.update_status(
+            state.hover_enabled,
+            state.rest_enabled,
+            state.runtime.config.ui.manager_language,
+        );
         if state
             .active_prompt_id
             .as_deref()
