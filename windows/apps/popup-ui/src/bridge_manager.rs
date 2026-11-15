@@ -133,6 +133,7 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
         hkPopup: get('hkPopup'),
         selectionDefault: current.selection,
         hoverDefault: current.hover,
+        inputDefault: current.input,
         order: order
       });
     }, 600);
@@ -172,6 +173,7 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     current.profiles = cfg.profiles || [];
     current.selection = cfg.selectionId || '';
     current.hover = cfg.hoverId || '';
+    current.input = cfg.inputId || '';
     current.language = cfg.language || 'en';
     if (window.setLang) window.setLang(current.language);
     var opts = current.profiles.map(function (p) { return { id: p.id, label: profileName(p) }; });
@@ -181,6 +183,9 @@ pub const MANAGER_BRIDGE_JS: &str = r##"<script>
     });
     choice(document.getElementById('hoverprof'), opts, idx(current.hover), function (opt) {
       current.hover = opt.id; postSettings();
+    });
+    choice(document.getElementById('inputprof'), opts, idx(current.input), function (opt) {
+      current.input = opt.id; postSettings();
     });
     var langs = [{ id: 'en', label: 'English' }, { id: 'zh-CN', label: '\u7b80\u4f53\u4e2d\u6587' }];
     choice(document.getElementById('uilang'), langs, current.language === 'zh-CN' ? 1 : 0, function (opt) {

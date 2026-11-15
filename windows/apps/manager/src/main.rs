@@ -605,6 +605,7 @@ mod windows_app {
         DeleteBlockedLast,
         DeleteBlockedSelectionDefault,
         DeleteBlockedHoverDefault,
+        DeleteBlockedInputDefault,
         DeleteProfileFailed {
             detail: &'a str,
         },
@@ -739,6 +740,10 @@ mod windows_app {
             DeleteBlockedHoverDefault => match language {
                 UiLanguage::English => "This is the Hover profile. Choose a different Hover profile in Settings first.".to_owned(),
                 UiLanguage::SimplifiedChinese => "这是悬停配置档。请先在设置中选择其他悬停配置档。".to_owned(),
+            },
+            DeleteBlockedInputDefault => match language {
+                UiLanguage::English => "This is the Input profile. Choose a different Input profile in Settings first.".to_owned(),
+                UiLanguage::SimplifiedChinese => "这是输入配置档。请先在设置中选择其他输入配置档。".to_owned(),
             },
             DeleteProfileFailed { detail } => match language {
                 UiLanguage::English => format!("Could not delete profile: {detail}"),
@@ -5340,6 +5345,7 @@ mod windows_app {
                     DeleteBlocked::LastProfile => StatusEvent::DeleteBlockedLast,
                     DeleteBlocked::SelectionDefault => StatusEvent::DeleteBlockedSelectionDefault,
                     DeleteBlocked::HoverDefault => StatusEvent::DeleteBlockedHoverDefault,
+                    DeleteBlocked::InputDefault => StatusEvent::DeleteBlockedInputDefault,
                 };
                 set_text(
                     state.handles.prompt_status,
@@ -5908,6 +5914,7 @@ mod windows_app {
         LastProfile,
         SelectionDefault,
         HoverDefault,
+        InputDefault,
     }
 
     /// The configuration without profile `id`, or the reason it must stay.
@@ -5921,6 +5928,9 @@ mod windows_app {
         }
         if config.defaults.hover == id {
             return Err(DeleteBlocked::HoverDefault);
+        }
+        if config.defaults.input == id {
+            return Err(DeleteBlocked::InputDefault);
         }
         let mut next = config.clone();
         next.profiles.retain(|profile| profile.id != id);
@@ -5987,7 +5997,10 @@ mod windows_app {
                         next.defaults.selection = new_id.clone();
                     }
                     if next.defaults.hover == old_id {
-                        next.defaults.hover = new_id;
+                        next.defaults.hover = new_id.clone();
+                    }
+                    if next.defaults.input == old_id {
+                        next.defaults.input = new_id;
                     }
                 }
             }
@@ -6152,6 +6165,7 @@ mod windows_app {
                     "autostart": autostart::is_enabled(),
                     "selectionId": state.config.defaults.selection,
                     "hoverId": state.config.defaults.hover,
+                    "inputId": state.config.defaults.input,
                     "credentialPresent": matches!(
                         state.credential_status,
                         CredentialStatusState::Present
@@ -6371,6 +6385,7 @@ mod windows_app {
                 for (key, slot) in [
                     ("selectionDefault", &mut next.defaults.selection),
                     ("hoverDefault", &mut next.defaults.hover),
+                    ("inputDefault", &mut next.defaults.input),
                 ] {
                     let id = text(key);
                     if !id.is_empty() && state.config.profile(&id).is_some() {
@@ -6788,6 +6803,7 @@ mod windows_app {
             assert!(ids.len() > 2);
             config.defaults.selection = ids[0].clone();
             config.defaults.hover = ids[1].clone();
+            config.defaults.input = ids[2].clone();
             assert_eq!(
                 config_without_profile(&config, &ids[0]).unwrap_err(),
                 DeleteBlocked::SelectionDefault
@@ -6796,11 +6812,15 @@ mod windows_app {
                 config_without_profile(&config, &ids[1]).unwrap_err(),
                 DeleteBlocked::HoverDefault
             );
-            let next = config_without_profile(&config, &ids[2]).expect("plain profile deletes");
+            assert_eq!(
+                config_without_profile(&config, &ids[2]).unwrap_err(),
+                DeleteBlocked::InputDefault
+            );
+            let next = config_without_profile(&config, &ids[3]).expect("plain profile deletes");
             assert_eq!(next.profiles.len(), config.profiles.len() - 1);
-            assert!(next.profiles.iter().all(|p| p.id != ids[2]));
+            assert!(next.profiles.iter().all(|p| p.id != ids[3]));
             // The remaining order is untouched.
-            let kept: Vec<_> = ids.iter().filter(|id| **id != ids[2]).cloned().collect();
+            let kept: Vec<_> = ids.iter().filter(|id| **id != ids[3]).cloned().collect();
             let after: Vec<_> = next.profiles.iter().map(|p| p.id.clone()).collect();
             assert_eq!(after, kept);
             assert!(next.validate().is_ok());

@@ -927,7 +927,11 @@ mod windows_impl {
                             set_rest_mode(hwnd, &mut *state, !(*state).rest_enabled);
                         }
                         hotkey::OPEN_POPUP_ID => {
-                            reopen_last_popup(hwnd, &mut *state, Instant::now());
+                            if companion_presents(&*state) {
+                                open_fair_copy_input_card(hwnd, &mut *state);
+                            } else {
+                                reopen_last_popup(hwnd, &mut *state, Instant::now());
+                            }
                         }
                         _ => {}
                     }
@@ -1647,6 +1651,41 @@ mod windows_impl {
             }
         }
         observe_manual(hwnd, state, now);
+    }
+
+    fn open_fair_copy_input_card(hwnd: HWND, state: &mut ShellState) {
+        if !translation_enabled(state.rest_enabled) {
+            return;
+        }
+        let anchor = cursor_position().unwrap_or(popup::Point { x: 100, y: 100 });
+        let Some(admission) = ensure_popup(hwnd, state, anchor, None, None, true) else {
+            return;
+        };
+        let popup_id = admission.popup_id;
+        ensure_companion(hwnd, state);
+        let ordered = profile_chooser_order(&state.runtime.config.profiles);
+        // Only display the first 6 pills in setting's order list
+        let displayed_indices: Vec<usize> = ordered.into_iter().take(6).collect();
+        let profile_names: Vec<String> = displayed_indices
+            .iter()
+            .map(|&idx| state.runtime.config.profiles[idx].name.clone())
+            .collect();
+        let default_id = state.runtime.config.default_profile_id(TriggerKind::Manual);
+        let default_index = displayed_indices
+            .iter()
+            .position(|&idx| state.runtime.config.profiles[idx].id == default_id)
+            .unwrap_or(0);
+        state.popup_anchor = anchor;
+        state.active_popup_id = Some(popup_id);
+        send_fair_copy(
+            state,
+            UiEvent::ShowInput {
+                id: popup_id as u64,
+                profiles: profile_names,
+                default_index,
+                anchor: fair_copy_anchor(anchor),
+            },
+        );
     }
 
     fn selection_rect_for_root(
@@ -3036,6 +3075,33 @@ mod windows_impl {
                 });
                 runtime_trace::record("selection_profile_chooser_shown");
             }
+            UiCommand::SubmitInput { id, text, index } => {
+                let ordered = profile_chooser_order(&state.runtime.config.profiles);
+                let displayed_indices: Vec<usize> = ordered.into_iter().take(6).collect();
+                if let Some(&profile_idx) = displayed_indices.get(index) {
+                    let profile_id = state.runtime.config.profiles[profile_idx].id.clone();
+                    let spec = RequestSpec {
+                        trigger: TriggerKind::Manual,
+                        process_id: std::process::id(),
+                        source_root_window: 0,
+                        foreground_guard_root_window: 0,
+                        pointer: None,
+                        selection_rect: None,
+                        prompt_id: profile_id,
+                        bypass_duplicate_suppression: true,
+                        source_popup_id: None,
+                        destination_popup_id: (id != 0).then_some(id as popup::PopupId),
+                    };
+                    let pending = PendingAttempt {
+                        attempt: 0,
+                        spec,
+                        config_generation: state.config_generation,
+                    };
+                    let context =
+                        TextContext::new(text, lingosnap_core::ExtractionSource::Clipboard);
+                    admit_extracted_request(hwnd, state, pending, context, state.popup_anchor);
+                }
+            }
             UiCommand::PageReady => {
                 // The companion queues events for a page that is still
                 // loading, so nothing needs replaying here.
@@ -3720,6 +3786,35 @@ mod windows_impl {
             assert_eq!(selection_rect_for_root(Some((rect, 10)), 10), Some(rect));
             assert_eq!(selection_rect_for_root(Some((rect, 10)), 11), None);
             assert_eq!(selection_rect_for_root(Some((rect, 0)), 0), None);
+        }
+
+        #[test]
+        fn input_card_displays_at_most_six_pills_and_selects_default_profile() {
+            let mut config = lingosnap_core::AppConfig::default();
+            assert!(config.profiles.len() >= 6);
+            let ordered = profile_chooser_order(&config.profiles);
+            let displayed: Vec<usize> = ordered.into_iter().take(6).collect();
+            assert_eq!(displayed.len(), 6);
+
+            // Default input profile is contextual-zh-en
+            let default_id = config.default_profile_id(TriggerKind::Manual);
+            let default_index = displayed
+                .iter()
+                .position(|&idx| config.profiles[idx].id == default_id)
+                .unwrap_or(0);
+            assert_eq!(
+                config.profiles[displayed[default_index]].id,
+                "contextual-zh-en"
+            );
+
+            // Change default input profile to another profile in the first 6
+            config.defaults.input = config.profiles[displayed[2]].id.clone();
+            let new_default_id = config.default_profile_id(TriggerKind::Manual);
+            let new_default_index = displayed
+                .iter()
+                .position(|&idx| config.profiles[idx].id == new_default_id)
+                .unwrap_or(0);
+            assert_eq!(new_default_index, 2);
         }
 
         #[test]

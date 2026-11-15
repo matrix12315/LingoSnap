@@ -12,7 +12,8 @@
   /* The chooser lives inside the popup's glass panel: the rail sits on the
      glass, so only the pills carry emphasis. */
   .sourcepanel .railwrap { position: static; display: block; width: auto; margin: 10px 0 0; padding: 0; }
-  .sourcepanel .rail { background: none; box-shadow: none; flex-wrap: wrap; }
+  .sourcepanel .rail { display: flex; flex-wrap: nowrap; width: 100%; box-sizing: border-box; background: none; box-shadow: none; }
+  .sourcepanel .rail .rpill { flex: 1 1 auto; justify-content: center; text-align: center; white-space: nowrap; }
   .rpill { cursor: pointer; }
   .rpill:hover, .rpill:active, .rpill.on {
     color: var(--btn-primary-ink); font-weight: 600;
@@ -67,7 +68,7 @@
 
   <div class="sourcepanel float">
     <div class="target"><textarea class="srcinput" id="src" rows="2" placeholder="Type or paste text…" aria-label="Source text"></textarea></div>
-    <div class="context">Type or paste text, then choose a profile. <button class="linkbtn" type="button" id="sample">Use sample</button></div>
+    <div class="context">Type or paste text, then choose a profile or use the default one. <button class="linkbtn" type="button" id="sample">Use sample</button></div>
 
     <div class="railwrap" id="chooser">
       <div class="rail" role="toolbar" aria-label="Profile" data-i18n-aria="profile">
@@ -75,6 +76,8 @@
         <button class="rpill" type="button" aria-pressed="false">Expert</button>
         <button class="rpill" type="button" aria-pressed="false">Program</button>
         <button class="rpill" type="button" aria-pressed="false">Concise</button>
+        <button class="rpill" type="button" aria-pressed="false">Contextual</button>
+        <button class="rpill" type="button" aria-pressed="false">Word</button>
       </div>
     </div>
   </div>
@@ -131,6 +134,15 @@
     ],
     Concise: [
       { h: 'Translation', li: [['Chinese', '更改即时生效，并保存至 <span class="alt">config.toml</span>']] }
+    ],
+    Contextual: [
+      { h: 'Translation', li: [['Chinese', ZH]] },
+      { h: 'Words', li: WORDS },
+      { h: 'Reasoning', p: WHY }
+    ],
+    Word: [
+      { h: 'Words', li: WORDS.concat(['immediately: /ɪˈmiːdiətli/ (adv.) 立即，马上']) },
+      { h: 'Other Forms', li: ['Noun: change, changing', 'Verb: change, rechange', 'Adjective: changeable'] }
     ]
   };
 

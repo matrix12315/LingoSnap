@@ -51,6 +51,14 @@ body, .rail, .railwrap, .chrome, .foot { user-select: none !important; -webkit-u
 .caprow { display: none !important; }
 .themebtn { display: none !important; }
 .card .errbox[hidden], .card .manuscript[hidden], .card .foot[hidden] { display: none !important; }
+.sourcepanel .railwrap.embedded { position: static !important; display: block !important; width: auto !important; margin: 8px 0 0 !important; padding: 0 !important; }
+.sourcepanel .railwrap.embedded .rail { display: flex !important; flex-wrap: nowrap !important; width: 100% !important; box-sizing: border-box !important; background: none !important; box-shadow: none !important; gap: 4px !important; }
+.sourcepanel .railwrap.embedded .rail .rpill { flex: 1 1 auto !important; justify-content: center !important; text-align: center !important; white-space: nowrap !important; cursor: pointer !important; padding: 4px 6px !important; font-size: 11px !important; }
+.srcinput { display: block !important; width: 100% !important; margin: 0 !important; padding: 0 !important; border: 0 !important; outline: 0 !important; background: transparent !important; resize: none !important; overflow-y: auto !important; max-height: 132px !important; font: inherit !important; line-height: inherit !important; letter-spacing: inherit !important; color: inherit !important; }
+.srcinput::placeholder { color: inherit !important; opacity: .45 !important; }
+.sourcepanel.need { outline: 1.5px solid transparent !important; outline-offset: 3px !important; animation: need .9s ease !important; }
+@keyframes need { 30%, 70% { outline-color: var(--btn-primary-bg, #2b2721) !important; } }
+@media (prefers-reduced-motion: reduce) { .sourcepanel.need { animation: none !important; } }
 "#;
 
 /// Bridge between protocol events and the page. `window.LINGO.apply(json)`
@@ -251,12 +259,132 @@ pub const BRIDGE_JS: &str = r##"<script>
       m.style.paddingTop = (sourcepanel.offsetTop + sourcepanel.offsetHeight - m.offsetTop + 24) + 'px';
     }
   }
+  function removeEmbeddedRail() {
+    if (!sourcepanel) return;
+    var embedded = sourcepanel.querySelector('.railwrap.embedded');
+    if (embedded) {
+      dropLens(embedded);
+      embedded.remove();
+    }
+  }
   function setSource(target, context) {
     if (!sourcepanel) return;
+    removeEmbeddedRail();
     var t = sourcepanel.querySelector('.target');
     var c = sourcepanel.querySelector('.context');
     if (t) t.textContent = target || '';
     if (c) { c.textContent = context || ''; c.style.display = context ? '' : 'none'; }
+  }
+  function setupInputCard(p) {
+    if (!sourcepanel) return;
+    removeEmbeddedRail();
+    var t = sourcepanel.querySelector('.target');
+    var c = sourcepanel.querySelector('.context');
+    var ph = (typeof t_i18n === 'function' ? t_i18n('inputPlaceholder') : '') || (typeof t === 'function' ? t('inputPlaceholder') : '') || 'Type or paste text…';
+    var hint = (typeof t_i18n === 'function' ? t_i18n('inputHint') : '') || (typeof t === 'function' ? t('inputHint') : '') || 'Type or paste text, then press Enter or choose a profile.';
+    if (t) {
+      t.innerHTML = '<textarea class="srcinput" id="src" rows="2" placeholder="' + esc(ph) + '" aria-label="Source text"></textarea>';
+    }
+    if (c) {
+      c.textContent = hint;
+      c.style.display = '';
+    }
+    var profiles = p.profiles || [];
+    var activeIndex = (typeof p.default_index === 'number' && p.default_index < profiles.length) ? p.default_index : 0;
+
+    var embedded = document.createElement('div');
+    embedded.className = 'railwrap embedded';
+    var rail = document.createElement('div');
+    rail.className = 'rail';
+    rail.setAttribute('role', 'toolbar');
+    rail.setAttribute('aria-label', 'Profile');
+    embedded.appendChild(rail);
+
+    var pills = [];
+    function markPills(idx) {
+      pills.forEach(function (pill, i) {
+        var on = i === idx;
+        pill.classList.toggle('on', on);
+        pill.setAttribute('aria-pressed', String(on));
+      });
+    }
+
+    function submit(text, idx) {
+      removeEmbeddedRail();
+      setSource(text, '');
+      var m = manuscript();
+      if (m) {
+        m.innerHTML = '<div class="sec"><div class="trans"><span class="caret" aria-hidden="true"></span></div></div>';
+        m.scrollTop = 0;
+      }
+      setMode('streaming');
+      post({ cmd: 'submit_input', text: text, index: idx });
+    }
+
+    function nudge() {
+      sourcepanel.classList.remove('need');
+      void sourcepanel.offsetWidth;
+      sourcepanel.classList.add('need');
+      var src = document.getElementById('src');
+      if (src) src.focus();
+    }
+
+    profiles.forEach(function (name, idx) {
+      var pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'rpill' + (idx === activeIndex ? ' on' : '');
+      pill.setAttribute('aria-pressed', String(idx === activeIndex));
+      pill.textContent = name;
+      pill.addEventListener('click', function () {
+        activeIndex = idx;
+        markPills(activeIndex);
+        var src = document.getElementById('src');
+        var val = src ? src.value.trim() : '';
+        if (!val) {
+          nudge();
+          return;
+        }
+        submit(val, activeIndex);
+      });
+      rail.appendChild(pill);
+      pills.push(pill);
+    });
+
+    sourcepanel.appendChild(embedded);
+
+    var src = document.getElementById('src');
+    if (src) {
+      src.addEventListener('input', function () {
+        src.style.height = 'auto';
+        src.style.height = Math.min(src.scrollHeight, 132) + 'px';
+        refit();
+        reportHeightSettled();
+      });
+      src.addEventListener('keydown', function (e) {
+        if (e.isComposing || e.keyCode === 229) return;
+        if (e.key === 'Enter') {
+          if (e.shiftKey) return;
+          e.preventDefault();
+          var val = src.value.trim();
+          if (!val) {
+            nudge();
+            return;
+          }
+          submit(val, activeIndex);
+        }
+      });
+      setTimeout(function () {
+        src.focus();
+      }, 30);
+    }
+
+    var m = manuscript();
+    if (m) {
+      var msText = (typeof t_i18n === 'function' ? t_i18n('inputManuscript') : '') || (typeof t === 'function' ? t('inputManuscript') : '') || 'Results will stream here once submitted.';
+      m.innerHTML = '<div class="sec"><p class="fineprint">' + esc(msText) + '</p></div>';
+    }
+    setMode('input');
+    lens(embedded);
   }
   // Card states — result / streaming / error — as the three mockup sheets.
   function setMode(mode) {
@@ -398,6 +526,13 @@ pub const BRIDGE_JS: &str = r##"<script>
       try { ev = (typeof json === 'string') ? JSON.parse(json) : json; } catch (e) { return; }
       var p = ev.payload || ev;
       switch (p.type) {
+        case 'show_input': {
+          setChooser(false, true);
+          streamText = '';
+          lastOutput = '';
+          setupInputCard(p);
+          break;
+        }
         case 'show_loading': {
           setChooser(false, true);
           streamText = '';

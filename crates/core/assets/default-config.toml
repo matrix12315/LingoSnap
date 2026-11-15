@@ -116,6 +116,7 @@ max_output_tokens = 700
 [defaults]
 selection = "linguist-analysis"
 hover = "linguist-analysis"
+input = "linguist-analysis"
 
 [provider]
 endpoint = "https://llm-nj3xhngcgye0zp75.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"

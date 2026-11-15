@@ -101,6 +101,8 @@ pub struct DefaultProfiles {
     pub selection: String,
     #[serde(default = "default_hover_profile")]
     pub hover: String,
+    #[serde(default = "default_input_profile")]
+    pub input: String,
 }
 
 impl Default for DefaultProfiles {
@@ -108,6 +110,7 @@ impl Default for DefaultProfiles {
         Self {
             selection: default_selection_profile(),
             hover: default_hover_profile(),
+            input: default_input_profile(),
         }
     }
 }
@@ -285,6 +288,19 @@ impl AppConfig {
                 },
             ));
         }
+        let input_id = if self.defaults.input.trim().is_empty() {
+            &self.defaults.selection
+        } else {
+            &self.defaults.input
+        };
+        if !ids.contains(input_id) {
+            return Err(ConfigError::Validation(
+                ValidationError::MissingDefaultProfile {
+                    trigger: TriggerKind::Manual,
+                    id: input_id.clone(),
+                },
+            ));
+        }
         if self.provider.endpoint.trim().is_empty()
             || self.provider.model.trim().is_empty()
             || self.provider.credential_target.trim().is_empty()
@@ -300,7 +316,14 @@ impl AppConfig {
     pub fn default_profile_id(&self, trigger: TriggerKind) -> &str {
         match trigger {
             TriggerKind::Hover => &self.defaults.hover,
-            TriggerKind::Selection | TriggerKind::Manual => &self.defaults.selection,
+            TriggerKind::Selection => &self.defaults.selection,
+            TriggerKind::Manual => {
+                if self.defaults.input.trim().is_empty() {
+                    &self.defaults.selection
+                } else {
+                    &self.defaults.input
+                }
+            }
         }
     }
 
@@ -642,6 +665,9 @@ fn default_selection_profile() -> String {
 fn default_hover_profile() -> String {
     "word-explanation".to_owned()
 }
+fn default_input_profile() -> String {
+    String::new()
+}
 fn default_endpoint() -> String {
     "https://api.openai.com/v1".to_owned()
 }
@@ -673,7 +699,7 @@ mod tests {
 
     #[test]
     fn defaults_are_editable_and_separate_by_trigger() {
-        let config = AppConfig::default();
+        let mut config = AppConfig::default();
         config.validate().expect("valid defaults");
         assert_eq!(
             config.default_profile_id(TriggerKind::Selection),
@@ -683,6 +709,12 @@ mod tests {
             config.default_profile_id(TriggerKind::Hover),
             "word-explanation"
         );
+        assert_eq!(
+            config.default_profile_id(TriggerKind::Manual),
+            "contextual-zh-en"
+        );
+        config.defaults.input = "wiki-style".into();
+        assert_eq!(config.default_profile_id(TriggerKind::Manual), "wiki-style");
         assert_eq!(config.hotkeys.cycle_profiles, DEFAULT_CYCLE_PROFILES_HOTKEY);
         assert!(config.profile("wiki-style").is_some());
     }

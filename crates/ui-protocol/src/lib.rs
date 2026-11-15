@@ -77,6 +77,12 @@ pub enum UiEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         source: Option<u64>,
     },
+    ShowInput {
+        id: u64,
+        profiles: Vec<String>,
+        default_index: usize,
+        anchor: Anchor,
+    },
     ShowLoading {
         id: u64,
         target: String,
@@ -126,6 +132,11 @@ pub enum UiCommand {
     },
     SelectProfile {
         id: u64,
+        index: usize,
+    },
+    SubmitInput {
+        id: u64,
+        text: String,
         index: usize,
     },
     Retry {
@@ -240,5 +251,27 @@ mod tests {
         assert_eq!(line, r#"{"type":"ping"}"#);
         let line = serde_json::to_string(&UiCommand::PageReady).expect("serialize page_ready");
         assert_eq!(line, r#"{"type":"page_ready"}"#);
+    }
+
+    #[test]
+    fn show_input_and_submit_input_round_trip() {
+        let event = UiEvent::ShowInput {
+            id: 42,
+            profiles: vec!["Translate".into(), "Expert".into()],
+            default_index: 1,
+            anchor: Anchor { x: 100, y: 200 },
+        };
+        let serialized_event = serde_json::to_string(&event).unwrap();
+        let deserialized_event: UiEvent = serde_json::from_str(&serialized_event).unwrap();
+        assert_eq!(event, deserialized_event);
+
+        let command = UiCommand::SubmitInput {
+            id: 42,
+            text: "hello world".into(),
+            index: 1,
+        };
+        let serialized_command = serde_json::to_string(&command).unwrap();
+        let deserialized_command: UiCommand = serde_json::from_str(&serialized_command).unwrap();
+        assert_eq!(command, deserialized_command);
     }
 }

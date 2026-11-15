@@ -256,6 +256,7 @@ struct Win {
     resize: Cell<Option<Resize>>,
     /// Window size the user chose by dragging an edge (physical px).
     user_size: Cell<Option<(i32, i32)>>,
+    needs_activation: Cell<bool>,
     /// Current WebView controller bounds (physical px). Popups keep them a
     /// little larger than the window so a growing card never waits for the
     /// viewport, but no larger: the GPU process allocates by viewport area.
@@ -700,6 +701,7 @@ fn create_surface(surface: Surface) -> Option<Rc<Win>> {
         cascade_from: Cell::new(None),
         resize: Cell::new(None),
         user_size: Cell::new(None),
+        needs_activation: Cell::new(false),
         bounds: Cell::new((0, 0)),
     });
     WINS.with(|wins| wins.borrow_mut().push(win.clone()));
@@ -986,20 +988,25 @@ fn show_now(win: &Win) {
         }
         return;
     }
+    let activate = win.needs_activation.take();
     let first = !win.shown.replace(true);
     unsafe {
-        if first {
-            let _ = ShowWindow(win.hwnd, SW_SHOWNOACTIVATE);
+        if first || activate {
+            let cmd = if activate { SW_SHOW } else { SW_SHOWNOACTIVATE };
+            let _ = ShowWindow(win.hwnd, cmd);
+            if activate {
+                let _ = SetForegroundWindow(win.hwnd);
+            }
         }
-        let _ = SetWindowPos(
-            win.hwnd,
-            Some(HWND_TOPMOST),
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW,
-        );
+        let flags = if activate {
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW
+        } else {
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+        };
+        let _ = SetWindowPos(win.hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, flags);
+        if activate {
+            let _ = windows::Win32::UI::Input::KeyboardAndMouse::SetFocus(Some(win.hwnd));
+        }
     }
 }
 
@@ -1034,6 +1041,7 @@ fn assign(id: u64) -> Option<Rc<Win>> {
     win.card.set(false);
     win.cascade_from.set(None);
     win.user_size.set(None);
+    win.needs_activation.set(false);
     win.resize.set(None);
     unpark(&win);
     // Hidden: the viewport shrinks back to this window plus headroom.
@@ -1050,6 +1058,7 @@ fn release(win: &Win) {
     win.card.set(false);
     win.cascade_from.set(None);
     win.user_size.set(None);
+    win.needs_activation.set(false);
     win.resize.set(None);
     unsafe {
         let _ = KillTimer(Some(win.hwnd), SHOW_TIMER_ID);
@@ -1131,6 +1140,16 @@ fn handle_event_line(line: &str) {
             }
             win.show_pending.set(true);
             apply_page_event(&win, &event);
+        }
+        UiEvent::ShowInput { id, anchor, .. } => {
+            let Some(win) = assign(*id) else { return };
+            set_anchor(&win, *anchor, false);
+            win.card.set(true);
+            win.show_pending.set(true);
+            win.needs_activation.set(true);
+            apply_page_event(&win, &event);
+            apply_remembered_size(&win);
+            show_now(&win);
         }
         UiEvent::ShowLoading { id, anchor, .. } => {
             let Some(win) = assign(*id) else { return };
@@ -1283,6 +1302,10 @@ enum PageCommand {
     SelectProfile {
         index: usize,
     },
+    SubmitInput {
+        text: String,
+        index: usize,
+    },
     SelfTranslate {
         text: String,
         /// Selection rectangle in page CSS pixels.
@@ -1301,6 +1324,7 @@ impl PageCommand {
             Self::Close => UiCommand::UserClose { id },
             Self::Pin { pinned } => UiCommand::TogglePin { id, pinned },
             Self::SelectProfile { index } => UiCommand::SelectProfile { id, index },
+            Self::SubmitInput { text, index } => UiCommand::SubmitInput { id, text, index },
             Self::SelfTranslate { text, .. } => UiCommand::SelfTranslate { id, text, anchor },
         }
     }

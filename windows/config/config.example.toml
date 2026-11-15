@@ -79,6 +79,7 @@ max_output_tokens = 700
 [defaults]
 selection = "contextual-zh-en"
 hover = "word-explanation"
+input = "contextual-zh-en"
 
 [provider]
 # API key setup (choose one):

@@ -828,3 +828,68 @@
     transition: color .15s ease, border-color .15s ease;
   }
   .themebtn:hover { color: #F1EBDF; border-color: rgba(239, 232, 220, .5); }
+
+  /* ——— In-card manual query input & embedded profile rail (popup-input.html) ——— */
+  .sourcepanel .railwrap.embedded {
+    position: static;
+    display: block;
+    width: auto;
+    margin: 10px 0 0;
+    padding: 0;
+  }
+  .sourcepanel .railwrap.embedded .rail {
+    display: flex;
+    flex-wrap: nowrap;
+    width: 100%;
+    box-sizing: border-box;
+    background: none;
+    box-shadow: none;
+    gap: 4px;
+  }
+  .sourcepanel .railwrap.embedded .rail .rpill {
+    flex: 1 1 auto;
+    justify-content: center;
+    text-align: center;
+    white-space: nowrap;
+    cursor: pointer;
+    padding: 4px 6px;
+    font-size: 11px;
+  }
+  .sourcepanel .railwrap.embedded .rail .rpill:hover,
+  .sourcepanel .railwrap.embedded .rail .rpill:active,
+  .sourcepanel .railwrap.embedded .rail .rpill.on {
+    color: var(--btn-primary-ink);
+    font-weight: 600;
+    background: var(--btn-primary-bg);
+  }
+  .srcinput {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    resize: none;
+    overflow-y: auto;
+    max-height: 132px;
+    font: inherit;
+    line-height: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+  }
+  .srcinput::placeholder {
+    color: inherit;
+    opacity: .45;
+  }
+  .sourcepanel.need {
+    outline: 1.5px solid transparent;
+    outline-offset: 3px;
+    animation: need .9s ease;
+  }
+  @keyframes need {
+    30%, 70% { outline-color: var(--btn-primary-bg, #2b2721); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sourcepanel.need { animation: none; }
+  }
