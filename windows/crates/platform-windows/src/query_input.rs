@@ -67,8 +67,9 @@ mod windows_impl {
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
     use windows::Win32::Graphics::Gdi::{
-        GetMonitorInfoW, GetStockObject, MonitorFromPoint, COLOR_WINDOW, DEFAULT_GUI_FONT, HBRUSH,
-        MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        CreateFontW, DeleteObject, GetMonitorInfoW, MonitorFromPoint, COLOR_WINDOW, FONT_CHARSET,
+        FONT_CLIP_PRECISION, FONT_OUTPUT_PRECISION, FONT_QUALITY, HBRUSH, HGDIOBJ, MONITORINFO,
+        MONITOR_DEFAULTTONEAREST,
     };
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::UI::HiDpi::GetDpiForSystem;
@@ -80,8 +81,8 @@ mod windows_impl {
         CreateWindowExW, DefWindowProcW, DestroyWindow, FindWindowW, GetClientRect, GetWindowRect,
         GetWindowTextLengthW, GetWindowTextW, LoadCursorW, MoveWindow, PostMessageW,
         RegisterClassW, SendMessageW, SetForegroundWindow, ShowWindow, CS_HREDRAW, CS_VREDRAW,
-        IDC_ARROW, SW_SHOW, WM_CHAR, WM_CLOSE, WM_KEYDOWN, WM_SETFOCUS, WM_SETFONT, WM_SIZE,
-        WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_OVERLAPPED,
+        IDC_ARROW, SW_SHOW, WM_CHAR, WM_CLOSE, WM_DESTROY, WM_KEYDOWN, WM_SETFOCUS, WM_SETFONT,
+        WM_SIZE, WNDCLASSW, WS_CAPTION, WS_CHILD, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_OVERLAPPED,
         WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
     };
 
@@ -96,6 +97,8 @@ mod windows_impl {
     static OWNER: AtomicIsize = AtomicIsize::new(0);
     static EDIT: AtomicIsize = AtomicIsize::new(0);
     static HINT: AtomicIsize = AtomicIsize::new(0);
+    static FONT: AtomicIsize = AtomicIsize::new(0);
+    static HINT_FONT: AtomicIsize = AtomicIsize::new(0);
 
     fn scale(value: i32) -> i32 {
         let dpi = unsafe { GetDpiForSystem() }.max(96) as i32;
@@ -173,7 +176,46 @@ mod windows_impl {
             let Ok(hwnd) = created else {
                 return;
             };
-            let font = GetStockObject(DEFAULT_GUI_FONT);
+            let font = CreateFontW(
+                -scale(14),
+                0,
+                0,
+                0,
+                400,
+                0,
+                0,
+                0,
+                FONT_CHARSET(1),
+                FONT_OUTPUT_PRECISION(0),
+                FONT_CLIP_PRECISION(0),
+                FONT_QUALITY(5),
+                0,
+                w!("Segoe UI"),
+            );
+            let hint_font = CreateFontW(
+                -scale(11),
+                0,
+                0,
+                0,
+                400,
+                0,
+                0,
+                0,
+                FONT_CHARSET(1),
+                FONT_OUTPUT_PRECISION(0),
+                FONT_CLIP_PRECISION(0),
+                FONT_QUALITY(5),
+                0,
+                w!("Segoe UI"),
+            );
+            let old_font = FONT.swap(font.0 as isize, Ordering::Relaxed);
+            if old_font != 0 {
+                let _ = DeleteObject(HGDIOBJ(old_font as *mut _));
+            }
+            let old_hint = HINT_FONT.swap(hint_font.0 as isize, Ordering::Relaxed);
+            if old_hint != 0 {
+                let _ = DeleteObject(HGDIOBJ(old_hint as *mut _));
+            }
             let edit = CreateWindowExW(
                 windows::Win32::UI::WindowsAndMessaging::WS_EX_CLIENTEDGE,
                 w!("EDIT"),
@@ -211,14 +253,18 @@ mod windows_impl {
                 None,
             )
             .unwrap_or_default();
-            for control in [edit, hint] {
-                SendMessageW(
-                    control,
-                    WM_SETFONT,
-                    Some(WPARAM(font.0 as usize)),
-                    Some(LPARAM(1)),
-                );
-            }
+            SendMessageW(
+                edit,
+                WM_SETFONT,
+                Some(WPARAM(font.0 as usize)),
+                Some(LPARAM(1)),
+            );
+            SendMessageW(
+                hint,
+                WM_SETFONT,
+                Some(WPARAM(hint_font.0 as usize)),
+                Some(LPARAM(1)),
+            );
             EDIT.store(edit.0 as isize, Ordering::Relaxed);
             HINT.store(hint.0 as isize, Ordering::Relaxed);
             let _ = SetWindowSubclass(edit, Some(edit_proc), 1, 0);
@@ -313,6 +359,17 @@ mod windows_impl {
             }
             WM_CLOSE => {
                 let _ = unsafe { DestroyWindow(hwnd) };
+                LRESULT(0)
+            }
+            WM_DESTROY => {
+                let old_font = FONT.swap(0, Ordering::Relaxed);
+                if old_font != 0 {
+                    let _ = unsafe { DeleteObject(HGDIOBJ(old_font as *mut _)) };
+                }
+                let old_hint = HINT_FONT.swap(0, Ordering::Relaxed);
+                if old_hint != 0 {
+                    let _ = unsafe { DeleteObject(HGDIOBJ(old_hint as *mut _)) };
+                }
                 LRESULT(0)
             }
             _ => unsafe { DefWindowProcW(hwnd, message, wparam, lparam) },

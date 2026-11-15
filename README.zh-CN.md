@@ -2,64 +2,134 @@
 
 [English](README.md)
 
-LingoSnap 是一款轻量级 Windows x64 划词与悬停文本助手。目标程序能够提供上下文时，它会自动获取目标所在的完整句子，将所选配置档发送到 OpenAI 兼容 API，并在紧凑弹窗中流式渲染 Markdown。常驻程序采用原生 Rust 和 Win32，不使用 Electron 或 WebView；管理器仅在需要时启动。
+LingoSnap 是一款超轻量、原生的 Windows x64 语言学习与智能文本处理工具。在屏幕上的任何位置——无论是代码编辑器、网页浏览器、PDF 阅读器还是办公套件中，只需选中文本或鼠标悬停，即可获得由大语言模型（LLM）驱动的结构化语言学解析（双语翻译、单词音标与词性精析、语法与习语解析、学术写作润色及代码解析），并在不抢占焦点的紧凑浮动弹窗中流式呈现。
 
-当前仓库提供未签名的预览版本。划词、手动和可选的悬停功能共用一条带优先级的提取管线：先尝试 UI Automation，仅在适用时回退到剪贴板或 Windows OCR。没有检测到有效文本时，程序不会发送任何 API 请求。
+LingoSnap 在设计之初便将“轻量低耗”与“隐私保护”作为核心原则，后台常驻程序完全基于原生 Rust 和 Win32 构建。界面提供两种可随时切换的外观：采用现代化纸质与毛玻璃质感的 **“抄本”（Fair Copy）** 界面（配备独立的 WebView2 伴随进程，支持暗色/亮色主题），以及极简的原生 Win32 **“经典”（Classic）** 弹窗。管理器仅在打开时运行，关闭后彻底释放资源。
 
-## 轻量是核心特性
+---
 
-低资源占用不是事后优化，而是产品的基础设计：
+## 核心特性
 
-- 常驻程序使用原生 Rust 和 Win32，不包含 Electron、WebView、浏览器内核、异步运行时或内置 OCR 模型。
-- 设置、配置档和历史记录由独立管理器负责；管理器只在打开时运行，最后一个窗口关闭后立即退出。
-- OCR 只在需要时截取有限的内存区域，不把截图保存到磁盘。
-- SQLite 只在后台短暂写入历史记录时打开，并且仅保留最近 1,000 条完成记录。
-- 悬停功能默认关闭；任一提取路径获得有效文本后，其他路径立即停止。
+- **上下文感知语言处理**：在划词或悬停时，自动提取目标词句及其所在的完整上下文（优先使用 UI Automation，自动回退到剪贴板或局部内存 Windows OCR），确保大模型能够精准消歧并理解真实语境。
+- **丰富的内置与自定义配置档**：
+  - **语言学家分析**（中英双语）：以规范 Markdown 结构化输出翻译、国际音标（IPA）重点生词解析、语法与常见短语、拼写与语法纠错，以及地道表达与选词缘由剖析。
+  - **雅思 9 分写作导师**（中英双语）：将输入文本重写润色为符合雅思 7 分以上学术标准的英语句子，并逐条阐述修改原因（词汇搭配、语域风格、衔接连贯等）。
+  - **Wiki 风格解析**：客观、中立的百科全书式背景知识与概念速览。
+  - **程序代码专家**：解析代码片段、定位潜在缺陷、逐行解读并说明整体架构意图。
+  - **自定义配置档**：支持自由创建和排序专属提示词，灵活调节温度（Temperature）与 Token 上限。
+- **免打扰浮动弹窗**：弹窗浮动于当前工作界面之上，绝不抢占键盘焦点，不打断您的阅读与打字流。支持图钉置顶、流式打字机动画以及一键复制。
+- **极致轻量与严苛隐私保护**：
+  - **无 Electron 或后台常驻 WebView 臃肿包袱**：后台常驻程序为极简原生进程（目标空闲内存占用 `<20 MiB`）。现代 UI 伴随进程按需调用，闲置时自动休眠或退出，释放所有内存。
+  - **安全凭据存储**：API Key 保存在 Windows 凭据管理器或环境变量中，绝不写入明文配置文件、日志或历史记录。
+  - **零截图落盘**：OCR 仅在内存临时缓冲区截取最小必要区域，绝不向磁盘写入任何截图。
+  - **保护剪贴板**：自动划词/悬停提取时，会自动暂存并在操作完成后完整还原系统剪贴板原有内容。
+  - **本地历史记录**：保存在本地轻量 SQLite 数据库中，仅保留最新的 1,000 条记录，关闭后立即断开数据库连接。
 
-关闭管理器并完成预热后，常驻程序的目标是**专用工作集低于 20 MiB**。五分钟内存测试仍是待完成的发布门槛，因此当前预览版不会宣称已经验证 `<20 MiB`；详见[验证状态](docs/VERIFICATION.md)。
+---
 
-## 安装预览版
+## 默认快捷键
 
-1. 从 GitHub Release 下载 Windows x64 ZIP，并解压到可写目录。
-2. 运行 `lingosnap-manager.exe`，按下文配置 API 地址和密钥。
-3. 运行 `lingosnap-resident.exe`，通知区域中会出现程序图标。
+| 操作 | 默认快捷键 | 说明 |
+|---|---|---|
+| **划词翻译/处理** | `Ctrl + Shift + T` | 对当前选中的文本使用当前配置档执行分析 |
+| **悬停翻译/处理** | `Ctrl + Shift + H` | 开启或关闭鼠标指针悬停自动识别（默认关闭） |
+| **手动查询** | `Ctrl + Shift + Space` | 呼出输入框，可手动键入或粘贴文本，按回车后选择配置档分析 |
+| **轮换配置档** | `Ctrl + Alt + P` | 快速切换不同的语言处理配置档 |
+| **暂停 / 恢复** | `Ctrl + Shift + P` | 临时暂停或恢复常驻全局快捷键 |
 
-由于程序尚未进行代码签名，Windows SmartScreen 可能显示警告。用户配置和历史记录位于 `%LOCALAPPDATA%\LingoSnap`。
+*所有快捷键均可在管理器“设置”页中自由自定义或禁用。*
+
+---
+
+## 安装与启动
+
+1. 从 GitHub Releases 下载最新版本的 `lingosnap-x64-r*.zip` 压缩包。
+2. 解压到任意具有写权限的固定目录（例如 `D:\Tools\LingoSnap` 或 `C:\Program Files\LingoSnap`）。
+3. 运行 `lingosnap-manager.exe` 配置您的 API 地址与密钥。
+4. 运行 `lingosnap-resident.exe`，系统托盘右下角将出现程序图标。
+
+> [!NOTE]
+> 由于预览版未购买昂贵商业代码签名证书，Windows SmartScreen 可能会弹出未知应用安全提示，点击“仍要运行”即可。用户配置和历史数据存放在 `%LOCALAPPDATA%\LingoSnap`。
+
+---
 
 ## 填写 API 地址与密钥
 
-程序使用与 OpenAI Chat Completions 兼容的 API。首次使用前需要在管理器的**设置**页完成两项配置：API 基础地址和 API key。
+LingoSnap 支持任何兼容 OpenAI Chat Completions 协议的模型服务。为方便国内用户快速上手，程序内置了阿里云百炼（Bailian）配置，并无缝支持 OpenAI、DeepSeek、月之暗面（Moonshot）、硅基流动（SiliconFlow）以及本地模型（如 Ollama、vLLM）。
 
-### API 地址（Base URL）
+### 国内快速上手：使用阿里云百炼（推荐）
+
+阿里云百炼平台为新用户和常用 Flash 系列模型（如 `qwen3.8-flash`）提供了充足的免费额度。
+
+1. 打开 `lingosnap-manager.exe`，切换到**设置**页，点击 API 地址右侧的 **“打开密钥页面”**（Open key page）按钮，将自动打开阿里云百炼 API Key 管理控制台。
+
+   ![管理器设置页中的打开密钥页面按钮](image.png)
+
+2. 登录阿里云账号（未实名认证需按提示完成实名），点击 **“创建 API-Key”**。
+
+   ![在百炼控制台创建 API Key](image-1.png)
+   ![百炼 API Key 确认弹窗](image-2.png)
+
+3. 复制生成的 API Key 字符串。
+
+   ![复制百炼 API Key](image-3.png)
+
+4. 返回 LingoSnap 管理器，将密钥粘贴到 **API key** 输入框中，先点击 **“保存密钥”**，再点击底部 **“保存设置”**。
+
+   ![在管理器中保存 API Key](image-4.png)
+
+5. **免费额度查询与防扣费设置**：
+   - 可以在 [百炼免费额度控制台](https://bailian.console.aliyun.com/cn-beijing/costing-balance/free-quota) 查看各模型的剩余免费 Token。
+   - > [!IMPORTANT]
+     > 强烈建议在阿里云费用与成本设置中开启 **“用完即停”** 功能，防止免费额度耗尽后产生未预期的按量扣费。
+
+   ![开启百炼用完即停选项](image-5.png)
+
+6. **选择与切换模型**：
+   - 在百炼模型广场中挑选支持的模型（例如 `qwen3.8-flash` 等轻快实惠模型），复制其 **“模型 Code”**，粘贴至管理器的 **“模型”** 输入框中保存即可。
+
+   ![复制模型 Code 到管理器中](image-6.png)
+
+---
+
+### 自定义 OpenAI 兼容服务商
+
+若您使用 OpenAI、DeepSeek 或其他兼容服务商：
 
 1. 打开 `lingosnap-manager.exe`，进入**设置**页。
-2. 在 **API 地址**中填入服务商提供的基础地址，例如：
-
+2. 在 **API 地址** 中填入服务商的基础地址，例如：
    ```text
    https://api.openai.com/v1
    ```
+   > [!TIP]
+   > 纯域名地址（如 `https://api.openai.com`）和以 `/v1` 结尾的地址均可。**请勿**手动追加 `/chat/completions`，程序在发起请求时会自动补齐路由。
+3. 在 **模型** 中填入对应的模型标识（例如 `gpt-4o-mini`、`deepseek-chat`）。
+4. 在 **API key** 中粘贴服务商密钥，依次点击 **保存密钥** 和 **保存设置**。
+5. 重启 `lingosnap-resident.exe`（或在托盘菜单中切换暂停/恢复）使配置生效。
 
-3. 纯主机地址（如 `https://api.openai.com`）和以 `/v1` 结尾的地址都可以。不要自己追加 `/chat/completions`，程序只会自动添加一次。
-4. 在**模型**中填入服务商的准确模型标识，例如 `gpt-4o-mini`，需与该地址支持的模型一致。
+#### 备选方案：环境变量
+如果不希望将密钥写入凭据管理器，也可通过设置系统环境变量传入。常驻程序按以下优先级读取：
+1. `OPENAI_API_KEY`
+2. `LINGOSNAP_OPENAI_API_KEY`
+3. Windows 凭据管理器目标（默认为 `LingoSnap/bailian` 或 `LingoSnap/OpenAI`）
 
-### API Key（密钥）
+---
 
-1. 在设置页的 **API key** 输入框中粘贴服务商生成的密钥。
-2. 点击**保存密钥**，再点击**保存设置**。
-3. 启动（或重启）`lingosnap-resident.exe` 使配置生效。
+## 验证配置是否成功
 
-密钥会保存为 Windows 凭据管理器中的通用凭据（默认目标名 `LingoSnap/OpenAI`），不会写入 `config.toml`、历史记录或日志。
+在任意应用程序中选中一段文字，按下快捷键 `Ctrl + Shift + T`。如果配置正确，屏幕上会立刻浮现出流式生成的解析卡片：
+- **正常出现流式文字**：说明地址、模型名称与 API 密钥均配置正确。
+- **提示 `Provider authentication failed`**：API Key 无效、已过期或无权调用该模型，请检查密钥是否正确复制。
+- **提示 `Provider connection failed`**：网络无法连接到目标地址，请检查网络连接、地址拼写或系统代理设置。
 
-也可以不改密钥而改用环境变量：常驻程序按 `OPENAI_API_KEY`、`LINGOSNAP_OPENAI_API_KEY`、Windows 凭据管理器的顺序读取密钥。
+---
 
-配置完成后，选中一段文本并选择配置档即可验证：能正常返回结果说明地址和密钥均有效。如果提示 `Provider authentication failed`，说明密钥无效；如果提示 `Provider connection failed`，说明网络无法连接到所填地址，请检查地址拼写、网络和代理。
+## 详细文档
 
-## 从 Selection Translate 迁移
-
-早期版本名为 Selection Translate，数据保存在旧名称下。LingoSnap 不会自动迁移任何内容，因此首次启动时是默认设置且没有已保存的密钥。要保留原有配置：
-
-1. 在托盘中退出旧的常驻程序，并关闭旧的管理器。
-2. 将 `%LOCALAPPDATA%\SelectionTranslate\config.toml` 和历史数据库文件（`history.sqlite3` 以及同目录下的 `-wal` / `-shm` 文件）移动到 `%LOCALAPPDATA%\LingoSnap\`。`webview` 文件夹无需移动，可直接删除。
-3. API 密钥：移动后的 `config.toml` 仍写着 `credential_target = "SelectionTranslate/OpenAI"`，密钥也仍保存在该名称下，因此可继续使用。若要改用新名称，请打开管理器，把“凭据目标”改为 `LingoSnap/OpenAI`，粘贴密钥并选择“保存密钥”，然后在 Windows 凭据管理器中删除旧的 `SelectionTranslate/OpenAI` 条目。
-4. 环境变量：如果设置过 `SELECTION_TRANSLATE_OPENAI_API_KEY`、`SELECTION_TRANSLATE_OPENAI_BASE_URL` 或 `SELECTION_TRANSLATE_OPENAI_MODEL`，请改用 `LINGOSNAP_` 开头的同名变量，并移除旧变量。
-5. 把指向 `selection-translate-resident.exe` 的快捷方式或启动项换成 `lingosnap-resident.exe`，然后删除旧的发布文件夹。
+- [环境与构建说明 (SETUP.md)](docs/SETUP.md)：详细安装、工具链与环境说明。
+- [完整快捷键指南 (HOTKEYS.md)](docs/HOTKEYS.md)：快捷键行为与冲突排查。
+- [提取回退机制 (FALLBACKS.md)](docs/FALLBACKS.md)：UI Automation、剪贴板与 OCR 协同原理。
+- [隐私与安全说明 (PRIVACY.md)](docs/PRIVACY.md)：凭据安全、零截图落盘与剪贴板完整性。
+- [疑难解答 (TROUBLESHOOTING.md)](docs/TROUBLESHOOTING.md)：常见错误码与解决方案。
+- [质量验证标准 (VERIFICATION.md)](docs/VERIFICATION.md)：测试门禁、Clippy 规范与内存压测标准。
+- [WebView2 内存报告 (WEBVIEW_MEMORY.md)](docs/WEBVIEW_MEMORY.md)：现代抄本 UI 性能与内存优化实测数据。

@@ -13,6 +13,7 @@ windows/dist/
 # Editor / OS
 .vs/
 .vscode/
+.idea/
 Thumbs.db
 desktop.ini
 
