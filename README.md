@@ -33,7 +33,7 @@ Designed from the ground up to be featherlight and privacy-conscious, LingoSnap 
 |---|---|---|
 | **Selection Translate** | `Ctrl + Shift + T` | Process currently selected text using the active profile |
 | **Hover Translate** | `Ctrl + Shift + H` | Toggle automatic hover inspection under mouse pointer |
-| **Manual Query** | `Ctrl + Shift + Space` | Open an input window to type or paste text, then choose a profile |
+| **Manual Query** | `Ctrl + Shift + Space` | Open an input card to type or paste text, then press Enter or choose a profile |
 | **Cycle Profiles** | `Ctrl + Alt + P` | Cycle through configured linguistic profiles |
 | **Pause / Resume** | `Ctrl + Shift + P` | Temporarily pause or resume global resident hotkeys |
 
@@ -44,8 +44,8 @@ Designed from the ground up to be featherlight and privacy-conscious, LingoSnap 
 ## Installation
 
 1. Download the latest `lingosnap-x64-r*.zip` release archive from GitHub.
-2. Extract the archive into a permanent writable folder (e.g., `D:\Tools\LingoSnap` or `C:\Program Files\LingoSnap`).
-3. Run `lingosnap-manager.exe` to configure your API endpoint and key.
+2. Extract the archive into a permanent writable folder (e.g., `D:\Tools\LingoSnap`, `C:\Program Files\LingoSnap`, or your preferred directory).
+3. Run `lingosnap-manager.exe` to configure your API endpoint and key (see the guide below).
 4. Run `lingosnap-resident.exe`. Its icon will appear in the Windows system tray.
 
 > [!NOTE]
@@ -74,7 +74,7 @@ Alibaba Cloud Bailian provides generous free quotas for fast flash models (such 
 
    ![Copy Bailian API Key](image-3.png)
 
-4. Return to LingoSnap Manager, paste the key into the **API key** field, click **Save key**, then click **Save settings**.
+4. Return to LingoSnap Manager, paste the key into the **API key** field, and click **Save key**.
 
    ![Save API Key in Manager](image-4.png)
 
@@ -89,6 +89,12 @@ Alibaba Cloud Bailian provides generous free quotas for fast flash models (such 
    - In the Bailian model list, find your preferred model (e.g., `qwen3.8-flash`), copy its **Model Code (模型 Code)**, paste it into the **Model** field in LingoSnap Manager, and save.
 
    ![Copy Model Code into Manager](image-6.png)
+
+7. **Verify Presentation**:
+   - Select text in any window to display the profile chooser, then click any profile to stream the structured result card:
+
+   ![Profile Chooser](image-7.png)
+   ![Result Card](image-8.png)
 
 ---
 
@@ -121,6 +127,41 @@ Select a word or sentence in any application and press `Ctrl + Shift + T`. A str
 - **Streaming response appears**: Connection and credentials are confirmed.
 - **`Provider authentication failed`**: The API key is invalid, expired, or lacked permission.
 - **`Provider connection failed`**: Network error or unreachable URL — check your internet connection, URL formatting, or proxy settings.
+
+---
+
+## Advanced Features & Practical Tips
+
+### 1. Arrange Profile Order (Quick Access to Favorite Profiles)
+In the Manager's **Profiles** or **Settings** page, you can reorder profiles via drag-and-drop:
+- **Selection Chooser**: Higher-priority profiles appear first on the floating toolbar after selecting or hovering over text.
+- **Manual Input Card**: When pressing `Ctrl + Shift + Space` to summon the manual query popup, the top **5 profiles** are presented directly on the embedded pill toolbar (using compact first-word titles) with your default profile pre-selected.
+
+### 2. Auto-Start with Windows (Highly Recommended)
+Enable **Start with Windows** in the Manager's **Settings** page:
+- **Ultralight Background Footprint**: The resident process is written in pure native Rust and Win32, completely free from Electron or continuous browser memory consumption. Warmed idle private memory is typically `< 20 MiB` (often `< 10 MiB`), with zero CPU polling.
+- **On-Demand Companion**: The modern Fair Copy presentation process launches on demand and sleeps or parks when idle. Auto-starting has practically zero impact on system boot time or daily gaming/productivity performance.
+
+### 3. Inspect Existing Profiles to Design Custom Prompts
+In the Manager's **Profiles** page, click on any built-in profile (such as *Linguist analysis*, *IELTS writing instructor*, or *Code specialist*):
+- **Learn the Prompting Paradigm**: Examine how the official System Prompts and User Templates structure output using clear Markdown headings for predictable and reliable parsing.
+- **Create Your Own Tools**: Click **Add profile** to craft custom workflows tailored to your needs (e.g., academic paper polishing, customer email drafting, line-by-line code review, domain-specific terminology translation) with fine-tuned temperature and max token settings.
+
+### 4. Review Local History for Vocabulary & Study
+In the Manager's **History** page:
+- **Never Lose a Good Expression**: Every admitted selection, hover, or manual query target, along with its context and LLM analysis, is archived locally.
+- **Search, Review, and Replay**: Filter entries by date, filter by profile, or search by keywords. Re-run translations or copy results with one click—ideal for regular vocabulary review and writing retrospectives.
+- **100% Local & Private**: All history resides in a lightweight local SQLite database (capped to the newest 1,000 entries) and is never transmitted to any third-party cloud.
+
+---
+
+## ☕ Buy the Author a Coffee
+
+If LingoSnap has helped improve your reading, writing, or learning workflow, consider buying the author a coffee to support continuous development!
+
+| WeChat Pay (微信支付) | Alipay (支付宝) |
+| :---: | :---: |
+| <img src="qr-wechat-pay-1.png" width="220" alt="WeChat Pay" /> | <img src="qr-alipay-1.png" width="220" alt="Alipay" /> |
 
 ---
 
