@@ -111,7 +111,7 @@ foreach ($artifact in $artifacts) {
 Copy-Item -LiteralPath $configTemplate -Destination (Join-Path $outputDirectory "config.example.toml") -Force
 $documentation = @(
     "README.md",
-    "README.zh-CN.md",
+    "README.en.md",
     "docs\SETUP.md",
     "docs\HOTKEYS.md",
     "docs\FALLBACKS.md",

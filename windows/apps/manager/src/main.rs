@@ -400,21 +400,21 @@ mod windows_app {
             (UiLanguage::English, SettingsSubtitle) => "Provider, credentials and default profiles",
             (UiLanguage::English, PromptsSubtitle) => "Create and tune reusable profiles",
             (UiLanguage::English, HistorySubtitle) => {
-                "Search recent translations without keeping the database open"
+                "Search recent results without keeping the database open"
             }
             (UiLanguage::English, InterfaceLanguage) => "Interface language",
             (UiLanguage::English, ProviderCard) => "Provider",
             (UiLanguage::English, CredentialsCard) => "Credentials",
             (UiLanguage::English, DefaultsCard) => "Defaults",
             (UiLanguage::English, HotkeyCard) => "Hot key",
-            (UiLanguage::English, HotkeySelectionLabel) => "Selection translate",
-            (UiLanguage::English, HotkeyHoverLabel) => "Hover translate",
+            (UiLanguage::English, HotkeySelectionLabel) => "Selection process",
+            (UiLanguage::English, HotkeyHoverLabel) => "Hover process",
             (UiLanguage::English, HotkeyPauseLabel) => "Pause / resume",
             (UiLanguage::English, HotkeyOpenPopupLabel) => "Open popup",
             (UiLanguage::English, ProfilesCard) => "Profiles",
             (UiLanguage::English, ProfilesBeneathDivider) => "BENEATH MORE…",
             (UiLanguage::English, ProfilesRailHint) => {
-                "The order here sets the chooser rail — the first four sit on the rail, the rest beneath More…"
+                "The order here sets the chooser rail — the first five sit on the rail, the rest beneath More…"
             }
             (UiLanguage::English, ProviderEndpoint) => "Provider endpoint",
             (UiLanguage::English, Model) => "Model",
@@ -497,14 +497,14 @@ mod windows_app {
             (UiLanguage::SimplifiedChinese, CredentialsCard) => "凭据",
             (UiLanguage::SimplifiedChinese, DefaultsCard) => "默认配置档",
             (UiLanguage::SimplifiedChinese, HotkeyCard) => "热键",
-            (UiLanguage::SimplifiedChinese, HotkeySelectionLabel) => "划词翻译",
-            (UiLanguage::SimplifiedChinese, HotkeyHoverLabel) => "悬停翻译",
+            (UiLanguage::SimplifiedChinese, HotkeySelectionLabel) => "划词处理",
+            (UiLanguage::SimplifiedChinese, HotkeyHoverLabel) => "悬停处理",
             (UiLanguage::SimplifiedChinese, HotkeyPauseLabel) => "暂停/恢复",
             (UiLanguage::SimplifiedChinese, HotkeyOpenPopupLabel) => "打开弹窗",
             (UiLanguage::SimplifiedChinese, ProfilesCard) => "配置档",
             (UiLanguage::SimplifiedChinese, ProfilesBeneathDivider) => "MORE… 以下",
             (UiLanguage::SimplifiedChinese, ProfilesRailHint) => {
-                "这里的顺序即翻译选择栏的顺序 — 前四个显示在栏上，其余收在 More… 下。"
+                "这里的顺序即快捷选择栏的顺序 — 前五个显示在栏上，其余收在 More… 下。"
             }
             (UiLanguage::SimplifiedChinese, ProviderEndpoint) => "服务端点",
             (UiLanguage::SimplifiedChinese, Model) => "模型",
@@ -824,27 +824,27 @@ mod windows_app {
             ResidentStart(outcome) => match (language, outcome) {
                 (UiLanguage::English, ResidentStartOutcome::AlreadyRunning) => "Resident is running.".to_owned(),
                 (UiLanguage::English, ResidentStartOutcome::Started) => "Resident started and is ready.".to_owned(),
-                (UiLanguage::English, ResidentStartOutcome::Unavailable) => "Resident could not be reached; settings can be saved, but translation is unavailable.".to_owned(),
+                (UiLanguage::English, ResidentStartOutcome::Unavailable) => "Resident could not be reached; settings can be saved, but text processing is unavailable.".to_owned(),
                 (UiLanguage::SimplifiedChinese, ResidentStartOutcome::AlreadyRunning) => "驻留程序正在运行。".to_owned(),
                 (UiLanguage::SimplifiedChinese, ResidentStartOutcome::Started) => "驻留程序已启动并准备就绪。".to_owned(),
-                (UiLanguage::SimplifiedChinese, ResidentStartOutcome::Unavailable) => "无法连接驻留程序；可以保存设置，但翻译功能当前不可用。".to_owned(),
+                (UiLanguage::SimplifiedChinese, ResidentStartOutcome::Unavailable) => "无法连接驻留程序；可以保存设置，但文本处理功能当前不可用。".to_owned(),
             },
             ConfigRefresh(outcome) => match (language, outcome) {
                 (UiLanguage::English, RefreshOutcome::Acknowledged) => "Saved; the running resident confirmed the refresh.".to_owned(),
-                (UiLanguage::English, RefreshOutcome::ResidentAbsent) => "Saved, but no running resident was found; translation is unavailable.".to_owned(),
-                (UiLanguage::English, RefreshOutcome::Unacknowledged) => "Saved, but the resident did not confirm the refresh; restart the app before translating.".to_owned(),
-                (UiLanguage::English, RefreshOutcome::Rejected) => "Saved, but the resident rejected the refresh; restart the app before translating.".to_owned(),
+                (UiLanguage::English, RefreshOutcome::ResidentAbsent) => "Saved, but no running resident was found; text processing is unavailable.".to_owned(),
+                (UiLanguage::English, RefreshOutcome::Unacknowledged) => "Saved, but the resident did not confirm the refresh; restart the app before processing.".to_owned(),
+                (UiLanguage::English, RefreshOutcome::Rejected) => "Saved, but the resident rejected the refresh; restart the app before processing.".to_owned(),
                 (UiLanguage::SimplifiedChinese, RefreshOutcome::Acknowledged) => "已保存；正在运行的驻留程序已确认刷新。".to_owned(),
-                (UiLanguage::SimplifiedChinese, RefreshOutcome::ResidentAbsent) => "已保存，但未找到正在运行的驻留程序；翻译功能不可用。".to_owned(),
-                (UiLanguage::SimplifiedChinese, RefreshOutcome::Unacknowledged) => "已保存，但驻留程序未确认刷新；请在翻译前重启应用。".to_owned(),
-                (UiLanguage::SimplifiedChinese, RefreshOutcome::Rejected) => "已保存，但驻留程序拒绝刷新；请在翻译前重启应用。".to_owned(),
+                (UiLanguage::SimplifiedChinese, RefreshOutcome::ResidentAbsent) => "已保存，但未找到正在运行的驻留程序；文本处理功能不可用。".to_owned(),
+                (UiLanguage::SimplifiedChinese, RefreshOutcome::Unacknowledged) => "已保存，但驻留程序未确认刷新；请在处理前重启应用。".to_owned(),
+                (UiLanguage::SimplifiedChinese, RefreshOutcome::Rejected) => "已保存，但驻留程序拒绝刷新；请在处理前重启应用。".to_owned(),
             },
             CredentialRefresh { outcome, deleted } => {
                 let (en, zh) = match (outcome, deleted) {
                     (RefreshOutcome::Acknowledged, false) => ("API key saved; the running resident confirmed the credential refresh.", "API 密钥已保存；正在运行的驻留程序已确认凭据刷新。"),
                     (RefreshOutcome::Acknowledged, true) => ("API key deleted; the running resident confirmed the credential refresh.", "API 密钥已删除；正在运行的驻留程序已确认凭据刷新。"),
-                    (RefreshOutcome::ResidentAbsent, false) => ("API key saved, but no running resident was found; translation is unavailable.", "API 密钥已保存，但未找到正在运行的驻留程序；翻译功能不可用。"),
-                    (RefreshOutcome::ResidentAbsent, true) => ("API key deleted, but no running resident was found; translation is unavailable.", "API 密钥已删除，但未找到正在运行的驻留程序；翻译功能不可用。"),
+                    (RefreshOutcome::ResidentAbsent, false) => ("API key saved, but no running resident was found; text processing is unavailable.", "API 密钥已保存，但未找到正在运行的驻留程序；文本处理功能不可用。"),
+                    (RefreshOutcome::ResidentAbsent, true) => ("API key deleted, but no running resident was found; text processing is unavailable.", "API 密钥已删除，但未找到正在运行的驻留程序；文本处理功能不可用。"),
                     (RefreshOutcome::Unacknowledged | RefreshOutcome::Rejected, false) => ("API key saved, but the resident did not confirm the credential refresh; restart the app.", "API 密钥已保存，但驻留程序未确认凭据刷新；请重启应用。"),
                     (RefreshOutcome::Unacknowledged | RefreshOutcome::Rejected, true) => ("API key deleted, but the resident did not confirm the credential refresh; restart the app.", "API 密钥已删除，但驻留程序未确认凭据刷新；请重启应用。"),
                 };
@@ -1889,7 +1889,7 @@ mod windows_app {
         add_label(
             hwnd,
             &mut h,
-            "Selection translate",
+            "Selection process",
             Some(View::Settings),
             Slot::HotkeySelectionLabel,
         )?;
@@ -1905,7 +1905,7 @@ mod windows_app {
         add_label(
             hwnd,
             &mut h,
-            "Hover translate",
+            "Hover process",
             Some(View::Settings),
             Slot::HotkeyHoverLabel,
         )?;
@@ -7308,7 +7308,7 @@ mod windows_app {
             );
             assert!(
                 resident_start_status(UiLanguage::English, ResidentStartOutcome::Unavailable)
-                    .contains("translation is unavailable")
+                    .contains("text processing is unavailable")
             );
             assert!(
                 config_refresh_status(UiLanguage::English, RefreshOutcome::Acknowledged)

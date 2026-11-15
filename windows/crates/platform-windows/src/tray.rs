@@ -232,7 +232,7 @@ mod windows_impl {
             w!("Open Manager")
         };
         let hover_text = if is_zh {
-            w!("悬停翻译")
+            w!("悬停处理")
         } else {
             w!("Toggle Hover")
         };

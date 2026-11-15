@@ -1698,7 +1698,7 @@ mod windows_impl {
 
     pub(super) fn state_text(state: &PopupState) -> &str {
         match state {
-            PopupState::Loading => "Translating…",
+            PopupState::Loading => "Processing…",
             PopupState::Streaming(output) | PopupState::Completed(output) => &output.text,
             PopupState::LocalError(message) => message,
         }

@@ -395,7 +395,7 @@ cycle_profiles = "Ctrl+Alt+P"
     $client = Wait-Request $listener ((Get-Date).AddSeconds(10))
     if ($null -eq $client) { throw "forced OCR target produced no request; trace_path=$tracePath" }
     $body = Read-RequestBody $client
-    $loadingPopup = Wait-Popup $resident.Id 'Translating' ((Get-Date).AddSeconds(5))
+    $loadingPopup = Wait-Popup $resident.Id 'Processing' ((Get-Date).AddSeconds(5))
     Assert-Request $body $expectedSentence
     $resultText = 'hover-ocr-result-' + [Guid]::NewGuid().ToString('N')
     Send-Response $client $resultText

@@ -2,7 +2,7 @@
 
 ## Scope
 
-This repository contains an ultralight selection and hover translation application. Windows is the first implementation target. Shared behavior must remain portable to a later macOS implementation.
+This repository contains an ultralight selection, hover, and popup AI text-processing tool. Windows is the first implementation target. Shared behavior must remain portable to a later macOS implementation.
 
 ## Structure
 
