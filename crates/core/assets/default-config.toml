@@ -87,32 +87,6 @@ temperature = 0.20000000298023224
 max_output_tokens = 700
 
 [[profiles]]
-id = "word-explanation"
-name = "Word explanation"
-system_prompt = "Explain the word for a language learner with a concise definition, pronunciation, part of speech, and one example."
-user_template = """
-Explain only Word. Use Sentence context only to disambiguate:
-Word:
-{target}
-Sentence context:
-{context}"""
-temperature = 0.20000000298023224
-max_output_tokens = 512
-
-[[profiles]]
-id = "contextual-zh-en"
-name = "Contextual translation"
-system_prompt = "Translate Chinese and English naturally, preserving meaning and context. Return only the translation."
-user_template = """
-Translate only Target. Use Context only to disambiguate:
-Target:
-{target}
-Context:
-{context}"""
-temperature = 0.20000000298023224
-max_output_tokens = 512
-
-[[profiles]]
 id = "wiki-style"
 name = "Wiki"
 system_prompt = "Explain the target in a factual, neutral, wiki-style summary. State uncertainty when context is insufficient."
@@ -138,20 +112,6 @@ Analyze this code snippet:
 {target}"""
 temperature = 0.20000000298023224
 max_output_tokens = 700
-
-[[profiles]]
-id = "concise-explanation"
-name = "Concise"
-system_prompt = "Explain the input content mainly in English. Start with a concise, non-redundant summary explanation. Then add a short section containing useful common knowledge related to the content."
-user_template = """
-Input:
-{target}
-
-Sentence context for disambiguation only:
-{context}"""
-temperature = 0.20000000298023224
-max_output_tokens = 500
-
 
 [defaults]
 selection = "linguist-analysis"
